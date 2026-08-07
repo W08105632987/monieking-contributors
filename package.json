@@ -1,0 +1,11 @@
+{
+  "name": "monieking-contributors",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/web"],
+  "scripts": {
+    "dev:web": "cd apps/web && npm run dev",
+    "dev:backend": "cd backend && uvicorn app.main:app --reload --port 8000 --host 0.0.0.0",
+    "install:all": "npm install && cd backend && pip install -r requirements.txt --break-system-packages"
+  }
+}

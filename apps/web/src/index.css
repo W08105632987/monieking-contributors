@@ -1,0 +1,285 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-surface text-green-900 font-sans antialiased;
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  #root {
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  input, textarea, select, button {
+    font-family: inherit;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-green-200 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-green-300; }
+}
+
+@layer components {
+  /* ── Button system ─────────────────────────── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-full
+           transition-all duration-150 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2;
+  }
+  .btn-sm  { @apply btn px-4 py-2 text-sm; }
+  .btn-md  { @apply btn px-6 py-3 text-sm; }
+  .btn-lg  { @apply btn px-8 py-4 text-base; }
+
+  .btn-primary {
+    @apply bg-green-900 text-green-50 hover:bg-green-800 shadow-card;
+  }
+  .btn-accent {
+    @apply bg-copper-gradient text-green-900 font-bold shadow-copper hover:opacity-90;
+  }
+  .btn-outline {
+    @apply border-2 border-green-700 text-green-700 hover:bg-green-50;
+  }
+  .btn-ghost {
+    @apply bg-green-50 text-green-800 hover:bg-green-100;
+  }
+  .btn-danger {
+    @apply bg-danger-bg text-danger-text hover:bg-red-100;
+  }
+
+  /* ── Card system ────────────────────────────── */
+  .card {
+    @apply bg-white rounded-2xl border border-green-100 shadow-card p-4;
+  }
+  .card-lg {
+    @apply bg-white rounded-3xl border border-green-100 shadow-card-lg p-6;
+  }
+  .card-surface {
+    @apply bg-surface rounded-2xl border border-green-100 p-4;
+  }
+
+  /* ── Input system ───────────────────────────── */
+  .input {
+    @apply w-full border border-green-200 rounded-xl px-4 py-3 text-sm text-green-900
+           bg-white placeholder:text-green-400
+           focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent
+           transition-all duration-150;
+  }
+  .input-label {
+    @apply block text-xs font-semibold text-green-700 mb-1.5 uppercase tracking-wide;
+  }
+  .input-error {
+    @apply text-xs text-danger mt-1 font-medium;
+  }
+
+  /* ── Badge system ───────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold;
+  }
+  .badge-green  { @apply badge bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300; }
+  .badge-copper { @apply badge bg-copper-100 dark:bg-amber-900/30 text-copper-800 dark:text-amber-300; }
+  .badge-red    { @apply badge bg-danger-bg dark:bg-red-900/30 text-danger-text dark:text-red-300; }
+  .badge-gray   { @apply badge bg-gray-100 dark:bg-night-600 text-gray-700 dark:text-night-200; }
+  .badge-dark   { @apply badge bg-green-900 dark:bg-night-500 text-green-100 dark:text-night-100; }
+
+  /* ── Contribution grid cell ─────────────────── */
+  .grid-cell {
+    @apply w-full aspect-square rounded-sm transition-colors duration-200;
+  }
+  .grid-cell-empty    { @apply grid-cell bg-green-100; }
+  .grid-cell-filled   { @apply grid-cell bg-green-600; }
+  .grid-cell-today    { @apply grid-cell bg-copper-400 ring-1 ring-copper-600; }
+
+  /* ── Contribution card (flippable) ─────────── */
+  .flip-card-container {
+    perspective: 1000px;
+  }
+  .flip-card-inner {
+    @apply relative w-full transition-transform duration-500;
+    transform-style: preserve-3d;
+  }
+  .flip-card-inner.flipped {
+    transform: rotateY(180deg);
+  }
+  .flip-card-face {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .flip-card-back {
+    transform: rotateY(180deg);
+  }
+
+  /* ── Skeleton loader ────────────────────────── */
+  .skeleton {
+    @apply bg-green-100 rounded-lg animate-pulse;
+  }
+
+  /* ── Page wrapper ───────────────────────────── */
+  .page {
+    @apply flex-1 px-4 py-6 max-w-lg mx-auto w-full;
+  }
+  .page-header {
+    @apply flex items-center justify-between mb-6;
+  }
+
+  /* ── Stat card ──────────────────────────────── */
+  .stat-card {
+    @apply card-surface flex flex-col gap-1;
+  }
+  .stat-label {
+    @apply text-xs font-semibold text-green-600 uppercase tracking-wide;
+  }
+  .stat-value {
+    @apply text-2xl font-extrabold text-green-900;
+  }
+  .stat-sub {
+    @apply text-xs text-green-500 font-medium;
+  }
+}
+
+@layer utilities {
+  /* Naira currency helper */
+  .naira::before { content: '₦'; }
+
+  /* Safe area padding for mobile */
+  .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+  .pt-safe { padding-top: max(1rem, env(safe-area-inset-top)); }
+
+  /* Gradient text */
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #F59E0B, #D97706);
+  }
+
+  /* Shimmer loading effect */
+  .shimmer {
+    background: linear-gradient(90deg, #D1FAE5 25%, #A7F3D0 50%, #D1FAE5 75%);
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+
+  /* Liquid blob nav active indicator */
+  .liquid-blob {
+    @apply animate-liquid-blob;
+  }
+
+  /* Truncate multiline */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Hide scrollbar but keep scroll */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+}
+
+.flip-card {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Reserves space for the fixed InstantMessageTicker so it sits before
+   every page's own header instead of overlapping it. Pages don't share a
+   layout wrapper, so this is toggled on <body> by the ticker itself. */
+body.has-instant-ticker {
+  padding-top: calc(26px + env(safe-area-inset-top));
+}
+
+/* App-wide: nothing should be text-selectable or long-press-highlightable —
+   this should feel like a native app, not a webpage. Inputs/textareas/
+   contenteditable are explicitly re-enabled below since typing requires it. */
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
+}
+
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: auto;
+}
+
+/* Bottom nav must always paint beneath any open sheet/modal, even during
+   spring-bounce animation frames. Both use z-50 (tied), which lets the
+   browser flip paint order mid-bounce; this forces a real, unambiguous
+   hierarchy instead of a tie. */
+nav.fixed.bottom-0 {
+  z-index: 40 !important;
+}
+
+.fixed.inset-0.z-50 {
+  z-index: 55 !important;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Chrome/Safari ignore normal `color` CSS on autofilled inputs and
+   substitute their own (plus a yellow/blue background), independent of
+   dark/light mode. Without this, a saved phone number or password can
+   render in whatever color the browser picks — not what the design
+   says — which is exactly the kind of "why is this text green" bug
+   that's invisible until a field actually gets autofilled. The huge
+   inset box-shadow is the standard trick to also suppress the
+   background color swap, since -webkit-box-shadow paints above the
+   browser's own autofill background layer. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: currentColor;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* The login page's inputs are always white-on-dark, regardless of
+   light/dark mode (its hero background is intentionally dark either
+   way). currentColor above wasn't reliably winning there — Chrome's
+   own :-webkit-autofill styling can outrank it depending on version —
+   so this pins it explicitly rather than relying on inheritance. */
+.login-input:-webkit-autofill,
+.login-input:-webkit-autofill:hover,
+.login-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #ffffff !important;
+}

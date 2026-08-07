@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment files — NEVER commit these
+.env
+.env.local
+.env.production
+backend/.env
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+*.egg-info/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Logs
+*.log
+logs/
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# Celery beat runtime state — regenerated automatically, never commit
+celerybeat-schedule*

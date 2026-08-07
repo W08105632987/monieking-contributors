@@ -1,0 +1,393 @@
+// ─── Enums ────────────────────────────────────────────────────────
+export type UserRole = 'customer' | 'officer' | 'admin' | 'director'
+export type UserStatus = 'active' | 'suspended' | 'pending_verification'
+export type CardType = 'regular' | 'food'
+export type CardStatus = 'active' | 'completed' | 'converted' | 'archived'
+export type CardCompletionStatus = 'paid' | 'unpaid' | 'withdrawal_pending'
+export type WithdrawalStatus = 'pending' | 'claimed' | 'paid' | 'rejected'
+export type TxType = 'credit' | 'debit'
+export type TxCategory =
+  | 'wallet_funding'
+  | 'contribution'
+  | 'withdrawal'
+  | 'charge'
+  | 'officer_contribution'
+  | 'reversal'
+export type ContributionMethod = 'digital' | 'cash_via_officer'
+export type NotificationType = 'info' | 'success' | 'warning' | 'error' | 'broadcast'
+
+// ─── Core models ──────────────────────────────────────────────────
+export interface User {
+  id: string
+  customer_number: number
+  role: UserRole
+  full_name: string
+  phone_number: string
+  bank_name: string | null
+  account_number: string | null
+  account_name: string | null
+  face_image_url: string | null
+  next_of_kin_name: string | null
+  next_of_kin_phone: string | null
+  zone_id: string | null
+  created_by: string | null
+  is_manual_customer: boolean
+  managing_officer_id: string | null
+  status: UserStatus
+  avatar_url: string | null
+  location_consent_status: 'not_asked' | 'granted' | 'declined'
+  detected_state: string | null
+  has_withdrawal_password?: boolean
+  bvn_linked?: boolean
+  nin_linked?: boolean
+  bvn_last4?: string | null
+  nin_last4?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Zone {
+  id: string
+  name: string
+  description: string | null
+  officer_count: number
+  current_officer_name: string | null
+  created_at: string
+}
+
+export interface ZoneAssignmentHistory {
+  id: string
+  zone_id: string | null
+  zone_name: string
+  started_at: string
+  ended_at: string | null
+  assigned_by_director_name: string | null
+}
+
+export interface Wallet {
+  id: string
+  owner_id: string
+  balance_kobo: number
+  virtual_account_number: string | null
+  virtual_account_bank: string | null
+  virtual_account_ref: string | null
+  is_frozen: boolean
+  created_at: string
+}
+
+export interface WalletTransaction {
+  id: string
+  wallet_id: string
+  type: TxType
+  category: TxCategory
+  amount_kobo: number
+  balance_after_kobo: number
+  reference: string
+  description: string | null
+  related_card_id: string | null
+  related_withdrawal_id: string | null
+  initiated_by: string
+  created_at: string
+}
+
+export interface ContributionCard {
+  id: string
+  card_number: number
+  owner_id: string
+  card_type: CardType
+  rate_kobo: number
+  total_days_contributed: number
+  total_contributed_kobo: number
+  status: CardStatus
+  completion_status: CardCompletionStatus | null
+  food_eligibility_lost_at: string | null
+  created_at: string
+  completed_at: string | null
+  latest_withdrawal_id?: string | null
+  // joined
+  owner?: Pick<User, 'full_name' | 'phone_number'>
+}
+
+export interface ContributionRecord {
+  id: string
+  card_id: string
+  logical_month: number   // 1–12
+  logical_day: number     // 1–31
+  amount_kobo: number
+  contributed_by: string
+  method: ContributionMethod
+  reference: string
+  created_at: string
+}
+
+export interface Withdrawal {
+  id: string
+  customer_id: string
+  card_id: string | null
+  source: 'card' | 'wallet'
+  requested_amount_kobo: number
+  charge_kobo: number
+  net_payable_kobo: number
+  bank_name: string
+  account_number: string
+  account_name: string
+  status: WithdrawalStatus
+  claimed_by_director_id: string | null
+  claimed_at: string | null
+  processed_at: string | null
+  rejection_reason: string | null
+  requested_at: string
+  customer_name: string | null
+  customer_avatar_url: string | null
+}
+
+export interface AppNotification {
+  id: string
+  user_id: string
+  title: string
+  body: string
+  type: NotificationType
+  is_read: boolean
+  related_entity_id: string | null
+  created_at: string
+}
+
+// ─── API shapes ───────────────────────────────────────────────────
+export interface ApiResponse<T> {
+  data: T
+  message?: string
+}
+
+export interface PaginatedResponse<T> {
+  data: T[]
+  total: number
+  page: number
+  page_size: number
+  has_next: boolean
+}
+
+export interface ApiError {
+  detail: string
+  code?: string
+}
+
+// ─── Form types ───────────────────────────────────────────────────
+export interface RegisterCustomerForm {
+  full_name: string
+  phone_number: string
+  bank_name: string
+  account_number: string
+  account_name: string
+  next_of_kin_name: string
+  next_of_kin_phone: string
+  password: string
+  withdrawal_password: string
+  face_image?: File
+}
+
+export interface LoginForm {
+  phone_number: string
+  password: string
+}
+
+export interface CreateCardForm {
+  card_type: CardType
+  rate_kobo: number
+}
+
+export interface ContributeForm {
+  card_id: string
+  amount_kobo: number
+}
+
+export interface WithdrawForm {
+  card_id: string
+  amount_kobo: number
+  auth_method: 'password' | 'biometric'
+  withdrawal_password?: string
+}
+
+// ─── Grid types ───────────────────────────────────────────────────
+export interface GridCell {
+  month: number
+  day: number
+  filled: boolean
+  withdrawn: boolean
+  contribution_id?: string
+}
+
+export type CardGrid = GridCell[][]  // [12][31]
+
+// ─── Auth context ─────────────────────────────────────────────────
+export interface AuthUser extends User {
+  wallet?: Wallet
+}
+
+// ─── Director portal: settings ───────────────────────────────────
+export interface SystemConfigItem {
+  key: string
+  value: string
+  description: string | null
+  updated_by: string | null
+  updated_at: string
+}
+
+export type PendingRateChangeStatus = 'scheduled' | 'cancelled' | 'applied'
+
+export interface PendingRateChange {
+  id: string
+  setting_key: string
+  current_value_kobo: number
+  new_value_kobo: number
+  effective_date: string
+  status: PendingRateChangeStatus
+  created_by: string
+  created_at: string
+  cancelled_at: string | null
+  notified_at: string | null
+  days_until_effective: number | null
+}
+
+export interface RateChangePreview {
+  setting_key: string
+  current_value_kobo: number
+  new_value_kobo: number
+  effective_date: string
+  days_until_effective: number
+  customers_will_be_notified_on: string
+}
+
+// ─── Director portal: instant message ticker ─────────────────────
+export type InstantMessagePriority = 'normal' | 'urgent'
+
+export interface InstantMessage {
+  id: string
+  message: string
+  priority: InstantMessagePriority
+  target_roles: string
+  is_active: boolean
+  expires_at: string | null
+  created_by: string
+  created_at: string
+}
+
+// ─── Director portal: promo banners ──────────────────────────────
+export type PromoBannerLinkType = 'none' | 'internal_route' | 'external_url'
+
+export interface PromoBanner {
+  id: string
+  title: string
+  subtitle: string | null
+  gradient_from: string
+  gradient_to: string
+  link_type: PromoBannerLinkType
+  link_target: string | null
+  display_order: number
+  is_active: boolean
+  start_at: string | null
+  end_at: string | null
+  target_roles: string
+  created_by: string
+  created_at: string
+}
+
+// ─── Director portal: customer overview ──────────────────────────
+export interface CustomerCardOverview {
+  id: string
+  card_type: CardType
+  rate_kobo: number
+  status: CardStatus
+  created_at: string
+  total_days_contributed: number
+  days_remaining: number
+  total_contributed_kobo: number
+  total_withdrawn_kobo: number
+  available_balance_kobo: number
+  withdrawal_history: {
+    id: string
+    requested_amount_kobo: number
+    charge_kobo: number
+    net_payable_kobo: number
+    status: WithdrawalStatus
+    requested_at: string
+    processed_at: string | null
+  }[]
+}
+
+export interface CustomerOverview {
+  profile: User
+  wallet_balance_kobo: number
+  cards: CustomerCardOverview[]
+}
+
+// ─── Director portal: analytics ──────────────────────────────────
+export interface SystemAnalytics {
+  users_by_role: Record<string, number>
+  total_active_cards: number
+  total_food_cards: number
+  total_contributed_kobo: number
+  pending_withdrawals: number
+  total_paid_out_kobo: number
+  total_charges_kobo: number
+  period: { start_date: string | null; end_date: string | null }
+}
+
+export interface ProfitReport {
+  card_withdrawal_charges_kobo: number
+  card_withdrawal_count: number
+  instant_withdrawal_charges_kobo: number
+  instant_withdrawal_count: number
+  total_profit_kobo: number
+  period: { start_date: string | null; end_date: string | null }
+}
+
+export interface ZoneAnalytics {
+  by_state: { state: string; count: number }[]
+  declined_count: number
+  not_asked_count: number
+}
+
+export type DisputeEntityType = 'wallet_transaction' | 'withdrawal'
+export type DisputeStatus = 'open' | 'under_review' | 'escalated' | 'resolved'
+export type DisputeReason =
+  | 'not_mine' | 'amount_wrong' | 'duplicate'
+  | 'money_not_received' | 'rejected_in_error' | 'other'
+
+export const DISPUTE_REASON_LABEL: Record<DisputeReason, string> = {
+  not_mine:           "I didn't make/request this",
+  amount_wrong:       'Amount is wrong',
+  duplicate:          'This looks like a duplicate',
+  money_not_received: "Money wasn't received",
+  rejected_in_error:  'I believe this was rejected in error',
+  other:              'Something else',
+}
+
+export interface DisputeMessage {
+  id: string
+  sender_id: string
+  sender_name: string
+  message: string
+  read_at: string | null
+  created_at: string
+}
+
+export interface Dispute {
+  id: string
+  raised_by: string
+  customer_name: string
+  entity_type: DisputeEntityType
+  entity_id: string
+  reason: DisputeReason
+  status: DisputeStatus
+  assigned_to: string | null
+  handler_name: string | null
+  resolution_summary: string | null
+  can_resolve: boolean
+  created_at: string
+  updated_at: string
+  resolved_at: string | null
+}
+
+export interface DisputeDetail extends Dispute {
+  messages: DisputeMessage[]
+}
