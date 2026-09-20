@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Home, CreditCard, Wallet, Bell, User, UserCog, Grid2x2 } from 'lucide-react'
+import { Home, CreditCard, Wallet, Bell, User, UserCog, Grid2x2, LayoutGrid } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { useAuthStore } from '@/store/auth.store'
@@ -13,11 +13,11 @@ interface NavItem {
 }
 
 const customerNav: NavItem[] = [
-  { label: 'Home',    icon: Home,       href: '/customer/dashboard' },
-  { label: 'Cards',   icon: CreditCard, href: '/customer/cards' },
-  { label: 'Wallet',  icon: Wallet,     href: '/customer/wallet' },
-  { label: 'Alerts',  icon: Bell,       href: '/customer/notifications' },
-  { label: 'Profile', icon: User,       href: '/customer/profile' },
+  { label: 'Home',     icon: Home,       href: '/customer/dashboard' },
+  { label: 'Cards',    icon: CreditCard, href: '/customer/cards' },
+  { label: 'Wallet',   icon: Wallet,     href: '/customer/wallet' },
+  { label: 'Services', icon: LayoutGrid, href: '/customer/services' },
+  { label: 'Profile',  icon: User,       href: '/customer/profile' },
 ]
 
 const officerNav: NavItem[] = [

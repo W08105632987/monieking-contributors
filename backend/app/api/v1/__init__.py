@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.routes import auth, users, wallets, cards, withdrawals, notifications, admin
+from app.api.v1.routes import auth, users, wallets, cards, withdrawals, notifications, admin, customer_stats
 
 api_router = APIRouter()
 
@@ -11,3 +11,4 @@ api_router.include_router(cards.router)
 api_router.include_router(withdrawals.router)
 api_router.include_router(notifications.router)
 api_router.include_router(admin.router)
+api_router.include_router(customer_stats.router)

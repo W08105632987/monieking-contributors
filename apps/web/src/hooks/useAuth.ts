@@ -28,7 +28,7 @@ export function useAuth() {
     return () => clearInterval(pollId)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function fetchProfile() {
+  async function fetchProfile(retriesLeft = 2) {
     try {
       const { data } = await api.get<AuthUser>('/users/me')
       const role = typeof data.role === 'object'
@@ -37,19 +37,46 @@ export function useAuth() {
       setUser({ ...data, role })
       fetchNotifications()
     } catch (err: any) {
+      const status = err?.response?.status
       const detail = err?.response?.data?.detail
+
       if (detail === 'USER_NOT_IN_PLATFORM') {
         // Auth exists but platform record missing — redirect to complete registration
         navigate('/auth/register?resume=true')
-      } else if (err?.response?.status === 403 && detail?.toLowerCase().includes('suspended')) {
+        return
+      }
+      if (status === 403 && detail?.toLowerCase().includes('suspended')) {
         try { await api.post('/auth/logout') } catch { /* cookies get cleared server-side either way */ }
         logout()
         toast.error('Your account has been suspended. Please contact a director to resolve this.', { duration: 6000 })
         navigate('/auth/login')
-      } else {
-        logout()
-        setLoading(false)
+        return
       }
+
+      // A genuine 401 means the session really is invalid — that's a
+      // real logout. Anything else (500, 502, a dropped connection, a
+      // request that timed out) is NOT proof the person is logged out —
+      // it's proof something went wrong reaching the server. The auth
+      // store is persisted to localStorage, so calling logout() here
+      // was wiping a perfectly valid session (plus the wallet,
+      // notifications, and entire query cache) on every transient
+      // blip — which is exactly what "logged out on every refresh"
+      // looked like from the outside. Retry a couple of times first;
+      // only give up (without logging out) if it keeps failing.
+      if (status === 401) {
+        logout()
+        return
+      }
+
+      if (retriesLeft > 0) {
+        setTimeout(() => fetchProfile(retriesLeft - 1), 2000)
+        return
+      }
+
+      // Out of retries, still not a 401 — leave the persisted session
+      // exactly as it is (don't force a logout on a network problem)
+      // and just stop the loading spinner so the app isn't stuck.
+      setLoading(false)
     }
   }
 

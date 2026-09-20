@@ -38,9 +38,18 @@ webauthn==1.11.1
 python-dotenv==1.0.0
 structlog==24.1.0
 sentry-sdk[fastapi]==1.40.0
+aiosmtplib==3.0.1
 slowapi==0.1.9
 
 # ── Testing ───────────────────────────────────────────────────────
 pytest==7.4.4
 pytest-asyncio==0.23.3
 httpx==0.24.1
+
+# ── Documents ─────────────────────────────────────────────────────
+# Generates the identity-services "verification reference" PDF (round 19)
+# on the fly, in-memory, from an already-masked response_summary — never
+# from the provider's raw response. Pure-Python, no system-level deps
+# (unlike weasyprint/wkhtmltopdf), which matters since this runs in the
+# same request path as a customer-facing download.
+reportlab==4.2.5

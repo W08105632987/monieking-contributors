@@ -11,18 +11,35 @@
     <meta name="apple-mobile-web-app-title" content="MonieKing" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#052E16" />
-    <meta name="description" content="MonieKing Contributors — Your trusted contribution platform" />
-    <title>MonieKing Contributors</title>
+    <meta name="description" content="MonieKing — Nigeria's digital contribution savings platform. A modern esusu and ajo alternative with zone officers, contribution cards, and bill payments." />
+    <link rel="canonical" href="https://monieking.webodemos.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="MonieKing" />
+    <meta property="og:title" content="MonieKing — Digital Contribution Savings & Thrift Collection App" />
+    <meta property="og:description" content="Nigeria's digital contribution savings platform — a modern esusu and ajo alternative. Save daily with a trusted zone officer and track every contribution online." />
+    <meta property="og:url" content="https://monieking.webodemos.com/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="MonieKing — Digital Contribution Savings" />
+    <meta name="twitter:description" content="Nigeria's digital contribution savings platform — a modern esusu and ajo alternative." />
+    <title>MonieKing — Digital Contribution Savings & Thrift Collection App</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
     <script>
       // Applied before React mounts, so there's no flash of the wrong
       // theme on load — same localStorage key useDarkMode.ts reads.
+      // A returning visitor's own explicit choice (light OR dark) is
+      // always respected first. Only a brand-new visitor with no
+      // stored choice yet defaults to dark now — previously that
+      // fallback followed the device's system color-scheme setting,
+      // which meant a phone set to light mode would open the app in
+      // light mode with no dark mode ever having been seen. Now
+      // everyone's first-ever open is dark by default; the toggle on
+      // the Login page is how they switch to light if they want it.
       (function () {
         try {
           var stored = localStorage.getItem('monieking-theme');
-          var isDark = stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var isDark = stored !== 'light';
           if (isDark) document.documentElement.classList.add('dark');
         } catch (e) {}
       })();

@@ -16,6 +16,8 @@ import { BottomNav } from '@/components/layout/BottomNav'
 import { formatNaira, timeAgo, formatDateTime, copyToClipboard } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { WalletTransaction } from '@/types'
+import { FEATURE_FLAGS } from '@/config/featureFlags'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 const TX_CATEGORY_LABEL: Record<string, string> = {
   wallet_funding:       'Wallet funded',
@@ -73,7 +75,7 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10 max-h-[88vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-5" />
+        <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-5" />
         <div className="flex items-center gap-3 mb-1">
           <Wallet className="w-6 h-6 text-green-700 dark:text-night-100" />
           <h2 className="text-green-900 dark:text-white font-extrabold text-lg leading-tight">Withdraw to my account</h2>
@@ -91,13 +93,13 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
             value={amountNaira}
             onChange={e => setAmountNaira(e.target.value.replace(/[^0-9.]/g, ''))}
             placeholder={`Max: ${(wallet?.balance_kobo ?? 0) / 100}`}
-            className="w-full border-2 border-green-200 dark:border-night-500 rounded-xl pl-9 pr-4 py-4 text-xl text-green-900 dark:text-white font-bold focus:outline-none focus:border-green-500 bg-white"
+            className="w-full border-2 border-green-200 dark:border-night-500 rounded-xl pl-9 pr-4 py-4 text-xl text-green-900 dark:text-white font-bold focus:outline-none focus:border-green-500 bg-white dark:bg-night-700"
           />
         </div>
         {amountKobo > (wallet?.balance_kobo ?? 0) && (
           <div className="flex items-center gap-1.5 mb-3">
-            <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-            <p className="text-red-400 text-xs font-semibold">Exceeds wallet balance</p>
+            <AlertCircle className="w-3.5 h-3.5 text-red-400 dark:text-red-300 flex-shrink-0" />
+            <p className="text-red-400 dark:text-red-300 text-xs font-semibold">Exceeds wallet balance</p>
           </div>
         )}
 
@@ -109,7 +111,7 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
             </div>
             <div className="flex justify-between text-sm mb-2">
               <span className="text-green-600 dark:text-night-200">Processing charge</span>
-              <span className="text-red-400 font-semibold">- {formatNaira(OFFICER_WALLET_WITHDRAWAL_CHARGE_KOBO)}</span>
+              <span className="text-red-400 dark:text-red-300 font-semibold">- {formatNaira(OFFICER_WALLET_WITHDRAWAL_CHARGE_KOBO)}</span>
             </div>
             <div className="h-px bg-green-100 dark:bg-night-600 mb-2" />
             <div className="flex justify-between">
@@ -140,7 +142,7 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
             value={password}
             onChange={e => setPassword(e.target.value)}
             placeholder="Enter your withdrawal password"
-            className="w-full border-2 border-green-200 dark:border-night-500 rounded-xl px-4 py-3.5 pr-10 text-sm text-green-900 dark:text-white focus:outline-none focus:border-green-500 bg-white"
+            className="w-full border-2 border-green-200 dark:border-night-500 rounded-xl px-4 py-3.5 pr-10 text-sm text-green-900 dark:text-white focus:outline-none focus:border-green-500 bg-white dark:bg-night-700"
           />
           <button type="button" onClick={() => setShowPwd(v => !v)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-green-400 dark:text-night-300">
@@ -166,14 +168,14 @@ function TxItem({ tx, onClick }: { tx: WalletTransaction; onClick: () => void })
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 py-3.5 border-b border-green-50 last:border-0 text-left active:bg-green-50/60 transition-colors -mx-1 px-1 rounded-xl"
+      className="w-full flex items-center gap-3 py-3.5 border-b border-green-50 dark:border-night-600 last:border-0 text-left active:bg-green-50/60 dark:active:bg-white/5 transition-colors -mx-1 px-1 rounded-xl"
     >
       <div className={cn('w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0',
         isCredit ? 'bg-green-100 dark:bg-night-600' : 'bg-red-50',
       )}>
         {isCredit
           ? <ArrowDownLeft className="w-5 h-5 text-green-600 dark:text-night-200" />
-          : <ArrowUpRight  className="w-5 h-5 text-red-400" />
+          : <ArrowUpRight  className="w-5 h-5 text-red-400 dark:text-red-300" />
         }
       </div>
       <div className="flex-1 min-w-0">
@@ -217,8 +219,8 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-5" />
-        <button onClick={onClose} className="absolute top-5 right-5 w-8 h-8 rounded-full bg-green-50 flex items-center justify-center">
+        <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-5" />
+        <button onClick={onClose} className="absolute top-5 right-5 w-8 h-8 rounded-full bg-green-50 dark:bg-night-600 flex items-center justify-center">
           <X className="w-4 h-4 text-green-700 dark:text-night-100" />
         </button>
 
@@ -229,7 +231,7 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
           )}>
             {isCredit
               ? <ArrowDownLeft className="w-6 h-6 text-green-600 dark:text-night-200" />
-              : <ArrowUpRight  className="w-6 h-6 text-red-400" />
+              : <ArrowUpRight  className="w-6 h-6 text-red-400 dark:text-red-300" />
             }
           </div>
           <p className={cn('text-3xl font-extrabold tracking-tight', isCredit ? 'text-green-700 dark:text-night-100' : 'text-red-500')}>
@@ -240,7 +242,7 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
           </p>
         </div>
 
-        <div className="bg-green-50 rounded-2xl p-4 space-y-3">
+        <div className="bg-green-50 dark:bg-night-600 rounded-2xl p-4 space-y-3">
           {rows.map(row => (
             <div key={row.label} className="flex items-start justify-between gap-3">
               <span className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-wide pt-0.5 shrink-0">{row.label}</span>
@@ -284,14 +286,14 @@ function FundWalletSheet({ onClose }: { onClose: () => void }) {
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-6" />
+        <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-6" />
         <h2 className="text-green-900 dark:text-white font-extrabold text-xl mb-1">Fund officer wallet</h2>
         <p className="text-green-500 dark:text-night-200 text-sm mb-2">
           Transfer money to your virtual account below.
         </p>
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-5">
-          <p className="text-amber-700 text-xs font-semibold">💡 Officer wallet purpose</p>
-          <p className="text-amber-600 text-xs mt-0.5 leading-relaxed">
+        <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-3 mb-5">
+          <p className="text-amber-700 dark:text-amber-300 text-xs font-semibold">💡 Officer wallet purpose</p>
+          <p className="text-amber-600 dark:text-amber-300 text-xs mt-0.5 leading-relaxed">
             Your wallet balance is used to post cash contributions on behalf of your customers. Make sure it always has enough funds before visiting customers.
           </p>
         </div>
@@ -363,19 +365,11 @@ export default function OfficerWalletPage() {
   const totalOut = transactions.filter(t => t.type === 'debit' ).reduce((s, t) => s + t.amount_kobo, 0)
 
   return (
-    <div className="min-h-dvh flex flex-col bg-green-50">
+    <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
 
       {/* Top bar */}
-      <header className="flex items-center justify-between px-4 py-3 bg-green-50">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-green-900 rounded-xl flex items-center justify-center shadow-card">
-            <span className="text-amber-400 font-extrabold text-base">₦</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-green-900 dark:text-white font-extrabold text-xl tracking-tight leading-none">Monie</span>
-            <span className="text-amber-500 font-extrabold text-xl tracking-tight leading-none">King</span>
-          </div>
-        </div>
+      <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
+        <BrandBlobLogo height={36} />
         <div className="flex items-center gap-2">
           <button onClick={handleRefresh} className="w-9 h-9 bg-green-100 dark:bg-night-600 rounded-xl flex items-center justify-center shrink-0">
             <RefreshCw className={cn('w-4 h-4 text-green-600 dark:text-night-200', refreshing && 'animate-spin')} />
@@ -423,10 +417,14 @@ export default function OfficerWalletPage() {
                   <ArrowDownLeft className="w-4 h-4" /> Fund wallet
                 </button>
                 <button
-                  onClick={() => setShowWalletWithdraw(true)}
-                  className="flex-1 min-w-0 flex items-center justify-center gap-2 border-2 border-green-500 text-green-300 dark:text-night-300 font-bold text-sm rounded-full py-3 active:scale-95 transition-all"
+                  onClick={() => FEATURE_FLAGS.INSTANT_WITHDRAWAL_ENABLED && setShowWalletWithdraw(true)}
+                  disabled={!FEATURE_FLAGS.INSTANT_WITHDRAWAL_ENABLED}
+                  className="relative flex-1 min-w-0 flex items-center justify-center gap-2 border-2 border-green-500 text-green-300 dark:text-night-300 font-bold text-sm rounded-full py-3 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
                 >
                   <ArrowUpRight className="w-4 h-4" /> Withdraw
+                  {!FEATURE_FLAGS.INSTANT_WITHDRAWAL_ENABLED && (
+                    <span className="absolute -top-2 -right-2 text-[9px] font-bold text-amber-900 bg-amber-300 px-1.5 py-0.5 rounded-full">SOON</span>
+                  )}
                 </button>
               </div>
             </div>
@@ -447,8 +445,8 @@ export default function OfficerWalletPage() {
           </div>
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-7 h-7 bg-red-50 rounded-xl flex items-center justify-center">
-                <TrendingDown className="w-4 h-4 text-red-400" />
+              <div className="w-7 h-7 bg-red-50 dark:bg-red-900/20 rounded-xl flex items-center justify-center">
+                <TrendingDown className="w-4 h-4 text-red-400 dark:text-red-300" />
               </div>
               <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-wide">Contributions</p>
             </div>
@@ -479,7 +477,7 @@ export default function OfficerWalletPage() {
                     <div className="w-10 h-10 bg-green-100 dark:bg-night-600 rounded-2xl animate-pulse" />
                     <div className="flex-1 space-y-2">
                       <div className="h-3 bg-green-100 dark:bg-night-600 rounded animate-pulse w-2/3" />
-                      <div className="h-2 bg-green-50 rounded animate-pulse w-1/3" />
+                      <div className="h-2 bg-green-50 dark:bg-night-600 rounded animate-pulse w-1/3" />
                     </div>
                   </div>
                 ))}

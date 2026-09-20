@@ -7,10 +7,9 @@ import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatDate, formatDateTime, MONTH_NAMES } from '@/lib/utils'
 import { cn } from '@/lib/utils'
-import type { ContributionCard, CardGrid, GridCell, ContributionRecord } from '@/types'
+import type { ContributionCard, CardGrid, GridCell, ContributionRecord, Withdrawal } from '@/types'
 import { ContributionHistoryModal } from '@/components/cards/ContributionHistoryModal'
 import { DisputeModal } from '@/components/disputes/DisputeModal'
-import { FEATURE_FLAGS } from '@/config/featureFlags'
 
 export default function CardDetailPage() {
   const navigate    = useNavigate()
@@ -19,7 +18,7 @@ export default function CardDetailPage() {
   const [flipped, setFlipped] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showCloseModal, setShowCloseModal] = useState(false)
-  const [showDispute, setShowDispute] = useState(false)
+  const [disputingWithdrawalId, setDisputingWithdrawalId] = useState<string | null>(null)
   const [closePassword, setClosePassword] = useState('')
   const [showClosePwd, setShowClosePwd] = useState(false)
   const [converting, setConverting] = useState(false)
@@ -32,6 +31,18 @@ export default function CardDetailPage() {
       return data
     },
     enabled: !!cardId,
+  })
+
+  // Only fetched for completed cards — an active card's story is about
+  // filling more of the grid, a completed one's is about what got
+  // withdrawn and when. See withdrawals section further down.
+  const { data: withdrawalHistory = [] } = useQuery({
+    queryKey: ['card-withdrawals', cardId],
+    queryFn: async () => {
+      const { data } = await api.get<Withdrawal[]>(`/cards/${cardId}/withdrawals`)
+      return data
+    },
+    enabled: !!cardId && card?.status === 'completed',
   })
 
   const { data: gridResponse } = useQuery({
@@ -165,7 +176,7 @@ export default function CardDetailPage() {
                     <p className="text-green-500 dark:text-night-200 text-xs mt-0.5">Contributors</p>
                   </div>
                   <span className={cn('text-xs font-bold px-3 py-1 rounded-full',
-                    isFood ? 'bg-green-700 text-green-200 dark:text-night-400' : 'bg-amber-500/20 dark:bg-night-500/30 text-amber-400 dark:text-night-100'
+                    isFood ? 'bg-green-700 dark:bg-night-500/30 text-green-200 dark:text-night-100' : 'bg-amber-500/20 dark:bg-night-500/30 text-amber-400 dark:text-night-100'
                   )}>
                     {isFood ? '🍱 Food' : '📋 Regular'}
                   </span>
@@ -202,7 +213,7 @@ export default function CardDetailPage() {
                   <div className="flex items-center gap-2 text-xs text-green-500 dark:text-night-200">
                     <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-600 inline-block" /> Filled</span>
                     <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400 inline-block" /> Withdrawn</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-100 dark:bg-night-600 inline-block" /> Empty</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-100 dark:bg-night-500 inline-block" /> Empty</span>
                   </div>
                 </div>
                 <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar" onClick={e => e.stopPropagation()} style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -220,7 +231,7 @@ export default function CardDetailPage() {
                             className={cn(
                               'flex-1 rounded-sm',
                               cellGrid[mIdx]?.[dIdx]?.withdrawn ? 'bg-red-400' :
-                              cellGrid[mIdx]?.[dIdx]?.filled    ? 'bg-green-600' : 'bg-green-100 dark:bg-night-600'
+                              cellGrid[mIdx]?.[dIdx]?.filled    ? 'bg-green-600' : 'bg-green-100 dark:bg-night-500'
                             )}
                             style={{ aspectRatio: '1' }}
                           />
@@ -303,14 +314,10 @@ export default function CardDetailPage() {
             </button>
             {!isFood && (
               <button
-                onClick={() => FEATURE_FLAGS.WITHDRAWALS_ENABLED && navigate(`/customer/withdrawals/new?card=${cardId}`)}
-                disabled={!FEATURE_FLAGS.WITHDRAWALS_ENABLED}
-                className="relative flex-1 min-w-0 flex items-center justify-center gap-2 border-2 border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 font-bold text-sm rounded-full py-3.5 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
+                onClick={() => navigate(`/customer/withdrawals/new?card=${cardId}`)}
+                className="flex-1 min-w-0 flex items-center justify-center gap-2 border-2 border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 font-bold text-sm rounded-full py-3.5 active:scale-95 transition-all"
               >
                 <ArrowUpRight className="w-4 h-4 shrink-0" /> Withdraw
-                {!FEATURE_FLAGS.WITHDRAWALS_ENABLED && (
-                  <span className="absolute -top-2 -right-2 text-[9px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/20 px-1.5 py-0.5 rounded-full">SOON</span>
-                )}
               </button>
             )}
           </div>
@@ -325,49 +332,57 @@ export default function CardDetailPage() {
           </button>
         )}
 
-        {isComplete && card.completion_status === 'unpaid' && !isFood && (
+        {isComplete && card.completion_status !== 'paid' && !isFood && (
           <button
-            onClick={() => FEATURE_FLAGS.WITHDRAWALS_ENABLED && navigate(`/customer/withdrawals/new?card=${cardId}`)}
-            disabled={!FEATURE_FLAGS.WITHDRAWALS_ENABLED}
-            className="relative w-full flex items-center justify-center gap-2 bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-4 active:scale-95 transition-all shadow-card mb-5 disabled:opacity-50 disabled:active:scale-100"
+            onClick={() => navigate(`/customer/withdrawals/new?card=${cardId}`)}
+            className="w-full flex items-center justify-center gap-2 bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-4 active:scale-95 transition-all shadow-card mb-5"
           >
-            <ArrowUpRight className="w-4 h-4" /> {FEATURE_FLAGS.WITHDRAWALS_ENABLED ? 'Request withdrawal' : 'Withdrawals coming soon'}
+            <ArrowUpRight className="w-4 h-4" /> Request withdrawal
           </button>
         )}
 
-        {isComplete && card.completion_status === 'withdrawal_pending' && !isFood && (
-          <button
-            disabled
-            className="w-full flex items-center justify-center gap-2 bg-green-100 dark:bg-night-700 text-green-500 dark:text-night-300 font-bold text-sm rounded-full py-4 mb-5 cursor-not-allowed"
-          >
-            <Clock className="w-4 h-4" /> Pending approval
-          </button>
+        {isComplete && withdrawalHistory.length > 0 && !isFood && (
+          <div className="mb-5">
+            <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-widest mb-2 px-1">Withdrawal history</p>
+            <div className="space-y-2">
+              {withdrawalHistory.map(w => (
+                <div key={w.id} className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 p-4">
+                  <div className="flex items-start justify-between mb-1">
+                    <p className="text-green-900 dark:text-white font-bold text-sm">{formatNaira(w.net_payable_kobo)}</p>
+                    <span className={cn(
+                      'text-[10px] font-bold px-2 py-1 rounded-full',
+                      w.status === 'paid' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
+                        : w.status === 'rejected' ? 'bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-300'
+                        : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300'
+                    )}>
+                      {w.status === 'paid' ? 'Paid' : w.status === 'rejected' ? 'Rejected' : 'Pending'}
+                    </span>
+                  </div>
+                  <p className="text-green-400 dark:text-night-300 text-xs">
+                    Requested {formatDate(w.requested_at)}
+                    {w.processed_at && ` · ${w.status === 'paid' ? 'Paid' : 'Processed'} ${formatDate(w.processed_at)}`}
+                  </p>
+                  {w.status === 'rejected' && w.rejection_reason && (
+                    <p className="text-red-400 dark:text-red-300 text-xs mt-1.5 bg-red-50 dark:bg-red-900/10 rounded-lg px-2.5 py-1.5">
+                      Reason: {w.rejection_reason}
+                    </p>
+                  )}
+                  {w.status === 'paid' && (
+                    <button
+                      onClick={() => setDisputingWithdrawalId(w.id)}
+                      className="text-red-400 dark:text-red-300 text-xs font-bold mt-2 underline"
+                    >
+                      Dispute this withdrawal
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
-        {isComplete && card.completion_status === 'paid' && card.latest_withdrawal_id && !isFood && (
-          <button
-            onClick={() => setShowDispute(true)}
-            className="w-full text-red-400 dark:text-red-300 font-bold text-sm py-3.5 rounded-full border-2 border-red-100 dark:border-red-900/40 active:scale-95 transition-all mb-5"
-          >
-            Dispute this withdrawal
-          </button>
-        )}
-
-        {showDispute && card.latest_withdrawal_id && (
-          <DisputeModal entityType="withdrawal" entityId={card.latest_withdrawal_id} onClose={() => setShowDispute(false)} />
-        )}
-
-        {isComplete && card.completion_status === 'paid' && card.latest_withdrawal_id && !isFood && (
-          <button
-            onClick={() => setShowDispute(true)}
-            className="w-full text-red-400 dark:text-red-300 font-bold text-sm py-3.5 rounded-full border-2 border-red-100 dark:border-red-900/40 active:scale-95 transition-all mb-5"
-          >
-            Dispute this withdrawal
-          </button>
-        )}
-
-        {showDispute && card.latest_withdrawal_id && (
-          <DisputeModal entityType="withdrawal" entityId={card.latest_withdrawal_id} onClose={() => setShowDispute(false)} />
+        {disputingWithdrawalId && (
+          <DisputeModal entityType="withdrawal" entityId={disputingWithdrawalId} onClose={() => setDisputingWithdrawalId(null)} />
         )}
 
         {/* Recent contributions */}

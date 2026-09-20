@@ -22,7 +22,8 @@ class CardStatus(str, enum.Enum):
 class CardCompletionStatus(str, enum.Enum):
     PAID               = "paid"
     UNPAID             = "unpaid"
-    WITHDRAWAL_PENDING = "withdrawal_pending"
+    PARTIALLY_PAID     = "partially_paid"
+    WITHDRAWAL_PENDING = "withdrawal_pending"   # legacy — never actually set; kept only so old rows/migrations referencing it don't break
 
 
 class ContributionMethod(str, enum.Enum):

@@ -9,11 +9,13 @@ import { formatNaira, formatDate, nairaToKobo, koboToNaira } from '@/lib/utils'
 import type { SystemConfigItem, PendingRateChange, RateChangePreview, Zone } from '@/types'
 
 const DEFERRED_KEYS = new Set(['food_card_rate_kobo'])
+const MONTHLY_KEYS  = new Set(['monthly_sms_fee_kobo'])
 
 const KEY_LABELS: Record<string, string> = {
   food_card_rate_kobo:                 'Food Card daily rate',
   wallet_instant_withdrawal_fee_kobo:  'Wallet instant withdrawal fee',
   max_instant_withdrawal_kobo:         'Max instant withdrawal per day',
+  monthly_sms_fee_kobo:                'Monthly SMS Alert Fee',
 }
 
 function humanizeKey(key: string): string {
@@ -39,42 +41,42 @@ function RateChangeConfirmModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-green-950/60 dark:bg-night-900/60 backdrop-blur-sm" />
       <motion.div
         initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.92 }}
-        className="relative bg-white rounded-3xl w-full max-w-sm p-6"
+        className="relative bg-white dark:bg-night-700 rounded-3xl w-full max-w-sm p-6"
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mb-4">
-          <Clock className="w-6 h-6 text-amber-500" />
+        <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500 rounded-2xl flex items-center justify-center mb-4">
+          <Clock className="w-6 h-6 text-amber-500 dark:text-amber-300" />
         </div>
-        <h2 className="text-green-900 font-extrabold text-lg mb-2">This change won't apply right away</h2>
-        <p className="text-green-600 text-sm mb-4">
+        <h2 className="text-green-900 dark:text-white font-extrabold text-lg mb-2">This change won't apply right away</h2>
+        <p className="text-green-600 dark:text-night-200 text-sm mb-4">
           To avoid disrupting anyone already contributing, this takes effect on{' '}
-          <span className="font-bold text-green-900">{formatDate(preview.effective_date)}</span>{' '}
+          <span className="font-bold text-green-900 dark:text-white">{formatDate(preview.effective_date)}</span>{' '}
           — in {preview.days_until_effective} days.
         </p>
-        <div className="bg-green-50 rounded-2xl p-4 mb-4 space-y-1.5">
+        <div className="bg-green-50 dark:bg-night-600 rounded-2xl p-4 mb-4 space-y-1.5">
           <div className="flex justify-between text-sm">
-            <span className="text-green-600">Current rate</span>
-            <span className="text-green-900 font-semibold">{formatNaira(preview.current_value_kobo)}</span>
+            <span className="text-green-600 dark:text-night-200">Current rate</span>
+            <span className="text-green-900 dark:text-white font-semibold">{formatNaira(preview.current_value_kobo)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-green-600">New rate</span>
-            <span className="text-green-900 font-bold">{formatNaira(preview.new_value_kobo)}</span>
+            <span className="text-green-600 dark:text-night-200">New rate</span>
+            <span className="text-green-900 dark:text-white font-bold">{formatNaira(preview.new_value_kobo)}</span>
           </div>
         </div>
-        <p className="text-green-400 text-xs mb-5">
+        <p className="text-green-400 dark:text-night-300 text-xs mb-5">
           All customers will be automatically notified on {formatDate(preview.customers_will_be_notified_on)}, the day before it takes effect. You can edit or cancel this any time before then.
         </p>
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 border border-green-200 text-green-700 font-bold text-sm rounded-full py-3">
+          <button onClick={onClose} className="flex-1 border border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 font-bold text-sm rounded-full py-3">
             Cancel
           </button>
           <button
             onClick={onConfirm}
             disabled={isPending}
-            className="flex-1 bg-green-900 text-white font-bold text-sm rounded-full py-3 disabled:opacity-50"
+            className="flex-1 bg-green-900 dark:bg-night-100 text-white font-bold text-sm rounded-full py-3 disabled:opacity-50"
           >
             {isPending ? 'Scheduling…' : 'Confirm'}
           </button>
@@ -103,54 +105,54 @@ function PendingChangeCard({ change }: { change: PendingRateChange }) {
   })
 
   return (
-    <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 mb-4">
+    <div className="bg-amber-50 dark:bg-amber-500 border-2 border-amber-200 dark:border-amber-500 rounded-2xl p-4 mb-4">
       <div className="flex items-center gap-2 mb-2">
-        <Clock className="w-4 h-4 text-amber-600" />
-        <p className="text-amber-700 font-bold text-xs uppercase tracking-wide">
+        <Clock className="w-4 h-4 text-amber-600 dark:text-amber-300" />
+        <p className="text-amber-700 dark:text-amber-300 font-bold text-xs uppercase tracking-wide">
           {labelFor(change.setting_key)} — scheduled change
         </p>
       </div>
 
       {editing ? (
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-green-600 text-sm">₦</span>
+          <span className="text-green-600 dark:text-night-200 text-sm">₦</span>
           <input
             value={newValue}
             onChange={e => setNewValue(e.target.value)}
             type="number"
-            className="flex-1 border border-amber-300 rounded-xl px-3 py-2 text-sm text-green-900"
+            className="flex-1 border border-amber-300 dark:border-amber-500 rounded-xl px-3 py-2 text-sm text-green-900 dark:text-white"
           />
         </div>
       ) : (
-        <p className="text-green-900 font-extrabold text-lg mb-1">
+        <p className="text-green-900 dark:text-white font-extrabold text-lg mb-1">
           → {formatNaira(change.new_value_kobo)}/day
         </p>
       )}
 
-      <p className="text-amber-700 text-sm font-semibold mb-1">
+      <p className="text-amber-700 dark:text-amber-300 text-sm font-semibold mb-1">
         Takes effect in {change.days_until_effective} day{change.days_until_effective === 1 ? '' : 's'} ({formatDate(change.effective_date)})
       </p>
       {change.notified_at && (
-        <p className="text-red-500 text-xs mb-2">Customers already notified — this can no longer be cancelled.</p>
+        <p className="text-red-500 dark:text-red-300 text-xs mb-2">Customers already notified — this can no longer be cancelled.</p>
       )}
 
       <div className="flex gap-2 mt-3">
         {editing ? (
           <>
-            <button onClick={() => setEditing(false)} className="flex-1 border border-amber-300 text-amber-700 text-xs font-bold rounded-full py-2">Cancel edit</button>
-            <button onClick={() => editMutation.mutate()} disabled={editMutation.isPending} className="flex-1 bg-amber-500 text-white text-xs font-bold rounded-full py-2">
+            <button onClick={() => setEditing(false)} className="flex-1 border border-amber-300 dark:border-amber-500 text-amber-700 dark:text-amber-300 text-xs font-bold rounded-full py-2">Cancel edit</button>
+            <button onClick={() => editMutation.mutate()} disabled={editMutation.isPending} className="flex-1 bg-amber-500 dark:bg-amber-400 text-white text-xs font-bold rounded-full py-2">
               {editMutation.isPending ? 'Saving…' : 'Save'}
             </button>
           </>
         ) : (
           <>
-            <button onClick={() => setEditing(true)} className="flex-1 min-w-0 flex items-center justify-center gap-1 border border-amber-300 text-amber-700 text-xs font-bold rounded-full py-2">
+            <button onClick={() => setEditing(true)} className="flex-1 min-w-0 flex items-center justify-center gap-1 border border-amber-300 dark:border-amber-500 text-amber-700 dark:text-amber-300 text-xs font-bold rounded-full py-2">
               <Pencil className="w-3 h-3 shrink-0" /> Edit
             </button>
             <button
               onClick={() => cancelMutation.mutate()}
               disabled={!!change.notified_at || cancelMutation.isPending}
-              className="flex-1 min-w-0 flex items-center justify-center gap-1 border border-red-200 text-red-500 text-xs font-bold rounded-full py-2 disabled:opacity-40"
+              className="flex-1 min-w-0 flex items-center justify-center gap-1 border border-red-200 dark:border-red-900 text-red-500 dark:text-red-300 text-xs font-bold rounded-full py-2 disabled:opacity-40"
             >
               <Ban className="w-3 h-3 shrink-0" /> {cancelMutation.isPending ? 'Cancelling…' : 'Cancel'}
             </button>
@@ -202,30 +204,30 @@ function SettingRow({ setting, pendingChange }: { setting: SystemConfigItem; pen
   const hasChanges = editValue !== String(koboToNaira(Number(setting.value)))
 
   return (
-    <div className="bg-white rounded-2xl border border-green-100 shadow-card p-4 mb-3">
-      <p className="text-green-900 font-bold text-sm mb-1">{labelFor(setting.key)}</p>
-      {setting.description && <p className="text-green-400 text-xs mb-3">{setting.description}</p>}
+    <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-3">
+      <p className="text-green-900 dark:text-white font-bold text-sm mb-1">{labelFor(setting.key)}</p>
+      {setting.description && <p className="text-green-400 dark:text-night-300 text-xs mb-3">{setting.description}</p>}
 
       {pendingChange && <PendingChangeCard change={pendingChange} />}
 
       {!pendingChange && (
         <>
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-green-600 text-sm">₦</span>
+            <span className="text-green-600 dark:text-night-200 text-sm">₦</span>
             <input
               value={editValue}
               onChange={e => setEditValue(e.target.value)}
               type="number"
-              className="flex-1 border border-green-200 rounded-xl px-3 py-2.5 text-sm text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="flex-1 border border-green-200 dark:border-night-500 rounded-xl px-3 py-2.5 text-sm text-green-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
             />
-            <span className="text-green-400 text-xs">/day</span>
+            <span className="text-green-400 dark:text-night-300 text-xs">{MONTHLY_KEYS.has(setting.key) ? '/month' : '/day'}</span>
           </div>
 
           {isDeferred ? (
             <button
               onClick={() => previewMutation.mutate()}
               disabled={!hasChanges || previewMutation.isPending}
-              className="w-full bg-green-900 text-white font-bold text-sm rounded-full py-3 disabled:opacity-40"
+              className="w-full bg-green-900 dark:bg-night-100 text-white font-bold text-sm rounded-full py-3 disabled:opacity-40"
             >
               {previewMutation.isPending ? 'Checking…' : 'Schedule change'}
             </button>
@@ -233,7 +235,7 @@ function SettingRow({ setting, pendingChange }: { setting: SystemConfigItem; pen
             <button
               onClick={() => immediateMutation.mutate()}
               disabled={!hasChanges || immediateMutation.isPending}
-              className="w-full bg-green-900 text-white font-bold text-sm rounded-full py-3 disabled:opacity-40"
+              className="w-full bg-green-900 dark:bg-night-100 text-white font-bold text-sm rounded-full py-3 disabled:opacity-40"
             >
               {immediateMutation.isPending ? 'Saving…' : 'Save — applies immediately'}
             </button>
@@ -295,41 +297,41 @@ function ZonesSection() {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-green-100 shadow-card p-4 mb-4">
+    <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-green-600" />
-          <p className="text-green-900 font-bold text-sm">Zones</p>
+          <MapPin className="w-4 h-4 text-green-600 dark:text-night-200" />
+          <p className="text-green-900 dark:text-white font-bold text-sm">Zones</p>
         </div>
         <button
           onClick={() => setShowAdd(v => !v)}
-          className="flex items-center gap-1 text-green-700 text-xs font-bold"
+          className="flex items-center gap-1 text-green-700 dark:text-night-100 text-xs font-bold"
         >
           <Plus className="w-3.5 h-3.5" /> {showAdd ? 'Cancel' : 'Add zone'}
         </button>
       </div>
-      <p className="text-green-400 text-xs mb-3">
+      <p className="text-green-400 dark:text-night-300 text-xs mb-3">
         Officers are assigned one of these zones when a director registers them.
       </p>
 
       {showAdd && (
-        <div className="bg-green-50 rounded-xl p-3 mb-3 space-y-2">
+        <div className="bg-green-50 dark:bg-night-600 rounded-xl p-3 mb-3 space-y-2">
           <input
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="Zone name (e.g. Lagos Mainland)"
-            className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm text-green-900 bg-white"
+            className="w-full border border-green-200 dark:border-night-500 rounded-lg px-3 py-2 text-sm text-green-900 dark:text-white bg-white dark:bg-night-700"
           />
           <input
             value={description}
             onChange={e => setDescription(e.target.value)}
             placeholder="Description (optional)"
-            className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm text-green-900 bg-white"
+            className="w-full border border-green-200 dark:border-night-500 rounded-lg px-3 py-2 text-sm text-green-900 dark:text-white bg-white dark:bg-night-700"
           />
           <button
             onClick={() => createMutation.mutate()}
             disabled={!name.trim() || createMutation.isPending}
-            className="w-full bg-green-900 text-white font-bold text-xs rounded-lg py-2.5 disabled:opacity-40"
+            className="w-full bg-green-900 dark:bg-night-100 text-white font-bold text-xs rounded-lg py-2.5 disabled:opacity-40"
           >
             {createMutation.isPending ? 'Creating…' : 'Create zone'}
           </button>
@@ -337,21 +339,21 @@ function ZonesSection() {
       )}
 
       {isLoading ? (
-        <div className="h-16 bg-green-50 rounded-xl animate-pulse" />
+        <div className="h-16 bg-green-50 dark:bg-night-600 rounded-xl animate-pulse" />
       ) : zones.length === 0 ? (
-        <p className="text-green-400 text-xs text-center py-3">No zones yet — add one above.</p>
+        <p className="text-green-400 dark:text-night-300 text-xs text-center py-3">No zones yet — add one above.</p>
       ) : (
         <div className="space-y-2">
           {zones.map(zone => (
-            <div key={zone.id} className="flex items-center justify-between bg-green-50 rounded-xl px-3 py-2.5">
+            <div key={zone.id} className="flex items-center justify-between bg-green-50 dark:bg-night-600 rounded-xl px-3 py-2.5">
               <div className="min-w-0">
-                <p className="text-green-900 text-sm font-semibold truncate">{zone.name}</p>
-                <div className="flex items-center gap-1 text-green-400 text-xs">
+                <p className="text-green-900 dark:text-white text-sm font-semibold truncate">{zone.name}</p>
+                <div className="flex items-center gap-1 text-green-400 dark:text-night-300 text-xs">
                   <Users className="w-3 h-3" />
                   {zone.current_officer_name ? (
                     <span className="truncate">{zone.current_officer_name}</span>
                   ) : (
-                    <span className="text-amber-600">Uncovered</span>
+                    <span className="text-amber-600 dark:text-amber-300">Uncovered</span>
                   )}
                   {zone.description && <span className="truncate"> · {zone.description}</span>}
                 </div>
@@ -359,7 +361,7 @@ function ZonesSection() {
               <button
                 onClick={() => handleDelete(zone)}
                 disabled={deleteMutation.isPending}
-                className="text-red-400 flex-shrink-0 ml-2 disabled:opacity-40"
+                className="text-red-400 dark:text-red-300 flex-shrink-0 ml-2 disabled:opacity-40"
                 aria-label={`Delete ${zone.name}`}
               >
                 <Trash2 className="w-4 h-4" />
@@ -390,16 +392,16 @@ export default function BusinessSettingsPage() {
   )
 
   return (
-    <div className="min-h-dvh flex flex-col bg-green-50">
-      <header className="flex items-center gap-3 px-4 py-3 bg-green-50">
-        <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-full bg-white border border-green-100 flex items-center justify-center">
-          <ArrowLeft className="w-4 h-4 text-green-700" />
+    <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
+      <header className="flex items-center gap-3 px-4 py-3 bg-green-50 dark:bg-night-800">
+        <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-full bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 flex items-center justify-center">
+          <ArrowLeft className="w-4 h-4 text-green-700 dark:text-night-100" />
         </button>
-        <h1 className="text-green-900 font-extrabold text-lg">Business Settings</h1>
+        <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Business Settings</h1>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 pb-10">
-        <p className="text-green-500 text-sm mb-4">
+        <p className="text-green-500 dark:text-night-200 text-sm mb-4">
           Control the rates and fees that drive the whole platform. Food Card rate changes are deferred to the next January 1st to protect customers already contributing.
         </p>
 
@@ -407,7 +409,7 @@ export default function BusinessSettingsPage() {
 
         {isLoading ? (
           <div className="space-y-3">
-            {[1, 2].map(i => <div key={i} className="h-32 bg-white rounded-2xl border border-green-100 animate-pulse" />)}
+            {[1, 2].map(i => <div key={i} className="h-32 bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 animate-pulse" />)}
           </div>
         ) : (
           settings.map(setting => (

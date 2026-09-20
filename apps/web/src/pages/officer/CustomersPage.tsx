@@ -5,11 +5,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Users, Search, UserPlus, Phone, Building2,
   CreditCard, ChevronRight,
-  X, Check, Wallet,
+  X, Check, Wallet, AlertTriangle,
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
+import { showFeedback } from '@/store/feedback.store'
 import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'
 import { BottomNav } from '@/components/layout/BottomNav'
@@ -18,6 +19,7 @@ import { cn } from '@/lib/utils'
 import { PleaseHold } from '@/components/ui/PleaseHold'
 import type { User, ContributionCard } from '@/types'
 import { User as UserIcon } from 'lucide-react'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 // ── Customer card (compact) ───────────────────────────────────────
 function CustomerCard({ customer }: { customer: User }) {
@@ -109,7 +111,7 @@ export function PostContributionSheet({
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-5" />
+        <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-5" />
         {loading && <PleaseHold message={`Please hold while we mark ${customer.full_name.split(' ')[0]}'s card…`} />}
 
         {/* Header */}
@@ -135,10 +137,10 @@ export function PostContributionSheet({
         {/* Select card */}
         <p className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide mb-2">Select card</p>
         {cardsLoading ? (
-          <div className="h-12 bg-green-50 rounded-xl animate-pulse mb-4" />
+          <div className="h-12 bg-green-50 dark:bg-night-600 rounded-xl animate-pulse mb-4" />
         ) : cards.length === 0 ? (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-center">
-            <p className="text-amber-700 text-xs font-semibold">This customer has no active cards</p>
+          <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl p-3 mb-4 text-center">
+            <p className="text-amber-700 dark:text-amber-300 text-xs font-semibold">This customer has no active cards</p>
           </div>
         ) : (
           <div className="space-y-2 mb-4">
@@ -149,8 +151,8 @@ export function PostContributionSheet({
                 className={cn(
                   'w-full flex items-center justify-between p-3 rounded-xl border-2 text-left transition-all',
                   selectedCard?.id === card.id
-                    ? 'border-green-900 bg-green-50'
-                    : 'border-green-100 dark:border-night-500 bg-white',
+                    ? 'border-green-900 dark:border-night-200 bg-green-50 dark:bg-night-600'
+                    : 'border-green-100 dark:border-night-500 bg-white dark:bg-night-700',
                 )}
               >
                 <div>
@@ -262,7 +264,7 @@ export function CreateCardSheet({
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-5" />
+        <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-5" />
 
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 rounded-full bg-green-900 flex items-center justify-center font-bold text-amber-400 text-sm flex-shrink-0">
@@ -321,15 +323,15 @@ export function CreateCardSheet({
               </div>
             )}
 
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-5">
-              <p className="text-amber-700 text-xs font-semibold">ℹ️ Note</p>
-              <p className="text-amber-600 text-xs mt-0.5 leading-relaxed">
+            <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-3 mb-5">
+              <p className="text-amber-700 dark:text-amber-300 text-xs font-semibold">ℹ️ Note</p>
+              <p className="text-amber-600 dark:text-amber-300 text-xs mt-0.5 leading-relaxed">
                 This is the amount the customer contributes per day on this card.
               </p>
             </div>
           </>
         ) : (
-          <div className="bg-green-50 rounded-2xl p-4 mb-5 border border-green-200 dark:border-night-500">
+          <div className="bg-green-50 dark:bg-night-600 rounded-2xl p-4 mb-5 border border-green-200 dark:border-night-500">
             <p className="text-green-700 dark:text-night-100 text-sm font-semibold mb-1">🔒 Food Card rules</p>
             <p className="text-green-500 dark:text-night-200 text-xs leading-relaxed">
               Fixed at ₦1,000/day. Funds are locked until December. Complete all contributions by Nov 30 to
@@ -372,12 +374,19 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
         ...form,
         password:            form.phone_number,
         withdrawal_password: `${form.phone_number}MK`,
+        // The backend requires this on every registration (self-signup
+        // included) — it was never being sent here at all, which is
+        // exactly the "field required" 422 you were hitting. An
+        // officer registering a manual cash customer is attesting to
+        // this on the customer's behalf, same as they already do for
+        // setting up the customer's initial password below.
+        accepted_terms: true,
       })
-      toast.success(`${form.full_name} registered successfully`)
+      showFeedback.success('Customer registered', `${form.full_name} has been added to your zone.`)
       qc.invalidateQueries({ queryKey: ['officer-customers'] })
       onClose()
     } catch (err) {
-      toast.error(getErrorMessage(err))
+      showFeedback.error('Registration failed', getErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -402,7 +411,7 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
       {loading && <PleaseHold message="Please hold while we register your account…" />}
 
       <div className="sticky top-0 bg-white dark:bg-night-700 flex items-center gap-3 px-5 pt-5 pb-3 border-b border-green-50 z-10">
-        <button onClick={onClose} className="w-9 h-9 rounded-full bg-green-50 flex items-center justify-center">
+        <button onClick={onClose} className="w-9 h-9 rounded-full bg-green-50 dark:bg-night-600 flex items-center justify-center">
           <X className="w-4 h-4 text-green-700 dark:text-night-100" />
         </button>
         <div>
@@ -433,9 +442,9 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-5">
-          <p className="text-amber-700 text-xs font-semibold">ℹ️ Note</p>
-          <p className="text-amber-600 text-xs mt-0.5 leading-relaxed">
+        <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-3 mb-5">
+          <p className="text-amber-700 dark:text-amber-300 text-xs font-semibold">ℹ️ Note</p>
+          <p className="text-amber-600 dark:text-amber-300 text-xs mt-0.5 leading-relaxed">
             The customer's default login password will be their phone number. default withdrawal pin will be the same phone number but with MK appended.
             They can change it after their first login.
           </p>
@@ -474,19 +483,11 @@ export default function CustomersPage() {
   )
 
   return (
-    <div className="min-h-dvh flex flex-col bg-green-50">
+    <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
 
       {/* Top bar */}
-      <header className="flex items-center justify-between px-4 py-3 bg-green-50">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-green-900 rounded-xl flex items-center justify-center shadow-card">
-            <span className="text-amber-400 font-extrabold text-base">₦</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-green-900 dark:text-white font-extrabold text-xl tracking-tight leading-none">Monie</span>
-            <span className="text-amber-500 font-extrabold text-xl tracking-tight leading-none">King</span>
-          </div>
-        </div>
+      <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
+        <BrandBlobLogo height={36} />
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold bg-green-900 text-amber-400 px-2.5 py-1 rounded-full">Officer</span>
           <button onClick={() => navigate('/officer/profile')} className="rounded-full shadow-card">
@@ -502,12 +503,25 @@ export default function CustomersPage() {
           <p className="text-green-500 dark:text-night-200 text-sm mt-0.5">{customers.length} in your zone</p>
         </div>
         <button
-          onClick={() => setShowRegisterSheet(true)}
-          className="flex items-center gap-2 bg-green-900 text-white text-sm font-bold rounded-full px-4 py-2.5 active:scale-95 transition-all shadow-card"
+          onClick={() => user?.zone_id ? setShowRegisterSheet(true) : toast.error('You are not assigned to a zone yet. Contact your director before registering customers.')}
+          disabled={!user?.zone_id}
+          className="flex items-center gap-2 bg-green-900 text-white text-sm font-bold rounded-full px-4 py-2.5 active:scale-95 transition-all shadow-card disabled:opacity-40 disabled:active:scale-100"
         >
           <UserPlus className="w-4 h-4" /> Register
         </button>
       </div>
+
+      {/* Unassigned-zone banner — matches the backend's own rejection
+          message, so an officer sees the reason before they even try to
+          submit, not just as a failed-request toast afterward. */}
+      {!user?.zone_id && (
+        <div className="mx-4 mb-4 bg-amber-50 dark:bg-night-600 rounded-2xl px-4 py-3 flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-amber-700 dark:text-night-100 text-xs font-semibold">
+            You are not assigned to a zone yet. Contact your director — customer registration is disabled until you have one.
+          </p>
+        </div>
+      )}
 
       {/* Search bar */}
       <div className="px-4 mb-4">
@@ -537,14 +551,14 @@ export default function CustomersPage() {
                 <div className="w-10 h-10 bg-green-100 dark:bg-night-600 rounded-full animate-pulse flex-shrink-0" />
                 <div className="flex-1 space-y-2">
                   <div className="h-3 bg-green-100 dark:bg-night-600 rounded animate-pulse w-2/3" />
-                  <div className="h-2 bg-green-50 rounded animate-pulse w-1/3" />
+                  <div className="h-2 bg-green-50 dark:bg-night-600 rounded animate-pulse w-1/3" />
                 </div>
               </div>
             ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="bg-white dark:bg-night-700 rounded-3xl border border-green-100 dark:border-night-500 shadow-card text-center py-14 px-6">
-            <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-green-50 dark:bg-night-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Users className="w-8 h-8 text-green-300 dark:text-night-300" />
             </div>
             <p className="text-green-900 dark:text-white font-bold text-lg">
@@ -555,8 +569,9 @@ export default function CustomersPage() {
             </p>
             {!search && (
               <button
-                onClick={() => setShowRegisterSheet(true)}
-                className="bg-green-900 text-white font-bold text-sm rounded-full px-8 py-3 active:scale-95 transition-all"
+                onClick={() => user?.zone_id ? setShowRegisterSheet(true) : toast.error('You are not assigned to a zone yet. Contact your director before registering customers.')}
+                disabled={!user?.zone_id}
+                className="bg-green-900 text-white font-bold text-sm rounded-full px-8 py-3 active:scale-95 transition-all disabled:opacity-40 disabled:active:scale-100"
               >
                 Register first customer
               </button>

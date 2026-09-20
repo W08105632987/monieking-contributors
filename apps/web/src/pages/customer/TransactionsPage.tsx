@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, ArrowDownLeft, ArrowUpRight, Wallet, X, Clock, ChevronDown } from 'lucide-react'
+import { ArrowLeft, ArrowDownLeft, ArrowUpRight, Wallet, X, Clock, ChevronDown, Calendar } from 'lucide-react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { formatNaira, formatDateTime, timeAgo, groupByDateBucket, cn } from '@/lib/utils'
 import type { WalletTransaction, PaginatedResponse } from '@/types'
+import { FallbackError } from '@/components/ui/FallbackError'
+import { DisputeModal } from '@/components/disputes/DisputeModal'
 
 const TX_CATEGORY_LABEL: Record<string, string> = {
   wallet_funding:       'Wallet funded',
@@ -55,6 +57,7 @@ function TxItem({ tx, onClick }: { tx: WalletTransaction; onClick: () => void })
 }
 
 function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => void }) {
+  const [showDispute, setShowDispute] = useState(false)
   const isCredit = tx.type === 'credit'
   const rows = [
     { label: 'Status',        value: 'Successful' },
@@ -106,7 +109,18 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
             </div>
           ))}
         </div>
+
+        <button
+          onClick={() => setShowDispute(true)}
+          className="w-full mt-4 text-red-400 dark:text-red-300 font-bold text-sm py-3 rounded-xl border-2 border-red-100 dark:border-red-900/40 active:scale-95 transition-all"
+        >
+          Dispute this transaction
+        </button>
       </motion.div>
+
+      {showDispute && (
+        <DisputeModal entityType="wallet_transaction" entityId={tx.id} onClose={() => setShowDispute(false)} />
+      )}
     </div>
   )
 }
@@ -115,12 +129,24 @@ export default function TransactionsPage() {
   const navigate = useNavigate()
   const [filter, setFilter] = useState<Filter>('all')
   const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null)
+  const [showDateFilter, setShowDateFilter] = useState(false)
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['wallet-transactions-full'],
+  const { data, isLoading, isError, refetch, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    // startDate/endDate in the key so picking a new range starts a fresh
+    // paginated fetch rather than mixing pages from two different filters.
+    queryKey: ['wallet-transactions-full', startDate, endDate],
     queryFn: async ({ pageParam = 1 }) => {
       const { data } = await api.get<PaginatedResponse<WalletTransaction>>(
-        `/wallets/me/transactions?page=${pageParam}&page_size=20`
+        '/wallets/me/transactions', {
+          params: {
+            page: pageParam,
+            page_size: 20,
+            ...(startDate ? { start_date: startDate } : {}),
+            ...(endDate ? { end_date: endDate } : {}),
+          },
+        }
       )
       return data
     },
@@ -159,10 +185,55 @@ export default function TransactionsPage() {
               {f === 'all' ? 'All' : f === 'credit' ? 'Money in' : 'Money out'}
             </button>
           ))}
+          <button
+            onClick={() => setShowDateFilter((v) => !v)}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all',
+              startDate || endDate
+                ? 'bg-green-900 dark:bg-night-100 text-white dark:text-night-900'
+                : 'bg-green-100 dark:bg-night-600 text-green-600 dark:text-night-200'
+            )}
+          >
+            <Calendar className="w-3.5 h-3.5" /> Date
+          </button>
         </div>
 
+        {showDateFilter && (
+          <div className="flex items-center gap-2 mb-4">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              max={endDate || undefined}
+              className="flex-1 bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-xl px-3 py-2 text-xs font-semibold text-green-900 dark:text-white"
+            />
+            <span className="text-green-400 dark:text-night-300 text-xs">to</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              min={startDate || undefined}
+              className="flex-1 bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-xl px-3 py-2 text-xs font-semibold text-green-900 dark:text-white"
+            />
+            {(startDate || endDate) && (
+              <button
+                onClick={() => { setStartDate(''); setEndDate('') }}
+                className="text-red-500 text-xs font-bold shrink-0"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4">
-          {isLoading ? (
+          {isError ? (
+            <FallbackError
+              title="Couldn't load your transactions"
+              onRetry={() => refetch()}
+              isRetrying={isFetching}
+            />
+          ) : isLoading ? (
             <div className="space-y-3 py-4">
               {[1, 2, 3, 4].map(i => (
                 <div key={i} className="flex gap-3">

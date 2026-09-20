@@ -15,6 +15,7 @@ import { BottomNav } from '@/components/layout/BottomNav'
 import { timeAgo, formatDateTime, groupByDateBucket } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { AppNotification } from '@/types'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 // ── Icon per notification type ────────────────────────────────────
 function NotifIcon({ type, title }: { type: string; title: string }) {
@@ -58,7 +59,7 @@ function NotifItem({ notif, onOpen }: { notif: AppNotification; onOpen: (notif: 
         'flex items-start gap-3 p-4 rounded-2xl mb-2 cursor-pointer transition-all active:scale-99',
         notif.is_read
           ? 'bg-white dark:bg-night-700 border border-green-100 dark:border-night-500'
-          : 'bg-green-50 border border-green-200 dark:border-night-500',
+          : 'bg-green-50 dark:bg-night-600 border border-green-200 dark:border-night-500',
       )}
     >
       <NotifIcon type={notif.type} title={notif.title} />
@@ -94,8 +95,8 @@ function NotifDetailSheet({ notif, onClose }: { notif: AppNotification; onClose:
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-5" />
-        <button onClick={onClose} className="absolute top-5 right-5 w-8 h-8 rounded-full bg-green-50 flex items-center justify-center">
+        <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-5" />
+        <button onClick={onClose} className="absolute top-5 right-5 w-8 h-8 rounded-full bg-green-50 dark:bg-night-600 flex items-center justify-center">
           <X className="w-4 h-4 text-green-700 dark:text-night-100" />
         </button>
 
@@ -107,7 +108,7 @@ function NotifDetailSheet({ notif, onClose }: { notif: AppNotification; onClose:
           <p className="text-green-500 dark:text-night-200 text-xs font-semibold mt-1">{typeLabel[notif.type] ?? 'Info'}</p>
         </div>
 
-        <div className="bg-green-50 rounded-2xl p-4 mb-4">
+        <div className="bg-green-50 dark:bg-night-600 rounded-2xl p-4 mb-4">
           <p className="text-green-900 dark:text-white text-sm leading-relaxed">{notif.body}</p>
         </div>
 
@@ -152,7 +153,24 @@ export default function OfficerNotificationsPage() {
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => api.patch(`/notifications/${id}/read`),
-    onMutate: (id) => markRead(id),
+    onMutate: (id) => {
+      markRead(id)   // updates the Zustand store — this is what the bell badge reads, so it goes instant
+      // The message list itself renders straight from THIS query's cache
+      // (pages?.pages.flat() below), not from the Zustand store — so
+      // marking it read there alone left the visible yellow dot stale
+      // until invalidateQueries' refetch completed, "some seconds" later.
+      // Writing directly into the query cache here makes the list item
+      // update in the same instant as the badge.
+      qc.setQueryData<{ pages: AppNotification[][] } | undefined>(['notifications'], (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          pages: old.pages.map((page) =>
+            page.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+          ),
+        }
+      })
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
     onError: (err) => {
       // The tap already marked it read optimistically (onMutate above) —
@@ -166,7 +184,13 @@ export default function OfficerNotificationsPage() {
 
   const markAllMutation = useMutation({
     mutationFn: () => api.patch('/notifications/mark-all-read'),
-    onMutate: () => markAllRead(),
+    onMutate: () => {
+      markAllRead()
+      qc.setQueryData<{ pages: AppNotification[][] } | undefined>(['notifications'], (old) => {
+        if (!old) return old
+        return { ...old, pages: old.pages.map((page) => page.map((n) => ({ ...n, is_read: true }))) }
+      })
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
     onError: (err) => {
       qc.invalidateQueries({ queryKey: ['notifications'] })
@@ -182,19 +206,11 @@ export default function OfficerNotificationsPage() {
   const grouped = groupByDateBucket(notifications, n => n.created_at)
 
   return (
-    <div className="min-h-dvh flex flex-col bg-green-50">
+    <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
 
       {/* Top bar */}
-      <header className="flex items-center justify-between px-4 py-3 bg-green-50">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-green-900 rounded-xl flex items-center justify-center shadow-card">
-            <span className="text-amber-400 font-extrabold text-base">₦</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-green-900 dark:text-white font-extrabold text-xl tracking-tight leading-none">Monie</span>
-            <span className="text-amber-500 font-extrabold text-xl tracking-tight leading-none">King</span>
-          </div>
-        </div>
+      <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
+        <BrandBlobLogo height={36} />
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold bg-green-900 text-amber-400 px-2.5 py-1 rounded-full">Officer</span>
           <button onClick={() => navigate('/officer/profile')} className="rounded-full shadow-card">
@@ -238,8 +254,8 @@ export default function OfficerNotificationsPage() {
                 <div className="w-10 h-10 bg-green-100 dark:bg-night-600 rounded-2xl animate-pulse flex-shrink-0" />
                 <div className="flex-1 space-y-2">
                   <div className="h-3 bg-green-100 dark:bg-night-600 rounded animate-pulse w-3/4" />
-                  <div className="h-2 bg-green-50 rounded animate-pulse w-full" />
-                  <div className="h-2 bg-green-50 rounded animate-pulse w-1/2" />
+                  <div className="h-2 bg-green-50 dark:bg-night-600 rounded animate-pulse w-full" />
+                  <div className="h-2 bg-green-50 dark:bg-night-600 rounded animate-pulse w-1/2" />
                 </div>
               </div>
             ))}
@@ -250,7 +266,7 @@ export default function OfficerNotificationsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-white dark:bg-night-700 rounded-3xl border border-green-100 dark:border-night-500 shadow-card text-center py-16 px-6 mt-4"
           >
-            <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-green-50 dark:bg-night-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Bell className="w-8 h-8 text-green-300 dark:text-night-300" />
             </div>
             <p className="text-green-900 dark:text-white font-bold text-lg">No notifications yet</p>

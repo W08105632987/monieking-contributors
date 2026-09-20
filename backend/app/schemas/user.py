@@ -26,6 +26,14 @@ class RegisterCustomerRequest(UserBase):
     account_name:   str
     next_of_kin_name:  str
     next_of_kin_phone: str
+    accepted_terms: bool
+
+    @field_validator("accepted_terms")
+    @classmethod
+    def must_accept_terms(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError("You must accept the Terms of Service and Privacy Policy to create an account")
+        return v
 
     @field_validator("password")
     @classmethod
@@ -79,6 +87,7 @@ class UserResponse(BaseModel):
     next_of_kin_name:  Optional[str]
     next_of_kin_phone: Optional[str]
     zone_id:             Optional[uuid.UUID]
+    zone_name:           Optional[str] = None
     is_manual_customer:  bool
     managing_officer_id: Optional[uuid.UUID]
     status:     UserStatus
@@ -90,8 +99,13 @@ class UserResponse(BaseModel):
     nin_linked: bool = False
     bvn_last4:  Optional[str] = None
     nin_last4:  Optional[str] = None
+    sms_alerts_enabled: bool = False
     created_at: datetime
     updated_at: datetime
+
+
+class UpdateSmsAlertsRequest(BaseModel):
+    enabled: bool
 
 
 class LocationUpdateRequest(BaseModel):
@@ -104,9 +118,15 @@ class UpdateBankDetailsRequest(BaseModel):
     bank_name:      str
     bank_code:      str
     account_number: str
-    auth_method:    str   # "password" | "biometric"
-    withdrawal_password: Optional[str] = None
-    webauthn_assertion:  Optional[dict] = None
+    # Password-only for now — biometric step-up removed from this one
+    # specific endpoint per instruction (this is the highest-value
+    # target for an attacker to redirect: change it once, every future
+    # withdrawal follows). Simpler here specifically = less that can go
+    # wrong on the single most sensitive write in the app. KYC's own
+    # biometric option below is untouched — that request came scoped
+    # to bank details only, not biometrics generally, and the frontend
+    # already hides biometric UI everywhere via FEATURE_FLAGS regardless.
+    withdrawal_password: str
 
 
 class KycSubmitRequest(BaseModel):

@@ -2,16 +2,18 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, Building2, CreditCard, Phone, Users, Plus,
+  ArrowLeft, Building2, CreditCard, Phone, Users, Plus, Fingerprint, Bell,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import { formatNaira, initials } from '@/lib/utils'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
+import { api, getErrorMessage } from '@/lib/api'
+import { formatNaira, initials, cn } from '@/lib/utils'
 import type { User, ContributionCard } from '@/types'
 import { PostContributionSheet, CreateCardSheet } from './CustomersPage'
 
 export default function CustomerDetailPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { customerId } = useParams<{ customerId: string }>()
   const [showContribute, setShowContribute] = useState(false)
   const [showCardSheet, setShowCardSheet]   = useState(false)
@@ -26,6 +28,27 @@ export default function CustomerDetailPage() {
     retry: false,
   })
 
+  const { data: smsFee } = useQuery({
+    queryKey: ['sms-fee'],
+    queryFn: async () => {
+      const { data } = await api.get<{ monthly_sms_fee_kobo: number; monthly_sms_fee_naira: number }>('/settings/sms-fee')
+      return data
+    },
+  })
+
+  const toggleSmsMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      return await api.patch(`/users/${customer!.id}/sms-alerts`, { enabled })
+    },
+    onSuccess: (_, enabled) => {
+      toast.success(enabled ? 'SMS alerts activated with customer consent' : 'SMS alerts deactivated')
+      queryClient.invalidateQueries({ queryKey: ['customer', customerId] })
+    },
+    onError: (err) => {
+      toast.error(getErrorMessage(err))
+    },
+  })
+
   const { data: cards = [], isLoading: cardsLoading } = useQuery({
     queryKey: ['customer-cards', customer?.id],
     queryFn: async () => {
@@ -38,7 +61,7 @@ export default function CustomerDetailPage() {
 
   if (customerLoading) {
     return (
-      <div className="min-h-dvh bg-green-50 p-4">
+      <div className="min-h-dvh bg-green-50 dark:bg-night-800 p-4">
         <div className="h-10 bg-green-100 dark:bg-night-600 rounded-xl animate-pulse mb-4 w-24" />
         <div className="h-24 bg-white dark:bg-night-700 rounded-2xl animate-pulse mb-4" />
         <div className="h-40 bg-white dark:bg-night-700 rounded-2xl animate-pulse" />
@@ -48,7 +71,7 @@ export default function CustomerDetailPage() {
 
   if (!customer) {
     return (
-      <div className="min-h-dvh bg-green-50 flex flex-col items-center justify-center px-6 text-center">
+      <div className="min-h-dvh bg-green-50 dark:bg-night-800 flex flex-col items-center justify-center px-6 text-center">
         <Users className="w-10 h-10 text-green-200 dark:text-night-400 mb-3" />
         <p className="text-green-900 dark:text-white font-bold text-lg">Customer not found</p>
         <p className="text-green-400 dark:text-night-300 text-sm mt-1 mb-5">This customer may not be in your zone.</p>
@@ -105,6 +128,53 @@ export default function CustomerDetailPage() {
           </div>
         </div>
 
+        {/* SMS Transaction Alerts Toggle Card */}
+        <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold text-green-900 dark:text-white truncate">
+                    SMS Transaction Alerts
+                  </p>
+                  {customer.sms_alerts_enabled ? (
+                    <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 shrink-0">
+                      Active
+                    </span>
+                  ) : (
+                    <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600 dark:bg-night-600 dark:text-zinc-400 shrink-0">
+                      Disabled
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-green-600 dark:text-night-200 mt-0.5">
+                  {smsFee ? `₦${(smsFee.monthly_sms_fee_kobo / 100).toLocaleString()} / month` : 'Monthly subscription'} · Turn on with customer's consent
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={toggleSmsMutation.isPending}
+              onClick={() => toggleSmsMutation.mutate(!customer.sms_alerts_enabled)}
+              className={cn(
+                "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                customer.sms_alerts_enabled ? "bg-amber-500" : "bg-zinc-300 dark:bg-night-500",
+                toggleSmsMutation.isPending && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              <span
+                className={cn(
+                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                  customer.sms_alerts_enabled ? "translate-x-5" : "translate-x-0"
+                )}
+              />
+            </button>
+          </div>
+        </div>
+
         {/* Action buttons */}
         <div className="flex gap-2 mb-6">
           <button
@@ -120,6 +190,19 @@ export default function CustomerDetailPage() {
             <Plus className="w-3.5 h-3.5 shrink-0" /> Post contribution
           </button>
         </div>
+
+        {/* Identity services shortcut */}
+        <button
+          onClick={() => navigate(`/officer/customers/${customerId}/services`)}
+          className="w-full flex items-center justify-between bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-3.5 mb-6"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-night-600 flex items-center justify-center">
+              <Fingerprint className="w-4.5 h-4.5 text-green-700 dark:text-night-100" />
+            </div>
+            <span className="text-green-900 dark:text-white text-sm font-semibold">NIN, BVN & other service history</span>
+          </div>
+        </button>
 
         {/* Cards list */}
         <p className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide mb-2">Cards</p>

@@ -63,20 +63,20 @@ export function CardCarousel({ cards }: { cards: ContributionCard[] }) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
-          className="bg-white rounded-2xl border border-green-100 shadow-card p-4"
+          className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4"
         >
           <div className="flex items-center justify-between mb-2">
-            <p className="text-green-900 text-sm font-bold">
+            <p className="text-green-900 dark:text-white text-sm font-bold">
               {card.card_type === 'food' ? 'Food card' : 'Regular'} · {formatNaira(card.rate_kobo)}/day
             </p>
             <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-              card.card_type === 'food' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+              card.card_type === 'food' ? 'bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-300' : 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300'
             }`}>
               {card.card_type === 'food' ? 'Food' : 'Regular'}
             </span>
           </div>
 
-          <div className="h-2 bg-green-100 rounded-full overflow-hidden mb-2">
+          <div className="h-2 bg-green-100 dark:bg-night-600 rounded-full overflow-hidden mb-2">
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{
@@ -87,8 +87,8 @@ export function CardCarousel({ cards }: { cards: ContributionCard[] }) {
           </div>
 
           <div className="flex justify-between text-xs">
-            <span className="text-green-500">{card.total_days_contributed} days</span>
-            <span className="text-green-500">
+            <span className="text-green-500 dark:text-night-300">{card.total_days_contributed} days</span>
+            <span className="text-green-500 dark:text-night-300">
               {card.card_type === 'food' ? 'Locked' : formatNaira(card.total_contributed_kobo)}
             </span>
           </div>
@@ -96,13 +96,13 @@ export function CardCarousel({ cards }: { cards: ContributionCard[] }) {
           <div className="flex gap-2 mt-3">
             <button
               onClick={() => navigate(`/customer/cards/${card.card_number}/contribute`)}
-              className="flex-1 bg-green-900 text-white text-xs font-bold rounded-full py-2 active:scale-95 transition-all"
+              className="flex-1 bg-green-900 dark:bg-copper-400 text-white dark:text-green-950 text-xs font-bold rounded-full py-2 active:scale-95 transition-all"
             >
               Contribute
             </button>
             <button
               onClick={() => navigate(`/customer/cards/${card.card_number}`)}
-              className="flex-1 bg-green-50 text-green-700 text-xs font-bold rounded-full py-2 active:scale-95 transition-all border border-green-200"
+              className="flex-1 bg-green-50 dark:bg-night-600 text-green-700 dark:text-night-100 text-xs font-bold rounded-full py-2 active:scale-95 transition-all border border-green-200 dark:border-night-500"
             >
               View card
             </button>
@@ -116,8 +116,8 @@ export function CardCarousel({ cards }: { cards: ContributionCard[] }) {
             <button
               key={i}
               onClick={() => { setIndex(i); restartTimer() }}
-              className="h-1.5 rounded-full transition-all duration-300"
-              style={{ width: i === index ? 18 : 6, background: i === index ? '#052E16' : '#D1FAE5' }}
+              className="h-1.5 rounded-full transition-all duration-300 bg-[#052E16] dark:bg-copper-400"
+              style={{ width: i === index ? 18 : 6, opacity: i === index ? 1 : 0.3 }}
               aria-label={`Go to card ${i + 1}`}
             />
           ))}

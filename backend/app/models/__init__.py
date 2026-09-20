@@ -12,6 +12,15 @@ from app.models.instant_message import InstantMessage, InstantMessagePriority
 from app.models.promo_banner import PromoBanner, PromoBannerLinkType
 from app.models.webauthn_credential import WebAuthnCredential
 from app.models.dispute import Dispute, DisputeMessage, DisputeEntityType, DisputeStatus, DisputeReason
+from app.models.identity_service import (
+    IdentityService, IdentityServiceRequest, IdentityServiceNotifyRequest, IdentityServiceCategory, IdentityRequestStatus, InitiatedBy,
+)
+from app.models.bill_payment import Biller, BillPaymentRequest, BillerCategory, BillPaymentStatus
+from app.models.analytics_event import AnalyticsEvent
+from app.models.health_check import HealthCheckResult, HealthAlertState
+from app.models.food_entitlement import (
+    FoodEntitlement, FoodCollectionPoint, FoodCollectionAudit, EntitlementStatus,
+)
 
 
 __all__ = [
@@ -29,4 +38,10 @@ __all__ = [
     "PromoBanner", "PromoBannerLinkType",
     "WebAuthnCredential",
     "Dispute", "DisputeMessage", "DisputeEntityType", "DisputeStatus", "DisputeReason",
+    "IdentityService", "IdentityServiceRequest", "IdentityServiceNotifyRequest", "IdentityServiceCategory", "IdentityRequestStatus", "InitiatedBy",
+    "Biller", "BillPaymentRequest", "BillerCategory", "BillPaymentStatus",
+    "AnalyticsEvent",
+    "HealthCheckResult", "HealthAlertState",
+    "FoodEntitlement", "FoodCollectionPoint", "FoodCollectionAudit", "EntitlementStatus",
 ]
+

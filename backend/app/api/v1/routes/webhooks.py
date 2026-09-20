@@ -3,6 +3,7 @@ Monnify payment webhook handler.
 Idempotent: duplicate transaction references are silently ignored.
 All wallet credits happen atomically inside a single DB transaction.
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -17,9 +18,11 @@ from app.services.wallet_service import credit_wallet
 from app.services.notification_service import send_notification
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/monnify/payment", status_code=status.HTTP_200_OK)
+@router.post("/monnify/payment/", status_code=status.HTTP_200_OK)
 async def monnify_payment_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -39,15 +42,31 @@ async def monnify_payment_webhook(
     provider = get_payment_provider()
 
     # ── Step 1: Verify signature ──────────────────────────────────
-    if not provider.verify_webhook_signature(raw_body, signature):
-        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    if not signature:
+        if provider.is_sandbox:
+            logger.warning(
+                "Monnify sandbox webhook received with no signature header "
+                "(expected in sandbox). Proceeding without verification."
+            )
+        else:
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    elif not provider.verify_webhook_signature(raw_body, signature):
+        if provider.is_sandbox:
+            logger.warning(
+                "Monnify sandbox webhook received with non-matching signature (%s). "
+                "Allowing test payment in sandbox mode.", signature
+            )
+        else:
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     payload = await request.json()
+    logger.info("Processing Monnify webhook payload: %s", payload)
     event   = provider.parse_webhook_event(payload)
 
     # Only process successful payments
-    if event.status not in ("PAID", "COMPLETE", "COMPLETED"):
-        return {"message": "Event acknowledged — not a payment event"}
+    status_upper = (event.status or "").upper()
+    if status_upper not in ("PAID", "COMPLETE", "COMPLETED", "SUCCESS", "SUCCESSFUL"):
+        return {"message": f"Event acknowledged — status '{event.status}' not a payment completion"}
 
     # ── Step 2: Idempotency check ─────────────────────────────────
     existing = await db.execute(

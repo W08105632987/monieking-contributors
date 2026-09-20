@@ -1,19 +1,20 @@
 import { motion } from 'framer-motion'
 import { Avatar } from '@/components/ui/Avatar'
-import { Plus, ArrowUpRight, ArrowDownLeft, TrendingUp, Copy, Eye, EyeOff } from 'lucide-react'
+import { Plus, ArrowUpRight, ArrowDownLeft, TrendingUp, Copy, Eye, EyeOff, CheckCircle2, Bell } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '@/store/auth.store'
+import { useNotificationsStore } from '@/store/notifications.store'
 import { useBalanceVisibility } from '@/hooks/useBalanceVisibility'
 import { useWallet } from '@/hooks/useWallet'
 import { useCards } from '@/hooks/useCards'
 import { BottomNav } from '@/components/layout/BottomNav'
-import { PromoBannerCarousel } from '@/components/dashboard/PromoBannerCarousel'
+import { QuickActionsGrid } from '@/components/dashboard/QuickActionsGrid'
 import { CardCarousel } from '@/components/dashboard/CardCarousel'
 import { Badge } from '@/components/ui/Badge'
 import { SkeletonCard, Skeleton } from '@/components/ui/Skeleton'
 import { formatNaira, formatDate, copyToClipboard } from '@/lib/utils'
-import { FEATURE_FLAGS } from '@/config/featureFlags'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
@@ -26,6 +27,7 @@ const fadeUp = {
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const { unreadCount } = useNotificationsStore()
   const { visible: showBalance, toggle: toggleBalance } = useBalanceVisibility(user?.id)
   const { wallet, isLoading: walletLoading } = useWallet()
   const { cards, isLoading: cardsLoading } = useCards()
@@ -35,21 +37,26 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
-
       {/* ── Top bar ── */}
       <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-green-900 dark:bg-white/10 rounded-xl flex items-center justify-center shadow-card">
-            <span className="text-amber-400 font-extrabold text-base">₦</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-green-900 dark:text-white font-extrabold text-xl tracking-tight leading-none">Monie</span>
-            <span className="text-amber-500 font-extrabold text-xl tracking-tight leading-none">King</span>
-          </div>
+        <BrandBlobLogo height={36} />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/customer/notifications')}
+            className="relative w-10 h-10 flex items-center justify-center"
+            aria-label="Notifications"
+          >
+            <Bell className="w-5.5 h-5.5 text-green-800 dark:text-white" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+          <button onClick={() => navigate('/customer/profile')} className="rounded-full shadow-card">
+            <Avatar name={user?.full_name ?? 'U'} avatarUrl={user?.avatar_url} size={40} />
+          </button>
         </div>
-        <button onClick={() => navigate('/customer/profile')} className="rounded-full shadow-card">
-          <Avatar name={user?.full_name ?? 'U'} avatarUrl={user?.avatar_url} size={40} />
-        </button>
       </header>
 
       {/* ── Scrollable content ── */}
@@ -132,47 +139,21 @@ export default function DashboardPage() {
                 Fund wallet
               </button>
               <button
-                onClick={() => FEATURE_FLAGS.WITHDRAWALS_ENABLED && navigate('/customer/withdrawals/new')}
-                disabled={!FEATURE_FLAGS.WITHDRAWALS_ENABLED}
-                className="relative flex-1 min-w-0 flex items-center justify-center gap-2 border-2 border-green-500 dark:border-night-300 text-green-300 dark:text-night-200 font-bold text-sm rounded-full py-2.5 active:scale-95 transition-all hover:bg-green-800/30 dark:hover:bg-white/10 disabled:opacity-50 disabled:active:scale-100 disabled:hover:bg-transparent"
+                onClick={() => navigate('/customer/withdrawals/new')}
+                className="flex-1 min-w-0 flex items-center justify-center gap-2 border-2 border-green-500 dark:border-night-300 text-green-300 dark:text-night-200 font-bold text-sm rounded-full py-2.5 active:scale-95 transition-all hover:bg-green-800/30 dark:hover:bg-white/10"
               >
                 <ArrowUpRight className="w-4 h-4" />
                 Withdraw
-                {!FEATURE_FLAGS.WITHDRAWALS_ENABLED && (
-                  <span className="absolute -top-2 -right-2 text-[9px] font-bold text-amber-900 bg-amber-300 px-1.5 py-0.5 rounded-full">SOON</span>
-                )}
               </button>
             </div>
           </div>
         </motion.div>
 
-        {/* ── Stat cards ── */}
-        <motion.div
-          custom={0} variants={fadeUp} initial="hidden" animate="show"
-          className="grid grid-cols-2 gap-3 mb-5"
-        >
-          <div className="bg-white dark:bg-night-700 rounded-2xl p-4 border border-green-100 dark:border-night-500 shadow-card">
-            <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-wide mb-1">Total cards</p>
-            <p className="text-green-900 dark:text-white text-2xl font-extrabold">{activeCards.length}</p>
-            <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">
-              {activeCards.filter(c => c.card_type === 'regular').length} regular ·{' '}
-              {activeCards.filter(c => c.card_type === 'food').length} food
-            </p>
-          </div>
-          <div className="bg-white dark:bg-night-700 rounded-2xl p-4 border border-green-100 dark:border-night-500 shadow-card">
-            <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-wide mb-1">Days saved</p>
-            <p className="text-green-900 dark:text-white text-2xl font-extrabold">
-              {cards.reduce((acc, c) => acc + c.total_days_contributed, 0)}
-            </p>
-            <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">of 372 total</p>
-          </div>
-        </motion.div>
-
-        {/* ── Promo banners ── */}
-        <PromoBannerCarousel />
+        {/* ── Quick actions — replaces the old stat cards + promo carousel ── */}
+        <QuickActionsGrid />
 
         {/* ── My cards ── */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 mt-9">
           <h2 className="text-green-900 dark:text-white font-bold text-base">My cards</h2>
           <button
             onClick={() => navigate('/customer/cards')}
@@ -223,10 +204,13 @@ export default function DashboardPage() {
             </div>
             <div className="space-y-2">
               {completedCards.slice(0, 2).map((card) => (
-                <div key={card.id} className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-green-900 dark:text-white text-sm font-semibold">
-                      {card.card_type === 'food' ? '🍱 Food' : '📋 Regular'} · {formatNaira(card.rate_kobo)}/day
+                <div key={card.id} className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-3.5 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-night-600 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2 className="w-4.5 h-4.5 text-green-700 dark:text-night-100" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-green-900 dark:text-white text-sm font-semibold truncate">
+                      {card.card_type === 'food' ? 'Food' : 'Regular'} · {formatNaira(card.rate_kobo)}/day
                     </p>
                     <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">
                       {formatNaira(card.total_contributed_kobo)} · {card.completed_at ? formatDate(card.completed_at) : '—'}
@@ -235,12 +219,12 @@ export default function DashboardPage() {
                   <Badge
                     variant={
                       card.completion_status === 'paid' ? 'green'
-                      : card.completion_status === 'withdrawal_pending' ? 'copper'
+                      : card.completion_status === 'partially_paid' ? 'copper'
                       : 'gray'
                     }
                   >
                     {card.completion_status === 'paid' ? 'Paid'
-                      : card.completion_status === 'withdrawal_pending' ? 'Pending'
+                      : card.completion_status === 'partially_paid' ? 'Partially paid'
                       : 'Unpaid'}
                   </Badge>
                 </div>

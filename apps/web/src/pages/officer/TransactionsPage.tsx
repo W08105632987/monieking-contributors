@@ -6,6 +6,7 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { formatNaira, formatDateTime, timeAgo, groupByDateBucket, cn } from '@/lib/utils'
 import type { WalletTransaction, PaginatedResponse } from '@/types'
+import { FallbackError } from '@/components/ui/FallbackError'
 
 const TX_CATEGORY_LABEL: Record<string, string> = {
   wallet_funding:       'Wallet funded',
@@ -23,7 +24,7 @@ function TxItem({ tx, onClick }: { tx: WalletTransaction; onClick: () => void })
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 py-3.5 border-b border-green-50 last:border-0 text-left active:bg-green-50/60 transition-colors -mx-1 px-1 rounded-xl"
+      className="w-full flex items-center gap-3 py-3.5 border-b border-green-50 dark:border-night-600 last:border-0 text-left active:bg-green-50/60 dark:active:bg-white/5 transition-colors -mx-1 px-1 rounded-xl"
     >
       <div className={cn(
         'w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0',
@@ -31,7 +32,7 @@ function TxItem({ tx, onClick }: { tx: WalletTransaction; onClick: () => void })
       )}>
         {isCredit
           ? <ArrowDownLeft className="w-5 h-5 text-green-600 dark:text-night-200" />
-          : <ArrowUpRight  className="w-5 h-5 text-red-400" />
+          : <ArrowUpRight  className="w-5 h-5 text-red-400 dark:text-red-300" />
         }
       </div>
       <div className="flex-1 min-w-0">
@@ -71,8 +72,8 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-5" />
-        <button onClick={onClose} className="absolute top-5 right-5 w-8 h-8 rounded-full bg-green-50 flex items-center justify-center">
+        <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-5" />
+        <button onClick={onClose} className="absolute top-5 right-5 w-8 h-8 rounded-full bg-green-50 dark:bg-night-600 flex items-center justify-center">
           <X className="w-4 h-4 text-green-700 dark:text-night-100" />
         </button>
 
@@ -83,7 +84,7 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
           )}>
             {isCredit
               ? <ArrowDownLeft className="w-6 h-6 text-green-600 dark:text-night-200" />
-              : <ArrowUpRight  className="w-6 h-6 text-red-400" />
+              : <ArrowUpRight  className="w-6 h-6 text-red-400 dark:text-red-300" />
             }
           </div>
           <p className={cn('text-3xl font-extrabold tracking-tight', isCredit ? 'text-green-700 dark:text-night-100' : 'text-red-500')}>
@@ -94,7 +95,7 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
           </p>
         </div>
 
-        <div className="bg-green-50 rounded-2xl p-4 space-y-3">
+        <div className="bg-green-50 dark:bg-night-600 rounded-2xl p-4 space-y-3">
           {rows.map(row => (
             <div key={row.label} className="flex items-start justify-between gap-4">
               <span className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-wide pt-0.5">{row.label}</span>
@@ -114,7 +115,7 @@ export default function OfficerTransactionsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null)
 
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+  const { data, isLoading, isError, refetch, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['officer-wallet-transactions-full'],
     queryFn: async ({ pageParam = 1 }) => {
       const { data } = await api.get<PaginatedResponse<WalletTransaction>>(
@@ -135,8 +136,8 @@ export default function OfficerTransactionsPage() {
   const grouped = groupByDateBucket(filtered, tx => tx.created_at)
 
   return (
-    <div className="min-h-dvh flex flex-col bg-green-50">
-      <header className="flex items-center gap-3 px-4 py-3 bg-green-50">
+    <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
+      <header className="flex items-center gap-3 px-4 py-3 bg-green-50 dark:bg-night-800">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white dark:bg-night-700 border border-green-200 dark:border-night-500 rounded-xl flex items-center justify-center active:scale-95 transition-all">
           <ArrowLeft className="w-5 h-5 text-green-700 dark:text-night-100" />
         </button>
@@ -160,14 +161,20 @@ export default function OfficerTransactionsPage() {
         </div>
 
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4">
-          {isLoading ? (
+          {isError ? (
+            <FallbackError
+              title="Couldn't load transactions"
+              onRetry={() => refetch()}
+              isRetrying={isFetching}
+            />
+          ) : isLoading ? (
             <div className="space-y-3 py-4">
               {[1, 2, 3, 4].map(i => (
                 <div key={i} className="flex gap-3">
                   <div className="w-10 h-10 bg-green-100 dark:bg-night-600 rounded-2xl animate-pulse" />
                   <div className="flex-1 space-y-2">
                     <div className="h-3 bg-green-100 dark:bg-night-600 rounded animate-pulse w-2/3" />
-                    <div className="h-2 bg-green-50 rounded animate-pulse w-1/3" />
+                    <div className="h-2 bg-green-50 dark:bg-night-600 rounded animate-pulse w-1/3" />
                   </div>
                 </div>
               ))}

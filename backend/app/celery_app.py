@@ -19,7 +19,7 @@ celery_app = Celery(
     "monieking",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.pricing"],
+    include=["app.tasks.pricing", "app.tasks.health_monitor"],
 )
 
 celery_app.conf.update(
@@ -41,5 +41,15 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.pricing.apply_pending_rate_changes",
         # 00:05 UTC on Jan 1 — just after midnight
         "schedule": crontab(hour=0, minute=5, day_of_month=1, month_of_year=1),
+    },
+    "system-health-check": {
+        "task": "app.tasks.health_monitor.run_health_checks",
+        # Every 3 minutes — frequent enough to catch an outage quickly
+        # without hammering the database/external providers with
+        # constant reachability pings. Alert cooldown (see
+        # HEALTH_CHECK_ALERT_COOLDOWN_MINUTES) is what actually stops
+        # this from re-sending SMS every 3 minutes during an ongoing
+        # incident, not the schedule interval itself.
+        "schedule": crontab(minute="*/3"),
     },
 }

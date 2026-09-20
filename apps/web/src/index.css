@@ -11,6 +11,73 @@
     -webkit-text-size-adjust: 100%;
     font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
     scroll-behavior: smooth;
+    /* Everything sized with Tailwind's text-*, p-*, m-*, w-*, h-*,
+       rounded-*, gap-* etc. classes is in `rem` — relative to THIS
+       value, not a fixed pixel size.
+
+       This default (screens 450px and wider — most tablets, larger
+       phones in landscape, and anyone testing on desktop) is left at
+       the original, unscaled browser default: at that width the app
+       already reads right, and shrinking it further just makes
+       everything look small for no reason. The two rules below scale
+       DOWN from here specifically for narrower phones, where the same
+       sizing starts to feel oversized — this is intentionally NOT "15px
+       by default, overridden back up for wide screens": 450px+ simply
+       never gets touched at all. */
+    font-size: 16px;
+  }
+
+  /* Most phones, 380-449px wide — a modest, uniform reduction so
+     nothing feels "blown up" compared to a native app on a typical
+     phone screen. */
+  @media (max-width: 449px) {
+    html {
+      font-size: 15px;
+    }
+  }
+
+  /* Smaller/narrower phones specifically, ≤380px — budget and older
+     Android devices are very commonly 360-380px wide, where the same
+     UI that looks right on a modern 390-430px iPhone/flagship Android
+     can feel noticeably oversized. This rule comes AFTER the one
+     above on purpose — at these widths both rules technically match,
+     and CSS resolves same-specificity conflicts by source order, so
+     this one correctly wins and goes one step further. */
+  @media (max-width: 380px) {
+    html {
+      font-size: 14px;
+    }
+  }
+
+  /* Cancels whichever html font-size rule above is currently active,
+     specifically for the onboarding screens (OnboardingCarousel + the
+     About MonieKing modal, both wrapping OnboardingScreen.tsx) — per
+     instruction, this one screen should stay at its original size
+     while everything else in the app scales down.
+
+     Why `zoom` and not just leaving OnboardingScreen.tsx alone: EVERY
+     Tailwind size class (text-*, p-*, w-*, rounded-*, gap-*, all of
+     it) compiles to a `rem` value, and `rem` is ALWAYS relative to the
+     root <html> element specifically — not to whatever div happens to
+     wrap a component, no matter how deeply nested. Changing html's
+     font-size above is what makes the "everything scales down
+     together" effect possible in the first place, but that also means
+     no amount of wrapping in a plain div can shield a subtree from it.
+     `zoom` is the one CSS property that can: unlike `transform: scale`
+     (which only visually stretches pixels without touching layout,
+     scroll, or where the browser thinks a tap actually landed), `zoom`
+     recalculates layout and hit-testing together — a tap on a button
+     still lands correctly, scrolling still measures real content
+     height, nothing is just visually distorted on top of unchanged
+     layout math underneath.
+
+     Three tiers now, matching the three html rules above exactly — at
+     450px+ html is already 16px (unscaled), so no zoom is needed
+     there at all; the other two tiers each get the exact inverse of
+     html's own reduction, landing back on the original 16px baseline
+     either way. */
+  .onboarding-unscaled {
+    zoom: 1;
   }
 
   body {
@@ -31,11 +98,10 @@
     font-family: inherit;
   }
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-green-200 rounded-full; }
-  ::-webkit-scrollbar-thumb:hover { @apply bg-green-300; }
+  /* Scrollbars hidden globally — this is a mobile-first app, visible
+     scrollbar chrome (the old green thumb) doesn't belong on a phone UI. */
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  * { scrollbar-width: none; }
 }
 
 @layer components {
@@ -273,13 +339,87 @@ input:-webkit-autofill:focus {
   transition: background-color 9999s ease-in-out 0s;
 }
 
-/* The login page's inputs are always white-on-dark, regardless of
-   light/dark mode (its hero background is intentionally dark either
-   way). currentColor above wasn't reliably winning there — Chrome's
-   own :-webkit-autofill styling can outrank it depending on version —
-   so this pins it explicitly rather than relying on inheritance. */
+/* The login page's inputs used to be white-on-dark regardless of
+   light/dark mode, which is why this was hardcoded to white — but the
+   login page's own background/input styling changed to light-first
+   (dark green text on white fields) since then, and this rule was
+   never updated to match. That's exactly why autofill was painting
+   invisible white-on-white text: this was still forcing the OLD
+   design's color. Matches the input's actual current text color
+   classes now (text-green-950 in light mode, text-white in dark)
+   instead of a hardcoded value, so it can't drift out of sync with
+   the design again the next time the login page's colors change. */
 .login-input:-webkit-autofill,
 .login-input:-webkit-autofill:hover,
 .login-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #ffffff !important;
+  -webkit-text-fill-color: #052E16;
+}
+.dark .login-input:-webkit-autofill,
+.dark .login-input:-webkit-autofill:hover,
+.dark .login-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #ffffff;
+}
+
+/* ── Onboarding screens (src/components/onboarding/OnboardingScreen.tsx)
+   ─────────────────────────────────────────────────────────────────────
+   These are the person's own color values from their Lovable-built
+   project — checked and confirmed identical to their original, not
+   altered. Originally added as oklch() CSS variables (matching how
+   their project defined them) plus a separate light block — both of
+   those turned out to be real problems, now fixed:
+
+   1. oklch() color values, when they don't parse (older mobile
+      browsers/WebViews, some in-app WebView engines older than
+      ~2023), get dropped by the browser entirely — the property falls
+      back to whatever's inherited from a parent element, which in
+      this app is green pretty much everywhere. That's the actual
+      mechanism behind "everything renders green instead of the real
+      colors" — not a wrong value, an unparsed one. Converted to plain
+      hex/rgba below, computed via the same math browsers use for
+      oklch → sRGB, so the actual color is unchanged — only the
+      CSS syntax used to express it is different now, for compatibility.
+   2. The light/dark split (and this component's own toggle that
+      controlled it) is gone — single dark palette only, see
+      OnboardingScreen.tsx's own header comment for why.
+
+   Token names (primary, accent, card, border, background, foreground,
+   muted-foreground) were confirmed unused anywhere else in this app
+   before adding them (checked again, thoroughly, before this rewrite:
+   every Tailwind prefix + "accent"/"primary", not just bg-/text-) —
+   this cannot affect any other page. */
+:root {
+  --background: #040906;
+  --foreground: #F6F5F1;
+  --card: #0A140F;
+  --card-foreground: #F6F5F1;
+  --primary: #F1961D;
+  --primary-foreground: #190C03;
+  --muted-foreground: #A4AEA2;
+  --accent: #00A45C;
+  --accent-foreground: #030C07;
+  --border: rgba(255,255,255,0.12);
+
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+
+  --color-background: var(--background);
+  --color-primary: var(--primary);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --gradient-scrim: linear-gradient(
+    to top,
+    #020503 0%,
+    rgba(2,5,3,0.88) 26%,
+    rgba(2,5,3,0.38) 48%,
+    rgba(2,5,3,0) 68%
+  );
+  --gradient-scrim-side: linear-gradient(
+    to right,
+    #020503 0%,
+    rgba(2,5,3,0.9) 34%,
+    rgba(2,5,3,0.34) 58%,
+    rgba(2,5,3,0) 78%
+  );
+  --glow-primary: 0 18px 46px -14px rgba(241,150,29,0.55);
+  --transition-smooth: 520ms cubic-bezier(0.22, 1, 0.36, 1);
 }

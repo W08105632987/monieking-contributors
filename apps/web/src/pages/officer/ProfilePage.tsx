@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   Phone, Building2, CreditCard, Users,
   LogOut, ChevronRight, Eye, EyeOff,
-  CheckCircle, Lock, Bell, Info, User, AlertTriangle,
+  CheckCircle, Lock, Bell, Info, User, AlertTriangle, MessageCircle,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'
@@ -15,10 +15,13 @@ import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
 import { KycSection } from '@/components/settings/KycSection'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
+import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
 import { AboutMonieKingModal } from '@/components/settings/AboutMonieKingModal'
+import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { formatNaira, maskAccount, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 // ── Change withdrawal password sheet ─────────────────────────────
 function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
@@ -61,7 +64,7 @@ function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-6" />
+        <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-6" />
         <h2 className="text-green-900 dark:text-white font-extrabold text-xl mb-1">
           {isFirstTimeSetup ? 'Set withdrawal password' : 'Change withdrawal password'}
         </h2>
@@ -128,9 +131,9 @@ function SignOutSheet({ onClose }: { onClose: () => void }) {
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-6" />
-        <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <LogOut className="w-7 h-7 text-red-400" />
+        <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-6" />
+        <div className="w-14 h-14 bg-red-50 dark:bg-red-900/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <LogOut className="w-7 h-7 text-red-400 dark:text-red-300" />
         </div>
         <h2 className="text-green-900 dark:text-white font-extrabold text-xl text-center mb-1">Sign out?</h2>
         <p className="text-green-500 dark:text-night-200 text-sm text-center mb-8">
@@ -159,8 +162,8 @@ function SignOutSheet({ onClose }: { onClose: () => void }) {
 // ── Info row ──────────────────────────────────────────────────────
 function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-green-50 last:border-0">
-      <div className="w-8 h-8 bg-green-50 rounded-xl flex items-center justify-center flex-shrink-0">
+    <div className="flex items-center gap-3 py-3 border-b border-green-50 dark:border-night-600 last:border-0">
+      <div className="w-8 h-8 bg-green-50 dark:bg-night-600 rounded-xl flex items-center justify-center flex-shrink-0">
         <Icon className="w-4 h-4 text-green-500 dark:text-night-200" />
       </div>
       <div className="flex-1 min-w-0">
@@ -174,7 +177,7 @@ function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value
 // ── Menu row ──────────────────────────────────────────────────────
 function MenuRow({
   icon: Icon, label, sublabel, onClick, danger = false,
-  iconBg = 'bg-green-50', iconColor = 'text-green-500 dark:text-night-200',
+  iconBg = 'bg-green-50 dark:bg-night-600', iconColor = 'text-green-500 dark:text-night-200',
 }: {
   icon: any; label: string; sublabel?: string; onClick: () => void
   danger?: boolean; iconBg?: string; iconColor?: string
@@ -182,13 +185,13 @@ function MenuRow({
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 py-3.5 border-b border-green-50 last:border-0 active:bg-green-50/50 transition-all text-left"
+      className="w-full flex items-center gap-3 py-3.5 border-b border-green-50 dark:border-night-600 last:border-0 active:bg-green-50/50 dark:active:bg-white/5 transition-all text-left"
     >
       <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0', iconBg)}>
         <Icon className={cn('w-4 h-4', iconColor)} />
       </div>
       <div className="flex-1">
-        <p className={cn('text-sm font-semibold', danger ? 'text-red-500' : 'text-green-900 dark:text-white')}>{label}</p>
+        <p className={cn('text-sm font-semibold', danger ? 'text-red-500 dark:text-red-300' : 'text-green-900 dark:text-white')}>{label}</p>
         {sublabel && <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{sublabel}</p>}
       </div>
       <ChevronRight className={cn('w-4 h-4 flex-shrink-0', danger ? 'text-red-300' : 'text-green-300 dark:text-night-300')} />
@@ -205,23 +208,16 @@ export default function OfficerProfilePage() {
   const [showWithdrawSheet, setShowWithdrawSheet] = useState(false)
   const [showSignOutSheet,  setShowSignOutSheet]  = useState(false)
   const [showAbout, setShowAbout] = useState(false)
+  const [showContactSheet, setShowContactSheet] = useState(false)
 
   if (!user) return null
 
   return (
-    <div className="min-h-dvh flex flex-col bg-green-50">
+    <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
 
       {/* Top bar */}
-      <header className="flex items-center justify-between px-4 py-3 bg-green-50">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-green-900 rounded-xl flex items-center justify-center shadow-card">
-            <span className="text-amber-400 font-extrabold text-base">₦</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-green-900 dark:text-white font-extrabold text-xl tracking-tight leading-none">Monie</span>
-            <span className="text-amber-500 font-extrabold text-xl tracking-tight leading-none">King</span>
-          </div>
-        </div>
+      <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
+        <BrandBlobLogo height={36} />
         <span className="text-xs font-bold bg-green-900 text-amber-400 px-2.5 py-1 rounded-full">Officer</span>
       </header>
 
@@ -246,7 +242,7 @@ export default function OfficerProfilePage() {
               <span className="text-green-500 dark:text-night-200 text-xs font-medium">Active officer</span>
             </div>
             <span className="text-green-200 dark:text-night-400 text-xs">·</span>
-            <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+            <span className="text-xs font-bold bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">
               Officer
             </span>
           </div>
@@ -277,23 +273,36 @@ export default function OfficerProfilePage() {
           </div>
         )}
 
-        {/* Personal information */}
+        {/* Personal information, bank details, and identity
+            verification — merged into ONE grouped card with divider
+            lines between subsections, instead of three separate
+            floating cards. */}
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4 mb-4">
           <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-widest pt-4 pb-2">Personal information</p>
           <InfoRow icon={User}      label="Full name"     value={user.full_name} />
           <InfoRow icon={Phone}     label="Phone number"  value={user.phone_number} />
           <InfoRow icon={Users}     label="Next of kin"   value={user.next_of_kin_name ?? '—'} />
           <InfoRow icon={Phone}     label="Next of kin phone" value={user.next_of_kin_phone ?? '—'} />
-          <div className="pb-2" />
-        </div>
 
-        {/* Bank details */}
-        <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4 mb-4">
-          <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-widest pt-4 pb-2">Bank details</p>
+          <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-widest pt-4 pb-2 border-t border-green-100 dark:border-night-500 mt-2">Bank details</p>
           <InfoRow icon={Building2}  label="Bank name"      value={user.bank_name ?? '—'} />
           <InfoRow icon={CreditCard} label="Account number" value={user.account_number ? maskAccount(user.account_number) : '—'} />
           <InfoRow icon={User}       label="Account name"   value={user.account_name ?? '—'} />
-          <div className="pb-2" />
+
+          <div className="border-t border-green-100 dark:border-night-500 mt-2">
+            <KycSection
+              bvnLinked={user.bvn_linked ?? false}
+              ninLinked={user.nin_linked ?? false}
+              bvnLast4={user.bvn_last4 ?? null}
+              ninLast4={user.nin_last4 ?? null}
+              hasVirtualAccount={!!wallet?.virtual_account_number}
+              onVerified={(fields) => {
+                setUser({ ...user, bvn_linked: fields.bvnLinked, nin_linked: fields.ninLinked, bvn_last4: fields.bvnLast4, nin_last4: fields.ninLast4 })
+                qc.invalidateQueries({ queryKey: ['wallet'] })
+              }}
+              isLast
+            />
+          </div>
         </div>
 
         {/* Security */}
@@ -303,36 +312,13 @@ export default function OfficerProfilePage() {
             icon={Lock}
             label="Change withdrawal password"
             sublabel="Update the password used to authorise withdrawals"
-            iconBg="bg-amber-50"
-            iconColor="text-amber-500"
+            iconBg="bg-amber-50 dark:bg-amber-500/10"
+            iconColor="text-amber-500 dark:text-amber-300"
             onClick={() => setShowWithdrawSheet(true)}
           />
-          <div className="pb-2" />
-        </div>
-
-        {/* Identity verification (KYC) */}
-        <div className="mb-4">
-          <KycSection
-            bvnLinked={user.bvn_linked ?? false}
-            ninLinked={user.nin_linked ?? false}
-            bvnLast4={user.bvn_last4 ?? null}
-            ninLast4={user.nin_last4 ?? null}
-            hasVirtualAccount={!!wallet?.virtual_account_number}
-            onVerified={(fields) => {
-              setUser({ ...user, bvn_linked: fields.bvnLinked, nin_linked: fields.ninLinked, bvn_last4: fields.bvnLast4, nin_last4: fields.ninLast4 })
-              qc.invalidateQueries({ queryKey: ['wallet'] })
-            }}
-          />
-        </div>
-
-        {/* Biometric login */}
-        <div className="mb-4">
-          <BiometricSection />
-        </div>
-
-        {/* Change login password */}
-        <div className="mb-4">
           <ChangePasswordSection />
+          <BiometricSection />
+          <div className="pb-2" />
         </div>
 
         {/* Disputes */}
@@ -342,8 +328,8 @@ export default function OfficerProfilePage() {
             icon={AlertTriangle}
             label="Disputes"
             sublabel="Review disputes assigned to you"
-            iconBg="bg-red-50"
-            iconColor="text-red-400"
+            iconBg="bg-red-50 dark:bg-red-900/20"
+            iconColor="text-red-400 dark:text-red-300"
             onClick={() => navigate('/officer/disputes')}
           />
           <div className="pb-2" />
@@ -352,6 +338,7 @@ export default function OfficerProfilePage() {
         {/* Preferences */}
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4 mb-4">
           <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-widest pt-4 pb-2">Preferences</p>
+          <DarkModeToggle />
           <MenuRow
             icon={Bell}
             label="Notification settings"
@@ -362,7 +349,13 @@ export default function OfficerProfilePage() {
             icon={Info}
             label="About MonieKing"
             sublabel="Version 1.0.0"
-            onClick={() => setShowAbout(true)}
+            onClick={() => window.open('/', '_blank')}
+          />
+          <MenuRow
+            icon={MessageCircle}
+            label="Contact"
+            sublabel="Reach us on WhatsApp or by email"
+            onClick={() => setShowContactSheet(true)}
           />
           <div className="pb-2" />
         </div>
@@ -393,6 +386,7 @@ export default function OfficerProfilePage() {
       </AnimatePresence>
 
       <AboutMonieKingModal open={showAbout} onClose={() => setShowAbout(false)} />
+      <ContactSupportSheet open={showContactSheet} onClose={() => setShowContactSheet(false)} />
     </div>
   )
 }

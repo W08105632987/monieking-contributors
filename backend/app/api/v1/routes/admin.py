@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 
 from app.core.database import get_db
-from app.core.dependencies import DirectorOnly
+from app.core.dependencies import DirectorOrAdmin
 from app.models.user import User, UserRole, LocationConsentStatus
 from app.models.card import ContributionCard, ContributionRecord, CardStatus, CardType
 from app.models.wallet import Wallet, WalletTransaction
@@ -33,7 +33,7 @@ def _date_range_filters(start_date: date | None, end_date: date | None):
 
 @router.get("/analytics")
 async def get_system_analytics(
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
     start_date: date | None = None,
     end_date: date | None = None,
@@ -112,7 +112,7 @@ async def get_system_analytics(
 
 @router.get("/profit-report")
 async def get_profit_report(
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
     start_date: date | None = None,
     end_date: date | None = None,
@@ -164,7 +164,7 @@ async def get_profit_report(
 
 @router.get("/zone-analytics")
 async def get_zone_analytics(
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -200,7 +200,7 @@ async def get_zone_analytics(
 
 @router.get("/audit-logs")
 async def get_audit_logs(
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
     page: int = 1,
     page_size: int = 50,
@@ -230,3 +230,76 @@ async def get_audit_logs(
         }
         for log in logs
     ]
+
+
+@router.post("/billing/charge-monthly-sms")
+async def charge_monthly_sms_subscriptions(
+    director: DirectorOrAdmin,
+    db: AsyncSession = Depends(get_db),
+):
+    """Debits all subscribed customers with their monthly SMS notification fee.
+    If a customer does not have enough balance, their wallet balance enters negative,
+    which will be cleared first automatically when they next fund their account.
+    """
+    from app.services.settings_service import get_config_value
+    from app.services.wallet_service import debit_wallet, get_or_create_wallet
+    from app.services.notification_service import send_notification
+    from app.models.wallet import TxCategory
+
+    val = await get_config_value(db, "monthly_sms_fee_kobo")
+    fee_kobo = int(val) if val else 10000
+    if fee_kobo <= 0:
+        return {"status": "skipped", "message": "Monthly SMS fee is 0, no charges made", "charged_count": 0}
+
+    # Fetch all active users with sms_alerts_enabled
+    users_result = await db.execute(
+        select(User).where(User.sms_alerts_enabled == True)
+    )
+    subscribed_users = users_result.scalars().all()
+
+    now = datetime.now(timezone.utc)
+    month_str = now.strftime("%B %Y")
+    ref_month = now.strftime("%Y%m")
+
+    charged_count = 0
+    errors = []
+
+    for u in subscribed_users:
+        wallet = await get_or_create_wallet(db, u.id)
+        ref = f"SMS-{ref_month}-{u.id}"
+        # Check idempotency for this month's charge
+        existing_tx = await db.execute(
+            select(WalletTransaction).where(WalletTransaction.reference == ref)
+        )
+        if existing_tx.scalar_one_or_none():
+            continue
+
+        try:
+            await debit_wallet(
+                db,
+                wallet=wallet,
+                amount_kobo=fee_kobo,
+                category=TxCategory.SMS_FEE,
+                reference=ref,
+                description=f"Monthly SMS notification service — {month_str}",
+                initiated_by=director.id,
+                allow_negative=True,
+            )
+            await send_notification(
+                db,
+                user_id=u.id,
+                title="SMS Subscription Debited",
+                body=f"₦{fee_kobo // 100} has been debited for your {month_str} SMS transaction alerts.",
+            )
+            charged_count += 1
+        except Exception as err:
+            errors.append({"user_id": str(u.id), "error": str(err)})
+
+    await db.commit()
+    return {
+        "status": "success",
+        "charged_count": charged_count,
+        "fee_kobo": fee_kobo,
+        "fee_naira": fee_kobo / 100,
+        "errors": errors,
+    }

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   User, Phone, Users,
   LogOut, ChevronRight, Eye, EyeOff,
-  CheckCircle, Lock, Bell, Info, AlertTriangle,
+  CheckCircle, Lock, Bell, Info, AlertTriangle, History,
+  MessageCircle,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'
@@ -16,11 +17,13 @@ import { BiometricSection } from '@/components/settings/BiometricSection'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
 import { BankDetailsEditor } from '@/components/settings/BankDetailsEditor'
 import { KycSection } from '@/components/settings/KycSection'
+import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
 import { AboutMonieKingModal } from '@/components/settings/AboutMonieKingModal'
 import { formatNaira, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 // ── Change withdrawal password sheet ─────────────────────────────
 function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
@@ -216,7 +219,28 @@ export default function ProfilePage() {
   const { wallet } = useWallet()
   const [showWithdrawSheet, setShowWithdrawSheet] = useState(false)
   const [showSignOutSheet, setShowSignOutSheet]   = useState(false)
+  const [showContactSheet, setShowContactSheet]   = useState(false)
   const [showAbout, setShowAbout] = useState(false)
+
+  const { data: smsFee } = useQuery({
+    queryKey: ['sms-fee'],
+    queryFn: async () => {
+      const { data } = await api.get<{ monthly_sms_fee_kobo: number; monthly_sms_fee_naira: number }>('/settings/sms-fee')
+      return data
+    },
+  })
+
+  const toggleSmsMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      return await api.patch(`/users/${user!.id}/sms-alerts`, { enabled })
+    },
+    onSuccess: (_, enabled) => {
+      toast.success(enabled ? 'SMS alerts activated' : 'SMS alerts deactivated')
+      if (user) setUser({ ...user, sms_alerts_enabled: enabled })
+      qc.invalidateQueries({ queryKey: ['me'] })
+    },
+    onError: (err: unknown) => toast.error((err as any)?.response?.data?.detail ?? 'Failed to update SMS settings'),
+  })
 
   if (!user) return null
 
@@ -225,15 +249,7 @@ export default function ProfilePage() {
 
       {/* Top bar */}
       <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-green-900 dark:bg-white/10 rounded-xl flex items-center justify-center shadow-card">
-            <span className="text-amber-400 font-extrabold text-base">₦</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-green-900 dark:text-white font-extrabold text-xl tracking-tight leading-none">Monie</span>
-            <span className="text-amber-500 font-extrabold text-xl tracking-tight leading-none">King</span>
-          </div>
-        </div>
+        <BrandBlobLogo height={36} />
       </header>
 
       <div className="flex-1 overflow-y-auto pb-40 px-4">
@@ -284,44 +300,38 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Personal information */}
+        {/* Personal information, identity verification, and bank
+            details — merged into ONE grouped card with divider lines
+            between each subsection, instead of three separate floating
+            cards (which is what KycSection/BankDetailsEditor render on
+            their own by default — their own outer card wrapper was
+            removed specifically so they'd nest inside this one). */}
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4 mb-4">
           <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-widest pt-4 pb-2">Personal information</p>
           <InfoRow icon={User}     label="Full name"      value={user.full_name} />
           <InfoRow icon={Phone}    label="Phone number"   value={user.phone_number} />
           <InfoRow icon={Users}    label="Next of kin"    value={user.next_of_kin_name ?? '—'} />
           <InfoRow icon={Phone}    label="Next of kin phone" value={user.next_of_kin_phone ?? '—'} />
-          <div className="pb-2" />
-        </div>
 
-        {/* Identity verification (KYC) */}
-        <div className="mb-4">
-          <KycSection
-            bvnLinked={user.bvn_linked ?? false}
-            ninLinked={user.nin_linked ?? false}
-            bvnLast4={user.bvn_last4 ?? null}
-            ninLast4={user.nin_last4 ?? null}
-            hasVirtualAccount={!!wallet?.virtual_account_number}
-            onVerified={(fields) => {
-              setUser({ ...user, bvn_linked: fields.bvnLinked, nin_linked: fields.ninLinked, bvn_last4: fields.bvnLast4, nin_last4: fields.ninLast4 })
-              qc.invalidateQueries({ queryKey: ['wallet'] })
-            }}
-          />
-        </div>
-
-        {/* Bank details */}
-        <div className="mb-4">
-          <BankDetailsEditor
-            currentBankName={user.bank_name}
-            currentAccountNumber={user.account_number}
-            currentAccountName={user.account_name}
-            onUpdated={(details) => setUser({ ...user, ...details })}
-          />
-        </div>
-
-        {/* Biometric login */}
-        <div className="mb-4">
-          <BiometricSection />
+          <div className="border-t border-green-100 dark:border-night-500 mt-2">
+            <KycSection
+              bvnLinked={user.bvn_linked ?? false}
+              ninLinked={user.nin_linked ?? false}
+              bvnLast4={user.bvn_last4 ?? null}
+              ninLast4={user.nin_last4 ?? null}
+              hasVirtualAccount={!!wallet?.virtual_account_number}
+              onVerified={(fields) => {
+                setUser({ ...user, bvn_linked: fields.bvnLinked, nin_linked: fields.ninLinked, bvn_last4: fields.bvnLast4, nin_last4: fields.ninLast4 })
+                qc.invalidateQueries({ queryKey: ['wallet'] })
+              }}
+            />
+            <BankDetailsEditor
+              currentBankName={user.bank_name}
+              currentAccountNumber={user.account_number}
+              currentAccountName={user.account_name}
+              onUpdated={(details) => setUser({ ...user, ...details })}
+            />
+          </div>
         </div>
 
         {/* Security */}
@@ -335,12 +345,22 @@ export default function ProfilePage() {
             iconColor="text-amber-500 dark:text-amber-300"
             onClick={() => setShowWithdrawSheet(true)}
           />
+          <ChangePasswordSection />
+          <BiometricSection />
           <div className="pb-2" />
         </div>
 
         {/* Support */}
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4 mb-4">
           <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-widest pt-4 pb-2">Support</p>
+          <MenuRow
+            icon={History}
+            label="Service history"
+            sublabel="NIN, BVN, TIN & other verification requests"
+            iconBg="bg-green-100 dark:bg-night-600"
+            iconColor="text-green-700 dark:text-night-100"
+            onClick={() => navigate('/customer/services/history')}
+          />
           <MenuRow
             icon={AlertTriangle}
             label="My Disputes"
@@ -349,33 +369,78 @@ export default function ProfilePage() {
             iconColor="text-red-400 dark:text-red-300"
             onClick={() => navigate('/customer/disputes')}
           />
+          <MenuRow
+            icon={MessageCircle}
+            label="Contact"
+            sublabel="Reach us on WhatsApp or by email"
+            iconBg="bg-green-100 dark:bg-night-600"
+            iconColor="text-green-700 dark:text-night-100"
+            onClick={() => setShowContactSheet(true)}
+          />
           <div className="pb-2" />
-        </div>
-
-        {/* Change login password */}
-        <div className="mb-4">
-          <ChangePasswordSection />
-        </div>
-
-        {/* Dark mode */}
-        <div className="mb-4">
-          <DarkModeToggle />
         </div>
 
         {/* Preferences */}
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4 mb-4">
           <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-widest pt-4 pb-2">Preferences</p>
+          <DarkModeToggle />
+
+          {/* SMS Transaction Alerts Toggle Row */}
+          <div className="flex items-center justify-between py-3.5 border-b border-green-100 dark:border-night-500">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                <Bell className="w-4.5 h-4.5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-green-900 dark:text-white truncate">
+                    SMS Transaction Alerts
+                  </p>
+                  {user.sms_alerts_enabled ? (
+                    <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 shrink-0">
+                      Active
+                    </span>
+                  ) : (
+                    <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600 dark:bg-night-600 dark:text-zinc-400 shrink-0">
+                      Off
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-green-500 dark:text-night-200 mt-0.5">
+                  {smsFee ? `₦${(smsFee.monthly_sms_fee_kobo / 100).toLocaleString()} / month` : 'Monthly subscription'} · Instant alerts
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={toggleSmsMutation.isPending}
+              onClick={() => toggleSmsMutation.mutate(!user.sms_alerts_enabled)}
+              className={cn(
+                "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                user.sms_alerts_enabled ? "bg-amber-500" : "bg-zinc-300 dark:bg-night-500",
+                toggleSmsMutation.isPending && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              <span
+                className={cn(
+                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                  user.sms_alerts_enabled ? "translate-x-5" : "translate-x-0"
+                )}
+              />
+            </button>
+          </div>
+
           <MenuRow
             icon={Bell}
-            label="Notification settings"
-            sublabel="Manage how you receive alerts"
-            onClick={() => toast('Notification settings coming soon')}
+            label="Notification center"
+            sublabel="View all your past transaction alerts"
+            onClick={() => navigate('/customer/notifications')}
           />
           <MenuRow
             icon={Info}
             label="About MonieKing"
             sublabel="Version 1.0.0"
-            onClick={() => setShowAbout(true)}
+            onClick={() => window.open('/', '_blank')}
           />
           <div className="pb-2" />
         </div>
@@ -404,6 +469,7 @@ export default function ProfilePage() {
       <AnimatePresence>
         {showWithdrawSheet && <ChangeWithdrawPasswordSheet onClose={() => setShowWithdrawSheet(false)} />}
         {showSignOutSheet  && <SignOutSheet onClose={() => setShowSignOutSheet(false)} />}
+        <ContactSupportSheet open={showContactSheet} onClose={() => setShowContactSheet(false)} />
       </AnimatePresence>
 
       <AboutMonieKingModal open={showAbout} onClose={() => setShowAbout(false)} />

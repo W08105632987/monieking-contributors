@@ -37,9 +37,10 @@ export function ContributionCard({ card, grid, className }: ContributionCardProp
 
             <div className="flex items-start justify-between relative z-10">
               <div>
-                <p className="text-green-300 text-xs font-semibold tracking-widest uppercase">
-                  MonieKing
-                </p>
+                {/* Was plain text standing in for the logo. This card face is
+                    already dark green, so the plain light mark (no green-blob
+                    backdrop) is enough contrast — see logo-mark-light.png. */}
+                <img src="/brand/logo-mark-light.png" alt="MonieKing" className="h-5 w-auto" />
                 <p className="text-green-100 text-xs mt-0.5 font-medium">Contributors</p>
               </div>
               <Badge variant={card.card_type === 'food' ? 'green' : 'copper'} className="text-xs">

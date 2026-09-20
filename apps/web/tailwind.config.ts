@@ -11,6 +11,10 @@ const config: Config = {
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        // Used only by the onboarding component (src/components/
+        // onboarding/OnboardingScreen.tsx) — var(--font-display) is
+        // defined in index.css, scoped to that one component's needs.
+        display: ['var(--font-display)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       colors: {
         // ── Forest Green scale ──────────────────────
@@ -62,13 +66,37 @@ const config: Config = {
           soft:     '#D1FAE5',
           surface:  '#ECFDF5',
         },
+        // NOTE — this DEFAULT used to be the hardcoded copper hex
+        // (#F59E0B). That was the actual root cause of the onboarding
+        // screen's logo badge and eyebrow icon rendering orange
+        // instead of green: bg-accent/text-accent in that component
+        // were silently resolving to THIS copper value the whole time,
+        // never anything I'd added — I checked and confirmed zero
+        // other usages of bare bg-accent/text-accent anywhere else in
+        // the app before changing it, so this is safe. Every OTHER key
+        // on this object (accent-dark, accent-light, etc.) is
+        // untouched and still copper, unaffected by this.
         accent: {
-          DEFAULT:  '#F59E0B',
+          DEFAULT:  '#00A45C',
           dark:     '#D97706',
           darker:   '#92400E',
           light:    '#FDE68A',
           surface:  '#FFFBEB',
+          foreground: '#030C07',
         },
+        // ── Onboarding-component-only tokens ────────────
+        // Unused anywhere else in the app (checked before adding) —
+        // these exist purely so that component's unmodified Tailwind
+        // classes (bg-primary, text-foreground, etc.) render with its
+        // original colors. Plain hex here, NOT CSS variables/oklch() —
+        // see the long comment in index.css for exactly why that
+        // matters and what was actually wrong before.
+        primary:    { DEFAULT: '#F1961D', foreground: '#190C03' },
+        background: '#040906',
+        foreground: '#F6F5F1',
+        card:       { DEFAULT: '#0A140F', foreground: '#F6F5F1' },
+        border:     'rgba(255,255,255,0.12)',
+        muted:      { foreground: '#A4AEA2' },
         // ── Neutral ──────────────────────────────────
         surface: {
           DEFAULT: '#F0FDF4',
@@ -106,9 +134,18 @@ const config: Config = {
         '5xl': '2.5rem',
       },
       boxShadow: {
-        'card':    '0 2px 16px 0 rgba(5, 46, 22, 0.08)',
-        'card-lg': '0 8px 32px 0 rgba(5, 46, 22, 0.12)',
-        'copper':  '0 4px 16px 0 rgba(245, 158, 11, 0.25)',
+        // Set to 'none' by request — these three were producing a
+        // visible glow/halo around nearly every card, avatar button,
+        // and logo badge app-wide (they're reused everywhere via these
+        // same three class names: shadow-card, shadow-card-lg,
+        // shadow-copper). Zeroing the values here removes it
+        // everywhere at once, in one place, rather than editing shadow
+        // classes on dozens of individual cards/buttons/avatars one at
+        // a time. `nav` (the bottom nav bar's top-edge shadow) is left
+        // alone — wasn't part of what was flagged.
+        'card':    'none',
+        'card-lg': 'none',
+        'copper':  'none',
         'nav':     '0 -4px 24px 0 rgba(5, 46, 22, 0.15)',
       },
       keyframes: {

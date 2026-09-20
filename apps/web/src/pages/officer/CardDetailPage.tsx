@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatDate, MONTH_NAMES, cn, idempotencyKey } from '@/lib/utils'
 import { isBiometricAvailable, getStepUpAssertion } from '@/lib/webauthn'
+import { FEATURE_FLAGS } from '@/config/featureFlags'
 import { PleaseHold } from '@/components/ui/PleaseHold'
 import type { ContributionCard, CardGrid, GridCell, User, ContributionRecord } from '@/types'
 import { ContributionHistoryModal } from '@/components/cards/ContributionHistoryModal'
@@ -89,7 +90,7 @@ export default function OfficerCardDetailPage() {
     return () => clearTimeout(t)
   }, [withdrawKobo])
 
-  useEffect(() => { isBiometricAvailable().then(setBioAvailable) }, [])
+  useEffect(() => { if (FEATURE_FLAGS.BIOMETRICS_ENABLED) isBiometricAvailable().then(setBioAvailable) }, [])
 
   const isValidWithdrawMultiple = !!card && debouncedWithdrawKobo > 0 && debouncedWithdrawKobo % card.rate_kobo === 0
 
@@ -113,14 +114,46 @@ export default function OfficerCardDetailPage() {
     if (!card || !isContributeValid) return
     setLoading(true)
     try {
-      await api.post('/contributions', { card_id: card.id, amount_kobo: amountKobo }, {
-        headers: { 'Idempotency-Key': contributeIdemKeyRef.current },
-      })
-      toast.success('Contribution posted')
+      const { data } = await api.post<{ card: ContributionCard; wallet_balance_kobo: number; days_added: number }>(
+        '/contributions', { card_id: card.id, amount_kobo: amountKobo },
+        { headers: { 'Idempotency-Key': contributeIdemKeyRef.current } },
+      )
+      toast.success(`${data.days_added} day(s) added to ${customer ? `${customer.full_name}'s` : "the customer's"} card`)
+
+      // Same fix as the customer side (useCards.ts) — patch every cache
+      // that holds this card with the authoritative data the response
+      // just gave us, instead of only invalidating and waiting for
+      // four separate background refetches to eventually catch up.
+      // cancelQueries first so a still-in-flight older refetch can't
+      // land after this and overwrite it with stale data.
+      await qc.cancelQueries({ queryKey: ['card-detail', cardId] })
+      await qc.cancelQueries({ queryKey: ['customer-cards', customer?.id] })
+      await qc.cancelQueries({ queryKey: ['officer-cards'] })
+      await qc.cancelQueries({ queryKey: ['wallet'] })
+
+      qc.setQueryData<{ card: ContributionCard; grid: CardGrid; contributions: ContributionRecord[] } | undefined>(
+        ['card-detail', cardId],
+        (old) => old ? { ...old, card: data.card } : old
+      )
+      qc.setQueryData<ContributionCard[] | undefined>(
+        ['customer-cards', customer?.id],
+        (old) => old?.map(c => c.id === data.card.id ? data.card : c) ?? old
+      )
+      qc.setQueryData<ContributionCard[] | undefined>(
+        ['officer-cards'],
+        (old) => old?.map(c => c.id === data.card.id ? data.card : c) ?? old
+      )
+      qc.setQueryData<{ balance_kobo: number } | undefined>(
+        ['wallet'],
+        (old: any) => old ? { ...old, balance_kobo: data.wallet_balance_kobo } : old
+      )
+
+      // The grid (day-by-day boxes) and the contribution history list
+      // aren't in this response, so those still need a real refetch —
+      // but the card summary fields (days, total, status) are already
+      // correct on screen the instant this response comes back.
       qc.invalidateQueries({ queryKey: ['card-detail', cardId] })
-      qc.invalidateQueries({ queryKey: ['customer-cards', customer?.id] })
-      qc.invalidateQueries({ queryKey: ['officer-cards'] })
-      qc.invalidateQueries({ queryKey: ['wallet'] })
+
       setAmountNaira('')
       setActivePanel('none')
     } catch (err) {
@@ -231,7 +264,7 @@ export default function OfficerCardDetailPage() {
   }
 
   if (cardLoading) return (
-    <div className="min-h-dvh bg-green-50 flex flex-col">
+    <div className="min-h-dvh bg-green-50 dark:bg-night-800 flex flex-col">
       <header className="flex items-center gap-3 px-4 py-3">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white dark:bg-night-700 border border-green-200 dark:border-night-500 rounded-xl flex items-center justify-center">
           <ArrowLeft className="w-5 h-5 text-green-700 dark:text-night-100" />
@@ -247,7 +280,7 @@ export default function OfficerCardDetailPage() {
   )
 
   if (!card) return (
-    <div className="min-h-dvh bg-green-50 flex items-center justify-center">
+    <div className="min-h-dvh bg-green-50 dark:bg-night-800 flex items-center justify-center">
       <p className="text-green-600 dark:text-night-200 font-semibold">Card not found</p>
     </div>
   )
@@ -262,9 +295,9 @@ export default function OfficerCardDetailPage() {
   )
 
   return (
-    <div className="min-h-dvh flex flex-col bg-green-50">
+    <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
       {/* Top bar */}
-      <header className="flex items-center gap-3 px-4 py-3 bg-green-50">
+      <header className="flex items-center gap-3 px-4 py-3 bg-green-50 dark:bg-night-800">
         <button onClick={() => navigate(`/officer/customers/${customerId}`)}
           className="w-9 h-9 bg-white dark:bg-night-700 border border-green-200 dark:border-night-500 rounded-xl flex items-center justify-center active:scale-95 transition-all">
           <ArrowLeft className="w-5 h-5 text-green-700 dark:text-night-100" />
@@ -378,7 +411,7 @@ export default function OfficerCardDetailPage() {
             <p className="text-green-400 dark:text-night-300 text-xs">Days saved</p>
           </div>
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-3">
-            <Calendar className="w-4 h-4 text-amber-500 mb-1" />
+            <Calendar className="w-4 h-4 text-amber-500 dark:text-amber-300 mb-1" />
             <p className="text-green-900 dark:text-white font-extrabold text-lg">{remaining}</p>
             <p className="text-green-400 dark:text-night-300 text-xs">Days left</p>
           </div>
@@ -411,15 +444,15 @@ export default function OfficerCardDetailPage() {
 
         {/* Food card conversion warning */}
         {isFood && !isComplete && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5">
-            <p className="text-amber-700 text-sm font-semibold mb-1">🔒 Food Card — funds locked</p>
-            <p className="text-amber-600 text-xs leading-relaxed">
+          <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-4 mb-5">
+            <p className="text-amber-700 dark:text-amber-300 text-sm font-semibold mb-1">🔒 Food Card — funds locked</p>
+            <p className="text-amber-600 dark:text-amber-300 text-xs leading-relaxed">
               Complete all 372 days by November 30 to qualify for December food distribution. Converting to a Regular Card will permanently lose food eligibility.
             </p>
             <button
               onClick={handleConvert}
               disabled={converting}
-              className="mt-3 text-xs font-bold text-amber-700 underline disabled:opacity-50"
+              className="mt-3 text-xs font-bold text-amber-700 dark:text-amber-300 underline disabled:opacity-50"
             >
               {converting ? 'Converting…' : 'Convert to Regular Card'}
             </button>
@@ -449,7 +482,7 @@ export default function OfficerCardDetailPage() {
         {!isComplete && !isFood && card.total_contributed_kobo > 0 && (
           <button
             onClick={() => setShowCloseModal(true)}
-            className="w-full flex items-center justify-center gap-1.5 text-red-400 text-xs font-semibold mb-5"
+            className="w-full flex items-center justify-center gap-1.5 text-red-400 dark:text-red-300 text-xs font-semibold mb-5"
           >
             <XCircle className="w-3.5 h-3.5" /> Close this card early
           </button>
@@ -469,7 +502,7 @@ export default function OfficerCardDetailPage() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             className="relative bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-5"
           >
-            {loading && <PleaseHold message="Please hold while we mark this card…" />}
+            {loading && <PleaseHold message={`Please hold while we mark ${customer ? `${customer.full_name}'s` : 'this'} card…`} />}
             <p className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide mb-2">Amount (₦)</p>
             <div className="relative mb-2">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-green-500 dark:text-night-200 font-bold">₦</span>
@@ -527,7 +560,7 @@ export default function OfficerCardDetailPage() {
             {withdrawKobo > 0 && (
               <div className="bg-green-50 border border-green-100 dark:border-night-500 rounded-2xl p-3 mb-4">
                 {!isValidWithdrawMultiple ? (
-                  <p className="text-red-400 text-xs font-semibold">
+                  <p className="text-red-400 dark:text-red-300 text-xs font-semibold">
                     Amount must be a multiple of {formatNaira(card.rate_kobo)}
                   </p>
                 ) : withdrawPreviewLoading ? (
@@ -542,7 +575,7 @@ export default function OfficerCardDetailPage() {
                       <span className="text-green-600 dark:text-night-200">
                         Processing charge ({withdrawPreview.months_touched} month{withdrawPreview.months_touched > 1 ? 's' : ''})
                       </span>
-                      <span className="text-red-400 font-semibold">- {formatNaira(charge)}</span>
+                      <span className="text-red-400 dark:text-red-300 font-semibold">- {formatNaira(charge)}</span>
                     </div>
                     <div className="h-px bg-green-100 dark:bg-night-600 my-1" />
                     <div className="flex justify-between">
@@ -553,16 +586,16 @@ export default function OfficerCardDetailPage() {
                     </div>
                     {withdrawPreview.is_risky && (
                       <div className="flex items-center gap-1.5 mt-2">
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                        <p className="text-amber-600 text-xs font-semibold">This may lead to an extra charge later</p>
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-500 dark:text-amber-300 flex-shrink-0" />
+                        <p className="text-amber-600 dark:text-amber-300 text-xs font-semibold">This may lead to an extra charge later</p>
                       </div>
                     )}
                   </>
                 ) : null}
                 {withdrawKobo > card.total_contributed_kobo && (
                   <div className="flex items-center gap-1.5 mt-2">
-                    <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-                    <p className="text-red-400 text-xs font-semibold">Exceeds available balance</p>
+                    <AlertCircle className="w-3.5 h-3.5 text-red-400 dark:text-red-300 flex-shrink-0" />
+                    <p className="text-red-400 dark:text-red-300 text-xs font-semibold">Exceeds available balance</p>
                   </div>
                 )}
               </div>
@@ -589,7 +622,7 @@ export default function OfficerCardDetailPage() {
                   onClick={() => submitWithBiometric(false)}
                   disabled={bioLoading || !canWithdrawAmount}
                   aria-label="Confirm with fingerprint"
-                  className="absolute right-9 top-1/2 -translate-y-1/2 text-green-600 disabled:opacity-40"
+                  className="absolute right-9 top-1/2 -translate-y-1/2 text-green-600 dark:text-night-200 disabled:opacity-40"
                 >
                   <Fingerprint className={`w-4 h-4 ${bioLoading ? 'animate-pulse' : ''}`} />
                 </button>
@@ -623,7 +656,7 @@ export default function OfficerCardDetailPage() {
             </div>
             <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4">
               {contributions.slice(0, 2).map(c => (
-                <div key={c.id} className="flex items-center justify-between py-3 border-b border-green-50 last:border-0">
+                <div key={c.id} className="flex items-center justify-between py-3 border-b border-green-50 dark:border-night-600 last:border-0">
                   <div>
                     <p className="text-green-900 dark:text-white text-sm font-semibold">
                       {MONTH_NAMES[c.logical_month - 1]} Day {c.logical_day}
@@ -655,7 +688,7 @@ export default function OfficerCardDetailPage() {
             className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
             onClick={e => e.stopPropagation()}
           >
-            <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-5" />
+            <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-5" />
             <h2 className="text-green-900 dark:text-white font-extrabold text-lg leading-tight mb-2">Close this card early?</h2>
             <p className="text-green-600 dark:text-night-200 text-sm leading-relaxed mb-4">
               {customer ? `${customer.full_name} has` : 'This customer has'} saved {formatNaira(card.total_contributed_kobo)} so far.
@@ -710,9 +743,9 @@ export default function OfficerCardDetailPage() {
             className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
             onClick={e => e.stopPropagation()}
           >
-            <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-5" />
+            <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-5" />
             <div className="flex items-center gap-3 mb-3">
-              <AlertCircle className="w-8 h-8 text-amber-500 flex-shrink-0" />
+              <AlertCircle className="w-8 h-8 text-amber-500 dark:text-amber-300 flex-shrink-0" />
               <h2 className="text-green-900 dark:text-white font-extrabold text-lg leading-tight">Heads up before you continue</h2>
             </div>
             <p className="text-green-600 dark:text-night-200 text-sm leading-relaxed mb-5">

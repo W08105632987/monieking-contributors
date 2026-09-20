@@ -97,7 +97,7 @@ export default function ContributePage() {
               <div className="relative z-10 p-5">
                 <div className="flex items-center justify-between mb-3">
                   <span className={cn('text-xs font-bold px-3 py-1 rounded-full',
-                    card.card_type === 'food' ? 'bg-green-700 text-green-200 dark:text-night-400' : 'bg-amber-500/20 dark:bg-night-500/30 text-amber-400 dark:text-night-100'
+                    card.card_type === 'food' ? 'bg-green-700 dark:bg-night-500/30 text-green-200 dark:text-night-100' : 'bg-amber-500/20 dark:bg-night-500/30 text-amber-400 dark:text-night-100'
                   )}>
                     {card.card_type === 'food' ? '🍱 Food Card' : '📋 Regular Card'}
                   </span>

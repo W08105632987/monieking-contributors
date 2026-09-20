@@ -17,7 +17,17 @@ settings = get_settings()
 
 
 async def check_withdrawal_password(db: AsyncSession, user: User, plain_password: str) -> None:
-    """Raises HTTPException on lockout or wrong password; returns normally on success."""
+    """Raises HTTPException on lockout or wrong password; returns normally on success.
+
+    Re-fetches `user` fresh from the DB by id rather than trusting the
+    object passed in — current_user may be served from the request-cache
+    in dependencies.py, which deliberately never caches
+    withdrawal_password_hash (or the lockout counters below), and which
+    isn't session-attached, so mutations here wouldn't persist against a
+    cached instance either. This is the right call for a security check
+    regardless of caching: never trust a possibly-stale hash for auth.
+    """
+    user = await db.get(User, user.id)
     now = datetime.now(timezone.utc)
 
     if user.withdrawal_password_locked_until and user.withdrawal_password_locked_until > now:

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.core.database import get_db
-from app.core.dependencies import CurrentUser, DirectorOnly
+from app.core.dependencies import CurrentUser, DirectorOnly, invalidate_user_cache
 from app.services.settings_service import get_config_int
 from app.core.security import verify_withdrawal_password, generate_reference
 from app.services.webauthn_service import verify_authentication
@@ -20,7 +20,7 @@ from app.models.user import User
 from app.schemas.wallet import WalletResponse, WalletTransactionResponse, PaginatedTransactions, WalletSummaryResponse
 from app.schemas.withdrawal import WalletWithdrawalRequest, WithdrawalResponse
 from app.schemas.user import KycSubmitRequest
-from app.services.wallet_service import get_or_create_wallet, debit_wallet
+from app.services.wallet_service import get_or_create_wallet, debit_wallet, credit_wallet
 from app.services.notification_service import send_notification
 from app.utils.audit import log_action
 from app.utils.bank_codes import resolve_bank_code
@@ -140,15 +140,21 @@ async def submit_kyc(
         wallet.virtual_account_bank   = account.bank_name
         wallet.virtual_account_ref    = account.account_reference
 
+    # current_user may be the cached (unattached) object — fetch a real
+    # session-attached row before mutating these KYC flags, so they
+    # actually persist. Also invalidate the cache afterward since these
+    # ARE cached fields (unlike the hash/challenge fields elsewhere).
+    user = await db.get(User, current_user.id)
     if body.bvn:
-        current_user.bvn_linked = True
-        current_user.bvn_last4  = body.bvn[-4:]
+        user.bvn_linked = True
+        user.bvn_last4  = body.bvn[-4:]
     if body.nin:
-        current_user.nin_linked = True
-        current_user.nin_last4  = body.nin[-4:]
-    current_user.kyc_completed_at = datetime.now(timezone.utc)
+        user.nin_linked = True
+        user.nin_last4  = body.nin[-4:]
+    user.kyc_completed_at = datetime.now(timezone.utc)
 
     await db.flush()
+    await invalidate_user_cache(str(user.id))
     return wallet
 
 
@@ -224,6 +230,41 @@ async def request_wallet_withdrawal(
         raise HTTPException(status_code=400, detail="Invalid auth method")
 
     ref = generate_reference()
+
+    # SECURITY FIX (audit finding — wallet withdrawal double-spend race):
+    # this used to call the external Monnify transfer FIRST and only
+    # debit the wallet "once the transfer is confirmed successful". The
+    # balance check above (`if body.amount_kobo > wallet.balance_kobo`)
+    # is a plain read with no row lock, so two near-simultaneous
+    # requests could both pass it, both reach Monnify, and both get a
+    # real external payout sent — genuinely double-spent money — before
+    # either one ever touched the row lock in debit_wallet. Only
+    # afterward would they compete for that lock, by which point it's
+    # too late: the money's already gone out twice.
+    #
+    # Correct order: lock and debit the wallet FIRST. debit_wallet's
+    # SELECT ... FOR UPDATE means only one of two concurrent requests
+    # can ever win that lock and successfully decrement the balance —
+    # the second sees the already-reduced balance and fails with a
+    # plain "insufficient balance" error, BEFORE any external transfer
+    # is ever attempted. Money is reserved internally before it's ever
+    # promised externally, not the other way around.
+    #
+    # If the external transfer then fails (Monnify error, timeout, or a
+    # non-SUCCESS response) AFTER the debit already succeeded, the
+    # wallet is credited back — a compensating transaction, since an
+    # external payment provider can't be part of the same database
+    # transaction as the internal debit.
+    await debit_wallet(
+        db,
+        wallet=       wallet,
+        amount_kobo=  body.amount_kobo,
+        category=     TxCategory.WITHDRAWAL,
+        reference=    ref,
+        description=  f"Withdrawal to {current_user.bank_name} ({current_user.account_number})",
+        initiated_by= current_user.id,
+    )
+
     provider = get_payment_provider()
     try:
         result = await provider.initiate_transfer(
@@ -236,27 +277,31 @@ async def request_wallet_withdrawal(
         )
     except Exception as e:
         print(f"[wallets] Transfer initiation failed for user {current_user.id}, ref {ref}: {e}")
+        await credit_wallet(
+            db, wallet=wallet, amount_kobo=body.amount_kobo,
+            category=TxCategory.WITHDRAWAL, reference=f"{ref}-reversal",
+            description="Reversal — transfer initiation failed", initiated_by=current_user.id,
+        )
         raise HTTPException(status_code=502, detail="Transfer could not be initiated. Please try again.")
 
     if result.status == "PENDING_AUTHORIZATION":
+        await credit_wallet(
+            db, wallet=wallet, amount_kobo=body.amount_kobo,
+            category=TxCategory.WITHDRAWAL, reference=f"{ref}-reversal",
+            description="Reversal — transfer requires provider-side authorization", initiated_by=current_user.id,
+        )
         raise HTTPException(
             status_code=503,
             detail="Instant transfers are temporarily unavailable (authorization required on the payment "
                    "provider side). Please try again later or contact support.",
         )
     if result.status != "SUCCESS":
+        await credit_wallet(
+            db, wallet=wallet, amount_kobo=body.amount_kobo,
+            category=TxCategory.WITHDRAWAL, reference=f"{ref}-reversal",
+            description="Reversal — transfer failed", initiated_by=current_user.id,
+        )
         raise HTTPException(status_code=502, detail="Transfer failed. Please try again.")
-
-    # Only debit the wallet once the transfer is confirmed successful
-    await debit_wallet(
-        db,
-        wallet=       wallet,
-        amount_kobo=  body.amount_kobo,
-        category=     TxCategory.WITHDRAWAL,
-        reference=    ref,
-        description=  f"Withdrawal to {current_user.bank_name} ({current_user.account_number})",
-        initiated_by= current_user.id,
-    )
 
     withdrawal = Withdrawal(
         customer_id=            current_user.id,
@@ -288,7 +333,9 @@ async def request_wallet_withdrawal(
         new_value={"amount_kobo": body.amount_kobo, "charge_kobo": charge_kobo, "net_kobo": net_payable_kobo},
         ip_address=request.client.host if request else None,
     )
-    return withdrawal
+    return WithdrawalResponse.model_validate(withdrawal).model_copy(
+        update={"wallet_balance_kobo": wallet.balance_kobo},
+    )
 
 
 @router.get("/me/transactions", response_model=PaginatedTransactions)
@@ -297,18 +344,30 @@ async def get_my_transactions(
     db: AsyncSession = Depends(get_db),
     page: int = 1,
     page_size: int = 20,
+    start_date: str | None = None,   # ISO date, e.g. "2026-08-01"
+    end_date: str | None = None,
 ):
     wallet = await get_or_create_wallet(db, current_user.id)
 
+    filters = [WalletTransaction.wallet_id == wallet.id]
+    if start_date:
+        filters.append(WalletTransaction.created_at >= datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc))
+    if end_date:
+        # Inclusive of the whole end day — same reasoning as the summary
+        # endpoint above: picking "today" as the end date should include
+        # today's transactions, not stop at midnight.
+        filters.append(
+            WalletTransaction.created_at < datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc) + timedelta(days=1)
+        )
+
     count_result = await db.execute(
-        select(func.count()).select_from(WalletTransaction)
-        .where(WalletTransaction.wallet_id == wallet.id)
+        select(func.count()).select_from(WalletTransaction).where(*filters)
     )
     total = count_result.scalar_one()
 
     result = await db.execute(
         select(WalletTransaction)
-        .where(WalletTransaction.wallet_id == wallet.id)
+        .where(*filters)
         .order_by(WalletTransaction.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -327,7 +386,9 @@ async def get_my_transactions(
 async def get_my_wallet_summary(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-    range: str = "all",   # "week" | "month" | "all"
+    range: str = "all",   # "week" | "month" | "all" | "custom"
+    start_date: str | None = None,   # ISO date, e.g. "2026-08-01" — used when range="custom"
+    end_date: str | None = None,
 ):
     """Money in / out totals for the wallet stat cards. Computed as a
     single aggregate SQL query (not summed client-side from a paginated
@@ -336,7 +397,17 @@ async def get_my_wallet_summary(
     wallet = await get_or_create_wallet(db, current_user.id)
 
     now = datetime.now(timezone.utc)
-    if range == "week":
+    since: datetime | None = None
+    until: datetime | None = None
+    if range == "custom" and start_date:
+        since = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+        label = "Custom range"
+        if end_date:
+            # Inclusive of the whole end day, not just midnight — a
+            # customer picking "today" as the end date expects today's
+            # transactions to actually show up.
+            until = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc) + timedelta(days=1)
+    elif range == "week":
         since, label = now - timedelta(days=7), "Last 7 days"
     elif range == "month":
         since, label = now - timedelta(days=30), "Last 30 days"
@@ -346,6 +417,8 @@ async def get_my_wallet_summary(
     filters = [WalletTransaction.wallet_id == wallet.id]
     if since:
         filters.append(WalletTransaction.created_at >= since)
+    if until:
+        filters.append(WalletTransaction.created_at < until)
 
     result = await db.execute(
         select(

@@ -38,6 +38,14 @@ class MonnifyProvider(BasePaymentProvider):
         # customer registration, which provisions a virtual account).
         self._token_expires_at: float = 0.0
 
+    @property
+    def is_sandbox(self) -> bool:
+        """True when MONNIFY_BASE_URL points at Monnify's sandbox host.
+        Callers (webhooks.py) use this to decide how to treat a missing
+        'monnify-signature' header — see verify_webhook_signature below
+        for why sandbox never sends one at all."""
+        return "sandbox" in self.base_url.lower()
+
     # ── Auth ──────────────────────────────────────────────────────
     async def _get_access_token(self) -> str:
         credentials = base64.b64encode(
@@ -132,10 +140,23 @@ class MonnifyProvider(BasePaymentProvider):
         if bool_field in body:
             return bool(body[bool_field])
 
-        # Older/alternate shape: granular per-field match status.
+        # Older/alternate shape: granular per-field match status. This is
+        # actually the shape Monnify's own BVN Information Verification
+        # docs sample — dateOfBirth/mobileNo are exact-match strings
+        # ("FULL_MATCH"/"NO_MATCH"), name is the only field with a
+        # PARTIAL_MATCH tier. A name match alone isn't enough to accept:
+        # two people can share a surname, and PARTIAL_MATCH can trigger
+        # off as little as a shared middle name. Require the name match
+        # AND at least one of dateOfBirth/mobileNo to fully match, so a
+        # coincidental name overlap can't pass on its own.
         name_match = body.get("name", {})
         if isinstance(name_match, dict) and "matchStatus" in name_match:
-            return name_match["matchStatus"] in ("FULL_MATCH", "PARTIAL_MATCH")
+            name_ok = name_match["matchStatus"] in ("FULL_MATCH", "PARTIAL_MATCH")
+            corroborated = (
+                body.get("dateOfBirth") == "FULL_MATCH"
+                or body.get("mobileNo") == "FULL_MATCH"
+            )
+            return name_ok and corroborated
 
         # If neither known shape is present, fail closed rather than
         # silently accepting unverified identity info.
@@ -282,23 +303,81 @@ class MonnifyProvider(BasePaymentProvider):
             return resp.json()["responseBody"]
 
     # ── Webhook signature verification ────────────────────────────
+    # Two wrinkles here, both confirmed directly against Monnify's current
+    # "Webhook Event Types" docs page:
+    #
+    # 1. The 'monnify-signature' header is ONLY sent on production
+    #    notifications — Monnify's own docs state sandbox webhooks never
+    #    carry it at all. So for a sandbox demo (exactly what's being
+    #    prepared here), every real webhook Monnify sends will arrive
+    #    with NO signature header, and this method must never be the
+    #    thing that rejects those — see webhooks.py, which now checks
+    #    is_sandbox before calling this at all.
+    # 2. The same docs page contradicts itself on the algorithm: the
+    #    "Security Reminder" box says to compute an HMAC-SHA512 of the
+    #    body; the "Transaction Hash Computation" section below it says
+    #    the formula is plain SHA-512(secret + body) — i.e. concatenation,
+    #    NOT HMAC. Third-party integrations (Laravel/PHP, several blog
+    #    write-ups) implement true HMAC-SHA512. Since we can't get a real
+    #    signed production webhook to test against yet, we accept either
+    #    shape here rather than guess wrong and silently drop every real
+    #    webhook once live. Once production traffic is flowing, log which
+    #    branch actually matched and drop the other.
     def verify_webhook_signature(self, payload: bytes, signature: str) -> bool:
-        expected = hmac.new(
-            settings.MONNIFY_WEBHOOK_SECRET.encode(),
-            payload,
-            hashlib.sha512,
-        ).hexdigest()
-        return hmac.compare_digest(expected.lower(), signature.lower())
+        if not signature:
+            return False
+
+        secret = settings.MONNIFY_WEBHOOK_SECRET
+
+        hmac_sig = hmac.new(secret.encode(), payload, hashlib.sha512).hexdigest()
+        if hmac.compare_digest(hmac_sig.lower(), signature.lower()):
+            return True
+
+        concat_sig = hashlib.sha512((secret + payload.decode("utf-8")).encode()).hexdigest()
+        return hmac.compare_digest(concat_sig.lower(), signature.lower())
 
     # ── Parse webhook event ───────────────────────────────────────
     def parse_webhook_event(self, payload: dict) -> WebhookEvent:
         body = payload.get("eventData", {})
-        amount_naira = float(body.get("amountPaid", 0))
+        if not isinstance(body, dict) or not body:
+            body = payload
+
+        amount_val = (
+            body.get("amountPaid")
+            or body.get("amount")
+            or body.get("totalPayable")
+            or body.get("settlementAmount")
+            or 0
+        )
+        try:
+            amount_naira = float(amount_val)
+        except (ValueError, TypeError):
+            amount_naira = 0.0
+
+        dest_info = body.get("destinationAccountInformation") or {}
+        account_num = (
+            dest_info.get("accountNumber")
+            or body.get("destinationAccountNumber")
+            or body.get("accountNumber")
+            or payload.get("accountNumber")
+            or ""
+        )
+
+        tx_ref = (
+            body.get("transactionReference")
+            or body.get("paymentReference")
+            or payload.get("transactionReference")
+            or payload.get("paymentReference")
+            or ""
+        )
+
+        status_str = str(body.get("paymentStatus") or body.get("status") or "").upper()
+
         return WebhookEvent(
-            transaction_reference= body.get("transactionReference", ""),
-            amount_kobo=           int(amount_naira * 100),
-            account_number=        body.get("destinationAccountInformation", {}).get("accountNumber", ""),
-            status=                body.get("paymentStatus", ""),
+            transaction_reference= str(tx_ref),
+            amount_kobo=           int(round(amount_naira * 100)),
+            account_number=        str(account_num),
+            status=                status_str,
             provider=              "monnify",
             raw=                   payload,
         )

@@ -12,6 +12,12 @@ interface Credential {
   last_used_at: string | null
 }
 
+/**
+ * Lives inside the Security card now (see Profile pages), as a row
+ * matching every other row there — not its own standalone card.
+ * Always the last row in that card, so no bottom border on any of its
+ * three possible states below (disabled-by-flag, unavailable, live).
+ */
 export function BiometricSection() {
   // Temporarily disabled app-wide — see config/featureFlags.ts. Shown as
   // a disabled row with a "Coming soon" badge instead of a working
@@ -22,15 +28,15 @@ export function BiometricSection() {
   // hooks, regardless of how the flag is read.
   if (!FEATURE_FLAGS.BIOMETRICS_ENABLED) {
     return (
-      <div className="w-full flex items-center justify-between bg-white rounded-2xl border border-green-100 shadow-card p-4 opacity-60">
-        <div className="flex items-center gap-2.5 text-left">
-          <Fingerprint className="w-4 h-4 flex-shrink-0 text-green-300" />
-          <div>
-            <p className="text-green-900 font-bold text-sm">Biometric authentication</p>
-            <p className="text-green-400 text-[11px] mt-0.5">Coming soon</p>
-          </div>
+      <div className="w-full flex items-center gap-3 py-3.5 opacity-60">
+        <div className="w-9 h-9 rounded-xl bg-green-50 dark:bg-night-600 flex items-center justify-center flex-shrink-0">
+          <Fingerprint className="w-4 h-4 text-green-300 dark:text-night-400" />
         </div>
-        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full flex-shrink-0">SOON</span>
+        <div className="flex-1 text-left">
+          <p className="text-green-900 dark:text-white text-sm font-semibold">Biometric authentication</p>
+          <p className="text-green-400 dark:text-night-300 text-[11px] mt-0.5">Coming soon</p>
+        </div>
+        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1 rounded-full flex-shrink-0">SOON</span>
       </div>
     )
   }
@@ -84,9 +90,14 @@ function BiometricSectionLive() {
 
   if (!available) {
     return (
-      <div className="bg-white rounded-2xl border border-green-100 shadow-card p-4">
-        <p className="text-green-900 font-bold text-sm mb-1">Biometric authentication</p>
-        <p className="text-green-400 text-xs">Not available on this device or browser.</p>
+      <div className="w-full flex items-center gap-3 py-3.5">
+        <div className="w-9 h-9 rounded-xl bg-green-50 dark:bg-night-600 flex items-center justify-center flex-shrink-0">
+          <Fingerprint className="w-4 h-4 text-green-300 dark:text-night-400" />
+        </div>
+        <div className="flex-1 text-left">
+          <p className="text-green-900 dark:text-white text-sm font-semibold">Biometric authentication</p>
+          <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">Not available on this device or browser.</p>
+        </div>
       </div>
     )
   }
@@ -95,18 +106,18 @@ function BiometricSectionLive() {
     <button
       onClick={handleToggle}
       disabled={busy}
-      className="w-full flex items-center justify-between bg-white rounded-2xl border border-green-100 shadow-card p-4 transition-colors disabled:opacity-70"
+      className="w-full flex items-center gap-3 py-3.5 active:bg-green-50/50 dark:active:bg-white/5 transition-all disabled:opacity-70 text-left"
     >
-      <div className="flex items-center gap-2.5 text-left">
-        <Fingerprint className={`w-4 h-4 flex-shrink-0 ${isOn ? 'text-green-600' : 'text-green-300'} ${busy && !isOn ? 'animate-pulse' : ''}`} />
-        <div>
-          <p className="text-green-900 font-bold text-sm">Biometric authentication</p>
-          <p className="text-green-400 text-[11px] mt-0.5">
-            {busy ? (isOn ? 'Turning off…' : 'Waiting for fingerprint…') : (isOn ? 'On for login and withdrawals' : 'Off')}
-          </p>
-        </div>
+      <div className="w-9 h-9 rounded-xl bg-green-50 dark:bg-night-600 flex items-center justify-center flex-shrink-0">
+        <Fingerprint className={`w-4 h-4 ${isOn ? 'text-green-600 dark:text-green-300' : 'text-green-300 dark:text-night-400'} ${busy && !isOn ? 'animate-pulse' : ''}`} />
       </div>
-      <div className={`w-11 h-6 rounded-full flex items-center px-0.5 transition-colors flex-shrink-0 ${isOn ? 'bg-green-700 justify-end' : 'bg-green-100 justify-start'}`}>
+      <div className="flex-1">
+        <p className="text-green-900 dark:text-white text-sm font-semibold">Biometric authentication</p>
+        <p className="text-green-400 dark:text-night-300 text-[11px] mt-0.5">
+          {busy ? (isOn ? 'Turning off…' : 'Waiting for fingerprint…') : (isOn ? 'On for login and withdrawals' : 'Off')}
+        </p>
+      </div>
+      <div className={`w-11 h-6 rounded-full flex items-center px-0.5 transition-colors flex-shrink-0 ${isOn ? 'bg-green-700 justify-end' : 'bg-green-100 dark:bg-night-500 justify-start'}`}>
         <div className="w-5 h-5 rounded-full bg-white shadow" />
       </div>
     </button>

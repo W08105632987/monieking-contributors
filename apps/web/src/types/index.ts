@@ -3,7 +3,7 @@ export type UserRole = 'customer' | 'officer' | 'admin' | 'director'
 export type UserStatus = 'active' | 'suspended' | 'pending_verification'
 export type CardType = 'regular' | 'food'
 export type CardStatus = 'active' | 'completed' | 'converted' | 'archived'
-export type CardCompletionStatus = 'paid' | 'unpaid' | 'withdrawal_pending'
+export type CardCompletionStatus = 'paid' | 'unpaid' | 'partially_paid' | 'withdrawal_pending'
 export type WithdrawalStatus = 'pending' | 'claimed' | 'paid' | 'rejected'
 export type TxType = 'credit' | 'debit'
 export type TxCategory =
@@ -30,6 +30,7 @@ export interface User {
   next_of_kin_name: string | null
   next_of_kin_phone: string | null
   zone_id: string | null
+  zone_name: string | null
   created_by: string | null
   is_manual_customer: boolean
   managing_officer_id: string | null
@@ -42,6 +43,7 @@ export interface User {
   nin_linked?: boolean
   bvn_last4?: string | null
   nin_last4?: string | null
+  sms_alerts_enabled?: boolean
   created_at: string
   updated_at: string
 }
@@ -347,6 +349,55 @@ export interface ZoneAnalytics {
   not_asked_count: number
 }
 
+// ─── Customer Statistics panel (director general / director→officer /
+// officer's own dashboard) ─────────────────────────────────────────
+export interface CustomerStatsTrend {
+  total_contributors: number | null
+  food_contributors: number | null
+  regular_contributors: number | null
+  active_contributors: number | null
+  inactive_contributors: number | null
+  new_contributors: number | null
+  total_value_active_kobo: number | null
+}
+
+export interface CustomerStatsOverview {
+  total_contributors: number
+  food_contributors: number
+  regular_contributors: number
+  active_contributors: number
+  inactive_contributors: number
+  new_contributors: number
+  total_value_active_kobo: number
+  trend: CustomerStatsTrend | null
+  period: { start_date: string | null; end_date: string | null }
+}
+
+export interface OfficerContributionStats {
+  officer_id: string
+  amount_gathered_kobo: number
+  contribution_count: number
+  period: { start_date: string | null; end_date: string | null }
+}
+
+export interface InactiveCustomer {
+  id: string
+  customer_number: number
+  full_name: string
+  phone_number: string
+  withdrawn_all: boolean
+  no_recent_contribution: boolean
+  last_contribution_at: string | null
+  last_contacted_at: string | null
+}
+
+export interface InactiveCustomersPage {
+  customers: InactiveCustomer[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export type DisputeEntityType = 'wallet_transaction' | 'withdrawal'
 export type DisputeStatus = 'open' | 'under_review' | 'escalated' | 'resolved'
 export type DisputeReason =
@@ -390,4 +441,92 @@ export interface Dispute {
 
 export interface DisputeDetail extends Dispute {
   messages: DisputeMessage[]
+}
+
+// ─── Identity services (NIMC/BVN/TIN/CAC/etc quick actions) ───────
+export type IdentityServiceCategory =
+  | 'nimc' | 'bvn' | 'tin' | 'attestation' | 'cac' | 'vendor' | 'airtime' | 'bills'
+export type IdentityRequestStatus = 'pending' | 'completed' | 'failed' | 'reversed'
+export type IdentityRequestInitiatedBy = 'customer' | 'officer'
+
+export interface RequiredField {
+  key: string
+  label: string
+  type: 'text' | 'boolean' | 'file'
+  required: boolean
+  hint?: string | null
+}
+
+export interface IdentityService {
+  id: string
+  category: IdentityServiceCategory
+  code: string
+  name: string
+  description: string | null
+  provider: string
+  provider_endpoint: string | null
+  price_kobo: number
+  is_active: boolean
+  required_fields: RequiredField[]
+  updated_at: string
+}
+
+export interface IdentityServiceRequest {
+  id: string
+  service_id: string
+  service_name: string
+  service_category: IdentityServiceCategory
+  customer_id: string
+  initiated_by: IdentityRequestInitiatedBy
+  officer_id: string | null
+  status: IdentityRequestStatus
+  request_payload: Record<string, unknown>
+  response_summary: Record<string, unknown> | null
+  failure_reason: string | null
+  amount_charged_kobo: number
+  provider_reference: string | null
+  created_at: string
+  completed_at: string | null
+}
+
+// ── Bill payments (airtime, data, electricity, cable TV, education) ──
+// Separate module from identity services — see
+// backend/app/services/bill_payment_service.py for why.
+export type BillerCategory = 'airtime' | 'data' | 'electricity' | 'cable_tv' | 'education'
+export type BillPaymentStatus = 'pending_validation' | 'validated' | 'pending' | 'completed' | 'failed' | 'reversed'
+
+export interface Biller {
+  id: string
+  category: BillerCategory
+  name: string
+  product_id: string
+  product_name: string
+  price_kobo: number | null   // set for fixed-price products (data/education); null means customer enters an amount
+  requires_validation: boolean
+}
+
+export interface BillValidationResult {
+  validation_reference: string | null
+  validated_account_name: string | null
+  requires_validation: boolean
+}
+
+export interface BillPaymentRequest {
+  id: string
+  biller_id: string
+  biller_name: string
+  biller_category: BillerCategory
+  customer_id: string
+  initiated_by: IdentityRequestInitiatedBy
+  officer_id: string | null
+  customer_reference: string
+  amount_kobo: number
+  validated_account_name: string | null
+  status: BillPaymentStatus
+  failure_reason: string | null
+  token: string | null
+  amount_charged_kobo: number | null
+  monnify_transaction_reference: string | null
+  created_at: string
+  completed_at: string | null
 }

@@ -1,6 +1,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { idempotencyKey } from './utils'
 import { useServerHealthStore } from '@/store/serverHealth.store'
+import { useAuthStore } from '@/store/auth.store'
 import type { ApiError } from '@/types'
 
 // ── Base URL ─────────────────────────────────────────────────────
@@ -90,9 +91,24 @@ api.interceptors.response.use(
       original._retried = true
       const refreshed = await tryRefresh()
       if (refreshed) return api(original)
-      if (!redirectingToLogin && !window.location.pathname.startsWith('/auth/')) {
+      // Used to be `window.location.href = '/auth/login'` here — a hard
+      // full-page reload. That rebooted the ENTIRE app from scratch
+      // (new splash, new everything) just to end up back at the login
+      // page, which is exactly what caused the double-splash /
+      // flash-of-landing-page-then-login bug. AuthGuard and the
+      // onboarding overlay already react correctly, instantly, and
+      // without a reload the moment isAuthenticated flips false — so
+      // all a 401 needs to do is flip it. No navigation call needed
+      // here at all.
+      if (!redirectingToLogin) {
         redirectingToLogin = true
-        window.location.href = '/auth/login'
+        useAuthStore.getState().logout()
+        // A session can expire more than once in the life of one open
+        // tab (sign back in, stay open for hours, expire again) — this
+        // guard should only dedupe a single burst of parallel 401s
+        // from firing logout() a bunch of times at once, not block
+        // every future one for the rest of the session.
+        setTimeout(() => { redirectingToLogin = false }, 2000)
       }
     }
 

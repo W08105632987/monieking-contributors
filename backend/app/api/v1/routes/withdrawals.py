@@ -19,11 +19,36 @@ from app.models.withdrawal import Withdrawal, WithdrawalStatus
 from app.models.user import User, UserRole
 from app.models.notification import NotificationType
 from app.schemas.withdrawal import WithdrawalRequest, RejectWithdrawalRequest, WithdrawalResponse
-from app.services.card_service import evaluate_withdrawal
+from app.services.card_service import evaluate_withdrawal, recompute_card_completion_status
 from app.utils.audit import log_action
 from app.services.notification_service import send_notification
 
 router = APIRouter(prefix="/withdrawals", tags=["withdrawals"])
+
+
+async def _notify_customers_officer(
+    db: AsyncSession, *, customer_id: uuid.UUID, title: str, body: str,
+    type: NotificationType, related_entity_id: uuid.UUID,
+) -> None:
+    """Whoever CURRENTLY covers this customer's zone gets told when a
+    director approves or rejects one of their customers' withdrawals —
+    not just the customer themselves. Zone-based like everywhere else in
+    this app (disputes, card access): if zone coverage changed since the
+    withdrawal was submitted, this notifies whoever covers it now, not a
+    stale snapshot of who covered it back then."""
+    customer_result = await db.execute(select(User.zone_id).where(User.id == customer_id))
+    zone_id = customer_result.scalar_one_or_none()
+    if not zone_id:
+        return
+    officer_result = await db.execute(
+        select(User).where(User.zone_id == zone_id, User.role == UserRole.OFFICER)
+    )
+    officer = officer_result.scalar_one_or_none()
+    if officer:
+        await send_notification(
+            db, user_id=officer.id, title=title, body=body,
+            type=type, related_entity_id=related_entity_id,
+        )
 
 
 @router.post("", response_model=WithdrawalResponse, status_code=status.HTTP_201_CREATED)
@@ -145,37 +170,81 @@ async def request_withdrawal(
         await db.flush()
 
         # Actually consume the withdrawn days: flag them (not delete) so the grid
-        # can show them in red, and update card totals. Tag each with the
-        # withdrawal's id (now safely persisted above) so a rejection can find
-        # exactly these records later and reverse precisely this — never a guess.
+        # can show them in red. Tag each with the withdrawal's id (now safely
+        # persisted above) so a rejection can find exactly these records later
+        # and reverse precisely this — never a guess.
         for record in evaluation["records"]:
             record.is_withdrawn = True
             record.withdrawal_id = withdrawal_id
-        card.total_days_contributed -= evaluation["days_to_withdraw"]
+        # Deliberately NOT touching card.total_days_contributed here.
+        # total_days_contributed means "days filled" — contribution progress
+        # toward 372 — and every single place across both portals that reads
+        # it (progress bars, "X / 372 days" labels, the dashboard's total)
+        # expects it to only ever go up. It used to be decremented here,
+        # which corrupted that everywhere: withdraw a card's worth of money
+        # and its progress bar would silently jump backwards, sometimes all
+        # the way back to "372 days left" on a card that had actually been
+        # filled the whole time. What actually changes on withdrawal is
+        # is_withdrawn on the individual records (set above) — that's the
+        # real source of truth for what's been paid out, and it's what the
+        # grid, evaluate_withdrawal, and the drained-check below all already
+        # correctly read from directly.
         card.total_contributed_kobo -= body.amount_kobo
 
         # A withdrawn slot is gone for good — it never reopens room on a
-        # completed card. But if every single one of the card's 372 slots has now
-        # been used AND all of them are withdrawn (fully drained, nothing left,
-        # no room for more), the card is genuinely done — close it.
+        # completed card. But if every single one of the card's 372 slots has
+        # now been used AND every one of them has been withdrawn (fully
+        # drained, nothing left, no room for more), the card is genuinely
+        # done — close it. Checked directly against is_withdrawn, not the
+        # (deliberately untouched) total_days_contributed counter above.
         total_slots_result = await db.execute(
             select(func.count()).select_from(ContributionRecord).where(ContributionRecord.card_id == card.id)
         )
         total_slots_used = total_slots_result.scalar_one()
-        if total_slots_used >= 372 and card.total_days_contributed == 0:
+        unwithdrawn_result = await db.execute(
+            select(func.count()).select_from(ContributionRecord).where(
+                ContributionRecord.card_id == card.id, ContributionRecord.is_withdrawn == False,
+            )
+        )
+        unwithdrawn_count = unwithdrawn_result.scalar_one()
+        if total_slots_used >= 372 and unwithdrawn_count == 0:
             card.status = CardStatus.ARCHIVED
+
+        # Keep the paid/unpaid/partially-paid badge honest the moment this
+        # withdrawal is requested — the grid already turns these slots red
+        # immediately (not waiting for director approval), so the badge
+        # should reflect the same "as good as withdrawn" state, not lag
+        # behind it. No-ops on a card that isn't completed yet.
+        await recompute_card_completion_status(db, card)
 
         await db.flush()
 
-        # Notify directors (broadcast)
+        # The customer is the one whose money this actually is — they get
+        # notified regardless of who submitted the request. Previously this
+        # went to current_user.id with "Your withdrawal...", which meant an
+        # officer submitting on a customer's behalf got a notification
+        # phrased as if it were their own money moving, and the actual
+        # customer never heard about it at all.
         await send_notification(
-            db, user_id=current_user.id,
+            db, user_id=customer.id,
             title="Withdrawal request submitted",
             body=f"Your withdrawal of ₦{body.amount_kobo // 100:,} is being processed. "
                  f"You will receive ₦{net_payable_kobo // 100:,} after charges.",
             type=NotificationType.INFO,
             related_entity_id=withdrawal.id,
         )
+        if current_user.id != customer.id:
+            # An officer submitted this on the customer's behalf — they get
+            # their own confirmation too, but referencing whose money it is
+            # rather than implying it's theirs.
+            await send_notification(
+                db, user_id=current_user.id,
+                title="Withdrawal request submitted",
+                body=f"{customer.full_name}'s withdrawal of ₦{body.amount_kobo // 100:,} is being processed. "
+                     f"They will receive ₦{net_payable_kobo // 100:,} after charges.",
+                type=NotificationType.INFO,
+                related_entity_id=withdrawal.id,
+            )
 
         await log_action(
             db, actor_id=current_user.id, action="withdrawal.requested",
@@ -300,13 +369,22 @@ async def mark_withdrawal_paid(
         select(ContributionCard).where(ContributionCard.id == withdrawal.card_id)
     )
     card = card_result.scalar_one_or_none()
-    if card and card.completion_status == CardCompletionStatus.WITHDRAWAL_PENDING:
-        card.completion_status = CardCompletionStatus.PAID
+    if card:
+        await recompute_card_completion_status(db, card)
 
     await send_notification(
         db, user_id=withdrawal.customer_id,
         title="Withdrawal paid ✓",
         body=f"₦{withdrawal.net_payable_kobo // 100:,} has been transferred to your account {withdrawal.account_number}.",
+        type=NotificationType.SUCCESS,
+        related_entity_id=withdrawal.id,
+    )
+    customer_name_result = await db.execute(select(User.full_name).where(User.id == withdrawal.customer_id))
+    customer_name = customer_name_result.scalar_one_or_none() or "A customer"
+    await _notify_customers_officer(
+        db, customer_id=withdrawal.customer_id,
+        title="Withdrawal approved ✓",
+        body=f"{customer_name}'s withdrawal of ₦{withdrawal.net_payable_kobo // 100:,} has been paid out.",
         type=NotificationType.SUCCESS,
         related_entity_id=withdrawal.id,
     )
@@ -373,13 +451,24 @@ async def reject_withdrawal(
                 record.is_withdrawn = False
                 record.withdrawal_id = None
 
-            card.total_days_contributed += len(touched_records)
+            # Only reversing is_withdrawn and the money — total_days_contributed
+            # was never touched by the withdrawal (see request_withdrawal above),
+            # so there's nothing to undo there.
             card.total_contributed_kobo += withdrawal.requested_amount_kobo
 
             # A card that got archived because this withdrawal drained it
             # completely is no longer drained now that it's reversed.
             if card.status == CardStatus.ARCHIVED:
                 card.status = CardStatus.ACTIVE
+                # Back to active means the paid/unpaid badge doesn't apply
+                # anymore at all — that's a COMPLETED-card-only concept.
+                card.completion_status = None
+            else:
+                # Still completed (372/372), just reverse the badge to
+                # match: e.g. a partial withdrawal getting rejected should
+                # drop the card from "Partially paid" back to "Unpaid",
+                # not leave it showing money that was never actually paid.
+                await recompute_card_completion_status(db, card)
 
     await db.flush()
 
@@ -387,6 +476,16 @@ async def reject_withdrawal(
         db, user_id=withdrawal.customer_id,
         title="Withdrawal rejected",
         body=f"Your withdrawal of ₦{withdrawal.requested_amount_kobo // 100:,} was rejected. "
+             f"Reason: {body.reason}",
+        type=NotificationType.ERROR,
+        related_entity_id=withdrawal.id,
+    )
+    customer_name_result = await db.execute(select(User.full_name).where(User.id == withdrawal.customer_id))
+    customer_name = customer_name_result.scalar_one_or_none() or "A customer"
+    await _notify_customers_officer(
+        db, customer_id=withdrawal.customer_id,
+        title="Withdrawal rejected",
+        body=f"{customer_name}'s withdrawal of ₦{withdrawal.requested_amount_kobo // 100:,} was rejected. "
              f"Reason: {body.reason}",
         type=NotificationType.ERROR,
         related_entity_id=withdrawal.id,

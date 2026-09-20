@@ -34,10 +34,28 @@ async def credit_wallet(
     initiated_by: uuid.UUID,
     related_card_id: uuid.UUID | None = None,
 ) -> WalletTransaction:
-    """Credit wallet balance. Uses row-level lock."""
-    # Re-fetch with lock
+    """
+    Credit wallet balance. Uses row-level lock.
+
+    BUG MK-WALLET-001 FIX: the caller's `wallet` argument may already be a
+    loaded object sitting in this session's identity map (e.g. from
+    get_or_create_wallet earlier in the same request). Without
+    populate_existing=True, SQLAlchemy's default behavior on a repeat
+    SELECT for a primary key it already has in the identity map is to
+    hand back the SAME Python object with its ORIGINAL (pre-lock)
+    attribute values — the SELECT ... FOR UPDATE genuinely runs and
+    genuinely blocks at the SQL level, but the balance this function
+    then reads and mutates is the stale, pre-lock one, not the row it
+    just locked. Two near-simultaneous requests can both pass a balance
+    check against the same stale number. populate_existing=True forces
+    SQLAlchemy to overwrite the cached object's attributes with what
+    this SELECT actually returns, so `locked_wallet.balance_kobo` below
+    is genuinely the just-locked, up-to-date value.
+    """
     result = await db.execute(
-        select(Wallet).where(Wallet.id == wallet.id).with_for_update()
+        select(Wallet).where(Wallet.id == wallet.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     locked_wallet = result.scalar_one()
 
@@ -74,17 +92,29 @@ async def debit_wallet(
     initiated_by: uuid.UUID,
     related_card_id: uuid.UUID | None = None,
     related_withdrawal_id: uuid.UUID | None = None,
+    allow_negative: bool = False,
 ) -> WalletTransaction:
-    """Debit wallet balance. Raises 400 if insufficient funds."""
+    """
+    Debit wallet balance. Raises 400 if insufficient funds unless allow_negative=True
+    (used for automated monthly SMS subscription overdrafts).
+
+    Same MK-WALLET-001 fix as credit_wallet above — see that docstring
+    for the full mechanism. This is the more dangerous of the two sites,
+    since it's the one that gates real external money movement
+    (Monnify disbursement, bill vend) in withdrawals.py,
+    bill_payment_service.py, and identity_services.py.
+    """
     result = await db.execute(
-        select(Wallet).where(Wallet.id == wallet.id).with_for_update()
+        select(Wallet).where(Wallet.id == wallet.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     locked_wallet = result.scalar_one()
 
     if locked_wallet.is_frozen:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Wallet is frozen")
 
-    if locked_wallet.balance_kobo < amount_kobo:
+    if not allow_negative and locked_wallet.balance_kobo < amount_kobo:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Insufficient wallet balance. Available: ₦{locked_wallet.balance_kobo // 100:,}",

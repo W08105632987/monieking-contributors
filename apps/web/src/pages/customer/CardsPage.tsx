@@ -11,10 +11,14 @@ import { formatNaira, MONTH_NAMES } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn } from '@/lib/utils'
 import type { ContributionCard, CardGrid } from '@/types'
-import { FEATURE_FLAGS } from '@/config/featureFlags'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { FoodCardRulesModal } from '@/components/food/FoodCardRulesModal'
+import { FoodQrDisplayModal } from '@/components/food/FoodQrDisplayModal'
+import { QrCode } from 'lucide-react'
+import { toast } from 'react-hot-toast'
 
 // ── Flippable card ────────────────────────────────────────────────
-function CardItem({ card, grid }: { card: ContributionCard; grid?: CardGrid }) {
+function CardItem({ card, grid, onOpenFoodPass }: { card: ContributionCard; grid?: CardGrid; onOpenFoodPass?: (card: ContributionCard) => void }) {
   const [flipped, setFlipped] = useState(false)
 
   // Grid data comes from a single batched GET /cards/grids call made once
@@ -66,7 +70,7 @@ function CardItem({ card, grid }: { card: ContributionCard; grid?: CardGrid }) {
                 </div>
                 <span className={cn(
                   'text-xs font-bold px-3 py-1 rounded-full',
-                  isFood ? 'bg-green-700 text-green-200 dark:text-night-400' : 'bg-amber-500/20 dark:bg-night-500/30 text-amber-400 dark:text-night-100'
+                  isFood ? 'bg-green-700 dark:bg-night-500/30 text-green-200 dark:text-night-100' : 'bg-amber-500/20 dark:bg-night-500/30 text-amber-400 dark:text-night-100'
                 )}>
                   {isFood ? '🍱 Food' : '📋 Regular'}
                 </span>
@@ -107,7 +111,7 @@ function CardItem({ card, grid }: { card: ContributionCard; grid?: CardGrid }) {
                 <div className="flex items-center gap-2 text-xs text-green-500 dark:text-night-200">
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-600 inline-block" /> Filled</span>
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400 inline-block" /> Withdrawn</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-100 dark:bg-night-600 inline-block" /> Empty</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-100 dark:bg-night-500 inline-block" /> Empty</span>
                 </div>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar" onClick={e => e.stopPropagation()} style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -127,7 +131,7 @@ function CardItem({ card, grid }: { card: ContributionCard; grid?: CardGrid }) {
                             key={dIdx}
                             className={cn(
                               'flex-1 rounded-sm',
-                              cell?.withdrawn ? 'bg-red-400' : cell?.filled ? 'bg-green-600' : 'bg-green-100 dark:bg-night-600'
+                              cell?.withdrawn ? 'bg-red-400' : cell?.filled ? 'bg-green-600' : 'bg-green-100 dark:bg-night-500'
                             )}
                             style={{ aspectRatio: '1' }}
                           />
@@ -145,27 +149,50 @@ function CardItem({ card, grid }: { card: ContributionCard; grid?: CardGrid }) {
 
       {/* Card actions */}
       <div className="flex gap-2 px-1">
-        {isFood ? (
-          <button
-            onClick={() => navigate(`/customer/cards/${card.card_number}/contribute`)}
-            className="flex-1 flex items-center justify-center gap-2 bg-green-900 dark:bg-night-100 text-white dark:text-night-900 text-sm font-bold rounded-full py-3 active:scale-95 transition-all"
-          >
-            <Lock className="w-4 h-4" /> Contribute
-          </button>
+        {card.status === 'active' ? (
+          <>
+            <button
+              onClick={() => navigate(`/customer/cards/${card.card_number}/contribute`)}
+              className="flex-1 flex items-center justify-center gap-2 bg-green-900 dark:bg-night-100 text-white dark:text-night-900 text-sm font-bold rounded-full py-3 active:scale-95 transition-all"
+            >
+              {isFood ? <Lock className="w-4 h-4" /> : <Plus className="w-4 h-4" />} Contribute
+            </button>
+            <button
+              onClick={() => navigate(`/customer/cards/${card.card_number}`)}
+              className="flex items-center justify-center gap-1 border-2 border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 text-sm font-bold rounded-full px-5 py-3 active:scale-95 transition-all"
+            >
+              Details <ChevronRight className="w-4 h-4" />
+            </button>
+          </>
         ) : (
-          <button
-            onClick={() => navigate(`/customer/cards/${card.card_number}/contribute`)}
-            className="flex-1 flex items-center justify-center gap-2 bg-green-900 dark:bg-night-100 text-white dark:text-night-900 text-sm font-bold rounded-full py-3 active:scale-95 transition-all"
-          >
-            <Plus className="w-4 h-4" /> Contribute
-          </button>
+          <>
+            {isFood && (
+              <button
+                onClick={() => onOpenFoodPass && onOpenFoodPass(card)}
+                className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-green-950 text-sm font-bold rounded-full py-3 active:scale-95 transition-all shadow-card"
+              >
+                <QrCode className="w-4 h-4" /> Food Pass (QR)
+              </button>
+            )}
+            {card.completion_status !== 'paid' && !isFood && (
+              <button
+                onClick={() => navigate(`/customer/withdrawals/new?card=${card.id}`)}
+                className="flex-1 flex items-center justify-center gap-2 bg-green-900 dark:bg-night-100 text-white dark:text-night-900 text-sm font-bold rounded-full py-3 active:scale-95 transition-all"
+              >
+                Request withdrawal
+              </button>
+            )}
+            <button
+              onClick={() => navigate(`/customer/cards/${card.card_number}`)}
+              className={cn(
+                'flex items-center justify-center gap-1 border-2 border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 text-sm font-bold rounded-full py-3 active:scale-95 transition-all',
+                (card.completion_status !== 'paid' && !isFood) ? 'px-5' : 'flex-1'
+              )}
+            >
+              {(card.completion_status !== 'paid' && !isFood) ? <>Details <ChevronRight className="w-4 h-4" /></> : 'View details & history'}
+            </button>
+          </>
         )}
-        <button
-          onClick={() => navigate(`/customer/cards/${card.card_number}`)}
-          className="flex items-center justify-center gap-1 border-2 border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 text-sm font-bold rounded-full px-5 py-3 active:scale-95 transition-all"
-        >
-          Details <ChevronRight className="w-4 h-4" />
-        </button>
       </div>
     </motion.div>
   )
@@ -178,9 +205,9 @@ function CompletionBadge({ status }: { status: string | null }) {
       <CheckCircle className="w-3 h-3" /> Paid
     </span>
   )
-  if (status === 'withdrawal_pending') return (
+  if (status === 'partially_paid') return (
     <span className="flex items-center gap-1 text-xs font-bold bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-full">
-      <Clock className="w-3 h-3" /> Pending
+      <Clock className="w-3 h-3" /> Partially paid
     </span>
   )
   return (
@@ -196,6 +223,8 @@ function CreateCardModal({ onClose }: { onClose: () => void }) {
   const [cardType, setCardType] = useState<'regular' | 'food'>('regular')
   const [rateNaira, setRateNaira] = useState('')
   const [loading, setLoading] = useState(false)
+  const [foodRulesAccepted, setFoodRulesAccepted] = useState(false)
+  const [showRulesModal, setShowRulesModal] = useState(false)
 
   const FOOD_RATE_KOBO = 100000
   const rateKobo = cardType === 'food' ? FOOD_RATE_KOBO : Math.round(parseFloat(rateNaira || '0') * 100)
@@ -203,6 +232,10 @@ function CreateCardModal({ onClose }: { onClose: () => void }) {
 
   const handleCreate = async () => {
     if (!isValid) return
+    if (cardType === 'food' && !foodRulesAccepted) {
+      setShowRulesModal(true)
+      return
+    }
     setLoading(true)
     try {
       await createCard.mutateAsync({ card_type: cardType, rate_kobo: rateKobo })
@@ -212,88 +245,124 @@ function CreateCardModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const handleRulesAccepted = () => {
+    setFoodRulesAccepted(true)
+    setShowRulesModal(false)
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
-      <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-6" />
-        <h2 className="text-green-900 dark:text-white font-extrabold text-xl mb-1">Create new card</h2>
-        <p className="text-green-500 dark:text-night-200 text-sm mb-6">Choose your card type and daily contribution rate</p>
-
-        {/* Card type */}
-        <p className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide mb-3">Card type</p>
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          {[
-            { type: 'regular' as const, label: 'Regular Card', desc: 'Choose your daily rate', icon: '📋' },
-            { type: 'food'    as const, label: 'Food Card',    desc: 'Fixed ₦1,000/day · Locked', icon: '🍱' },
-          ].map(opt => (
-            <button
-              key={opt.type}
-              onClick={() => setCardType(opt.type)}
-              className={cn(
-                'p-4 rounded-2xl border-2 text-left transition-all',
-                cardType === opt.type
-                  ? 'border-green-900 dark:border-night-200 bg-green-50 dark:bg-night-600'
-                  : 'border-green-100 dark:border-night-500 bg-white dark:bg-night-700'
-              )}
-            >
-              <span className="text-2xl block mb-2">{opt.icon}</span>
-              <p className={cn('font-bold text-sm', cardType === opt.type ? 'text-green-900 dark:text-white' : 'text-green-700 dark:text-night-100')}>{opt.label}</p>
-              <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{opt.desc}</p>
-            </button>
-          ))}
-        </div>
-
-        {/* Rate input — only for regular */}
-        {cardType === 'regular' && (
-          <>
-            <p className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide mb-3">Daily rate (₦)</p>
-            <div className="relative mb-2">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-green-500 dark:text-night-200 font-bold">₦</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                name="customer-create-card-rate"
-                autoComplete="off"
-                value={rateNaira}
-                onChange={e => setRateNaira(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder="e.g. 500"
-                className="w-full border-2 border-green-200 dark:border-night-500 rounded-xl pl-8 pr-4 py-3 text-sm text-green-900 dark:text-white font-semibold focus:outline-none focus:border-green-500 dark:focus:border-night-200"
-              />
-            </div>
-            {rateNaira && (
-              <div className={cn('text-xs font-semibold mb-6', isValid ? 'text-green-600 dark:text-night-200' : 'text-red-500')}>
-                {isValid ? 'Looks good' : 'Rate must be a multiple of ₦50'}
-              </div>
-            )}
-          </>
-        )}
-
-        {cardType === 'food' && (
-          <div className="bg-green-50 dark:bg-night-600 rounded-2xl p-4 mb-6 border border-green-200 dark:border-night-500">
-            <p className="text-green-700 dark:text-night-100 text-sm font-semibold mb-1">🔒 Food Card rules</p>
-            <p className="text-green-500 dark:text-night-200 text-xs leading-relaxed">Fixed at ₦1,000/day. Funds are locked until December. Complete all contributions by Nov 30 to qualify for food distribution.</p>
-          </div>
-        )}
-
-        <button
-          onClick={handleCreate}
-          disabled={loading || !isValid}
-          className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-4 active:scale-95 transition-all disabled:opacity-50"
+    <>
+      <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+        <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+        <motion.div
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+          className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
+          onClick={e => e.stopPropagation()}
         >
-          {loading ? 'Creating card…' : `Create ${cardType === 'food' ? 'Food' : 'Regular'} Card`}
-        </button>
-      </motion.div>
-    </div>
+          <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-6" />
+          <h2 className="text-green-900 dark:text-white font-extrabold text-xl mb-1">Create new card</h2>
+          <p className="text-green-500 dark:text-night-200 text-sm mb-6">Choose your card type and daily contribution rate</p>
+
+          {/* Card type */}
+          <p className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide mb-3">Card type</p>
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {[
+              { type: 'regular' as const, label: 'Regular Card', desc: 'Choose your daily rate', icon: '📋' },
+              { type: 'food'    as const, label: 'Food Card',    desc: 'Fixed ₦1,000/day · Locked', icon: '🍱' },
+            ].map(opt => (
+              <button
+                key={opt.type}
+                onClick={() => {
+                  setCardType(opt.type)
+                  if (opt.type === 'food' && !foodRulesAccepted) {
+                    setShowRulesModal(true)
+                  }
+                }}
+                className={cn(
+                  'p-4 rounded-2xl border-2 text-left transition-all',
+                  cardType === opt.type
+                    ? 'border-green-900 dark:border-night-200 bg-green-50 dark:bg-night-600'
+                    : 'border-green-100 dark:border-night-500 bg-white dark:bg-night-700'
+                )}
+              >
+                <span className="text-2xl block mb-2">{opt.icon}</span>
+                <p className={cn('font-bold text-sm', cardType === opt.type ? 'text-green-900 dark:text-white' : 'text-green-700 dark:text-night-100')}>{opt.label}</p>
+                <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{opt.desc}</p>
+              </button>
+            ))}
+          </div>
+
+          {/* Rate input — only for regular */}
+          {cardType === 'regular' && (
+            <>
+              <p className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide mb-3">Daily rate (₦)</p>
+              <div className="relative mb-2">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-green-500 dark:text-night-200 font-bold">₦</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  name="customer-create-card-rate"
+                  autoComplete="off"
+                  value={rateNaira}
+                  onChange={e => setRateNaira(e.target.value.replace(/[^0-9.]/g, ''))}
+                  placeholder="e.g. 500"
+                  className="w-full border-2 border-green-200 dark:border-night-500 rounded-xl pl-8 pr-4 py-3 text-sm text-green-900 dark:text-white font-semibold focus:outline-none focus:border-green-500 dark:focus:border-night-200"
+                />
+              </div>
+              {rateNaira && (
+                <div className={cn('text-xs font-semibold mb-6', isValid ? 'text-green-600 dark:text-night-200' : 'text-red-500')}>
+                  {isValid ? 'Looks good' : 'Rate must be a multiple of ₦50'}
+                </div>
+              )}
+            </>
+          )}
+
+          {cardType === 'food' && (
+            <div className="bg-green-50 dark:bg-night-600 rounded-2xl p-4 mb-6 border border-green-200 dark:border-night-500">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-green-700 dark:text-night-100 text-sm font-semibold">🔒 Food Card Rules</p>
+                {foodRulesAccepted ? (
+                  <span className="text-[11px] font-bold text-green-700 dark:text-green-400 bg-green-200/60 dark:bg-green-900/40 px-2 py-0.5 rounded-full">
+                    ✓ Accepted
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowRulesModal(true)}
+                    className="text-xs font-bold text-amber-700 dark:text-amber-300 underline"
+                  >
+                    View 5 Rules
+                  </button>
+                )}
+              </div>
+              <p className="text-green-600 dark:text-night-200 text-xs leading-relaxed">
+                Fixed at ₦1,000/day. Complete all 372 days by Nov 30 to qualify for Dec 10 food distribution.
+              </p>
+            </div>
+          )}
+
+          <button
+            onClick={handleCreate}
+            disabled={loading || !isValid}
+            className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-4 active:scale-95 transition-all disabled:opacity-50 shadow-card"
+          >
+            {loading ? 'Creating card…' : `Create ${cardType === 'food' ? 'Food' : 'Regular'} Card`}
+          </button>
+        </motion.div>
+      </div>
+
+      <FoodCardRulesModal
+        isOpen={showRulesModal}
+        onClose={() => setShowRulesModal(false)}
+        onAccept={handleRulesAccepted}
+      />
+    </>
   )
 }
+
 
 // ── Tab types ─────────────────────────────────────────────────────
 type Tab = 'active' | 'completed'
@@ -306,6 +375,22 @@ export default function CardsPage() {
   const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'completed' ? 'completed' : 'active')
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [foodPassData, setFoodPassData] = useState<any | null>(null)
+  const [showFoodPass, setShowFoodPass] = useState(false)
+
+  const handleOpenFoodPass = async (_card: ContributionCard) => {
+    try {
+      const { data } = await api.get('/food-collections/me')
+      if (data.has_entitlement) {
+        setFoodPassData(data)
+        setShowFoodPass(true)
+      } else {
+        toast.error('Food Collection Pass is unlocked upon completing all 372 contribution days before November 30.')
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Could not load food collection pass.')
+    }
+  }
 
   const activeCards    = cards.filter(c => c.status === 'active')
   const completedCards = cards.filter(c => c.status === 'completed' || c.status === 'archived')
@@ -318,7 +403,7 @@ export default function CardsPage() {
       const { data } = await api.get<{ card_id: string; grid: CardGrid }[]>('/cards/grids')
       return data
     },
-    enabled: activeCards.length > 0,
+    enabled: cards.length > 0,
     staleTime: 30_000,
   })
   const gridsByCardId: Record<string, CardGrid> = {}
@@ -329,15 +414,7 @@ export default function CardsPage() {
 
       {/* ── Top bar ── */}
       <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-green-900 dark:bg-white/10 rounded-xl flex items-center justify-center shadow-card">
-            <span className="text-amber-400 font-extrabold text-base">₦</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-green-900 dark:text-white font-extrabold text-xl tracking-tight leading-none">Monie</span>
-            <span className="text-amber-500 font-extrabold text-xl tracking-tight leading-none">King</span>
-          </div>
-        </div>
+        <BrandBlobLogo height={36} />
         <button onClick={() => navigate('/customer/profile')} className="rounded-full shadow-card">
           <Avatar name={user?.full_name ?? 'U'} avatarUrl={user?.avatar_url} size={40} />
         </button>
@@ -438,49 +515,14 @@ export default function CardsPage() {
                   </p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {completedCards.map((card, i) => (
-                    <motion.div
-                      key={card.id}
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.06 }}
-                      className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <p className="text-green-900 dark:text-white font-bold text-sm">
-                            {card.card_type === 'food' ? '🍱 Food Card' : '📋 Regular Card'}
-                          </p>
-                          <p className="text-green-500 dark:text-night-200 text-xs mt-0.5">{formatNaira(card.rate_kobo)}/day</p>
-                        </div>
-                        <CompletionBadge status={card.completion_status} />
-                      </div>
-                      <div className="h-1.5 bg-green-100 dark:bg-night-600 rounded-full overflow-hidden mb-2">
-                        <div
-                          className="h-full rounded-full bg-green-500"
-                          style={{ width: `${Math.min(100, Math.round((card.total_days_contributed / 372) * 100))}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between text-xs text-green-500 dark:text-night-200 mb-3">
-                        <span>
-                          {card.total_days_contributed} / 372 days
-                          {card.total_days_contributed >= 372 ? ' — Complete' : ' — Closed early'}
-                        </span>
-                        <span>{formatNaira(card.total_contributed_kobo)}</span>
-                      </div>
-                      {card.completion_status !== 'paid' && (
-                        <button
-                          onClick={() => FEATURE_FLAGS.WITHDRAWALS_ENABLED && navigate(`/customer/withdrawals/new?card=${card.id}`)}
-                          disabled={!FEATURE_FLAGS.WITHDRAWALS_ENABLED}
-                          className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 text-xs font-bold rounded-full py-2.5 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
-                        >
-                          {FEATURE_FLAGS.WITHDRAWALS_ENABLED ? 'Request withdrawal' : 'Withdrawals coming soon'}
-                        </button>
-                      )}
-                    </motion.div>
-                  ))}
-                </div>
+                completedCards.map(card => (
+                  <div key={card.id} className="relative">
+                    <div className="absolute top-2 right-2 z-10">
+                      <CompletionBadge status={card.completion_status} />
+                    </div>
+                    <CardItem card={card} grid={gridsByCardId[card.id]} onOpenFoodPass={handleOpenFoodPass} />
+                  </div>
+                ))
               )}
             </motion.div>
           )}
@@ -493,6 +535,18 @@ export default function CardsPage() {
       <AnimatePresence>
         {showCreateModal && <CreateCardModal onClose={() => setShowCreateModal(false)} />}
       </AnimatePresence>
+
+      {foodPassData && (
+        <FoodQrDisplayModal
+          isOpen={showFoodPass}
+          onClose={() => setShowFoodPass(false)}
+          qrToken={foodPassData.qr_token || ''}
+          collectionPin={foodPassData.collection_pin || ''}
+          cardNumber={foodPassData.card_number}
+          packageName={foodPassData.package_name || 'Standard Holiday Food Package'}
+          status={foodPassData.status || 'active'}
+        />
+      )}
     </div>
   )
 }

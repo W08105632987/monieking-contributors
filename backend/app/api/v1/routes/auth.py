@@ -5,6 +5,7 @@ We use Supabase client directly from the frontend for auth,
 and just create the platform user record here on the backend.
 """
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -39,10 +40,17 @@ async def get_supabase_uid(
     return uid
 from app.models.user import User, UserRole, UserStatus
 from app.services.wallet_service import get_or_create_wallet
+from app.services.user_service import build_user_response
 from app.schemas.user import RegisterCustomerRequest, UserResponse
 from app.utils.audit import log_action
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Bump this whenever the Terms of Service or Privacy Policy content
+# changes materially — lets you tell who accepted an older version.
+# Keep in sync with LEGAL_DOCUMENT_VERSION in
+# apps/web/src/pages/legal/*.tsx.
+LEGAL_DOCUMENT_VERSION = "2026-09-01"
 
 
 @router.post("/signup-session")
@@ -105,6 +113,8 @@ async def register_customer(
         status=        UserStatus.ACTIVE,
         login_password_hash=      hash_password(body.password),
         withdrawal_password_hash= hash_withdrawal_password(body.withdrawal_password),
+        terms_accepted_at=      datetime.now(timezone.utc),
+        terms_accepted_version= LEGAL_DOCUMENT_VERSION,
     )
     db.add(user)
 
@@ -155,7 +165,7 @@ async def register_customer(
     except Exception as e:
         print(f"Audit log failed (non-fatal): {e}")
 
-    return user
+    return await build_user_response(db, user)
 
 
 @router.post("/set-withdrawal-password", status_code=200)
@@ -170,11 +180,17 @@ async def set_withdrawal_password(
     if password.isdigit():
         raise HTTPException(status_code=400, detail="Withdrawal password can't be all numbers — add a letter or symbol")
     from app.core.security import hash_withdrawal_password
+    # current_user may be the cached (unattached) object — fetch a real
+    # session-attached row before mutating, so this actually persists.
+    # (withdrawal_password_hash itself is never cached — see
+    # _CACHE_EXCLUDE in dependencies.py — so this fetch also gets the
+    # accurate up-to-the-second value for the is_change check below.)
+    user = await db.get(User, current_user.id)
     # Only a genuine CHANGE (there was already a password) is worth
     # alerting on — first-time setup during registration isn't a
     # security event, there's nothing to protect yet.
-    is_change = current_user.withdrawal_password_hash is not None
-    current_user.withdrawal_password_hash = hash_withdrawal_password(password)
+    is_change = user.withdrawal_password_hash is not None
+    user.withdrawal_password_hash = hash_withdrawal_password(password)
     await db.flush()
     if is_change:
         from app.services.notification_service import send_notification
@@ -413,7 +429,7 @@ async def login(
     await record_success(db, user)
     set_session_cookies(response, session["access_token"], session.get("refresh_token"))
 
-    return user
+    return await build_user_response(db, user)
 
 
 @router.post("/refresh", response_model=UserResponse)
@@ -436,7 +452,7 @@ async def refresh(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="USER_NOT_IN_PLATFORM")
-    return user
+    return await build_user_response(db, user)
 
 
 @router.post("/logout")

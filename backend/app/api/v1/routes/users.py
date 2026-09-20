@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy import func
 
 from app.core.database import get_db
-from app.core.dependencies import CurrentUser, DirectorOnly
+from app.core.dependencies import CurrentUser, DirectorOnly, DirectorOrAdmin, invalidate_user_cache
 from app.core.security import hash_password, hash_withdrawal_password
 from app.core.config import get_settings
 from app.models.user import User, UserRole, UserStatus, LocationConsentStatus
@@ -19,9 +19,10 @@ from app.models.withdrawal import Withdrawal, WithdrawalStatus
 from app.schemas.user import (
     UserResponse, CreateOfficerRequest, CreateDirectorRequest, UpdateUserStatusRequest,
     RegisterCustomerRequest, LocationUpdateRequest, UpdateBankDetailsRequest,
+    UpdateSmsAlertsRequest,
 )
 from app.services.wallet_service import get_or_create_wallet
-from app.services.user_service import resolve_user
+from app.services.user_service import resolve_user, build_user_response, build_user_responses
 from app.integrations.monnify import get_payment_provider
 from app.utils.audit import log_action
 from app.utils.supabase_auth import create_supabase_auth_user
@@ -33,8 +34,11 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_my_profile(current_user: CurrentUser):
-    return current_user
+async def get_my_profile(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    # Shared with /auth/login, /auth/register, /auth/refresh — see
+    # build_user_response's docstring in user_service.py for why this
+    # can't just be UserResponse.model_validate(current_user).
+    return await build_user_response(db, current_user)
 
 
 @router.patch("/me", response_model=UserResponse)
@@ -43,13 +47,25 @@ async def update_my_profile(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update own non-sensitive profile fields."""
-    allowed = {"bank_name", "bank_code", "account_number", "account_name", "next_of_kin_name", "next_of_kin_phone"}
+    """Update own non-sensitive profile fields.
+
+    SECURITY (audit finding): bank_name/bank_code/account_number/
+    account_name used to be in the `allowed` set below — meaning ANY
+    authenticated user could redirect their own payout account with a
+    single unauthenticated PATCH call here, completely bypassing
+    /me/bank-details' withdrawal-password check, account-name
+    verification, and security notification. Those fields now go
+    through that dedicated endpoint exclusively — this one no longer
+    accepts them at all, not even to reject them gracefully; they're
+    just not in `allowed`, so they're silently ignored like any other
+    unrecognized key, same as before this endpoint existed.
+    """
+    allowed = {"next_of_kin_name", "next_of_kin_phone"}
     for key, value in updates.items():
         if key in allowed:
             setattr(current_user, key, value)
     await db.flush()
-    return current_user
+    return await build_user_response(db, current_user)
 
 
 @router.get("/banks")
@@ -117,7 +133,7 @@ async def get_user_by_id(
         if not current_user.zone_id or target.zone_id != current_user.zone_id:
             raise HTTPException(status_code=403, detail="Access denied")
 
-    return target
+    return await build_user_response(db, target)
 
 
 @router.get("", response_model=list[UserResponse])
@@ -158,7 +174,12 @@ async def list_users(
 
     query = query.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
-    return result.scalars().all()
+    # build_user_responses batch-fixes the same zone_name gap as
+    # build_user_response (see its docstring) — this list endpoint used
+    # to return raw ORM rows straight through response_model, which
+    # meant zone_name was always null for every officer/customer in
+    # every list view.
+    return await build_user_responses(db, list(result.scalars().all()))
 
 
 @router.post("/customers", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -174,6 +195,18 @@ async def create_customer(
     user_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
     if user_role not in ("officer", "admin", "director"):
         raise HTTPException(status_code=403, detail="Access denied")
+
+    # An officer with no zone can't be attributed anywhere meaningful — a
+    # customer registered this way would end up zone-less (per the comment
+    # further down where zone_id gets set from current_user.zone_id),
+    # invisible to zone-scoped officer listings and untracked in any
+    # zone's coverage/statistics. Block at the source rather than let a
+    # zone-less customer get created and discovered later.
+    if user_role == "officer" and not current_user.zone_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not assigned to a zone yet. Contact your director before registering customers.",
+        )
 
     existing = await db.execute(select(User).where(User.phone_number == body.phone_number))
     if existing.scalar_one_or_none():
@@ -252,13 +285,13 @@ async def create_customer(
         new_value={"full_name": customer.full_name, "phone_number": customer.phone_number},
         ip_address=request.client.host if request and request.client else None,
     )
-    return customer
+    return await build_user_response(db, customer)
 
 
 @router.post("/officers", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_officer(
     body: CreateOfficerRequest,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
@@ -320,17 +353,23 @@ async def create_officer(
         new_value={"full_name": officer.full_name, "phone_number": officer.phone_number},
         ip_address=request.client.host if request else None,
     )
-    return officer
+    return await build_user_response(db, officer)
 
 
 @router.post("/directors", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_director(
     body: CreateDirectorRequest,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """Directors create other Director accounts (Admin role no longer exists as a separate account type)."""
+    """Directors and admins create other Director accounts. (The stale
+    docstring this replaced claimed "Admin role no longer exists as a
+    separate account type" — that's not true of the current schema:
+    UserRole.ADMIN is very much still a real, distinct role, used by
+    this exact endpoint's own access check and throughout the new admin
+    CRM. Leaving the old claim in place would mislead the next person
+    who reads this route.)"""
     existing = await db.execute(select(User).where(User.phone_number == body.phone_number))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Phone number already registered")
@@ -360,14 +399,14 @@ async def create_director(
         new_value={"full_name": new_director.full_name},
         ip_address=request.client.host if request else None,
     )
-    return new_director
+    return await build_user_response(db, new_director)
 
 
 @router.patch("/{user_id}/status", response_model=UserResponse)
 async def update_user_status(
     user_id: str,
     body: UpdateUserStatusRequest,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
@@ -379,6 +418,7 @@ async def update_user_status(
     old_status = user.status
     user.status = body.status
     await db.flush()
+    await invalidate_user_cache(str(user.id))   # suspension must take effect immediately, not after up to 30s
 
     await log_action(
         db, actor_id=director.id, action="user.status_changed",
@@ -387,13 +427,13 @@ async def update_user_status(
         new_value={"status": body.status.value},
         ip_address=request.client.host if request else None,
     )
-    return user
+    return await build_user_response(db, user)
 
 
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: str,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
@@ -547,7 +587,7 @@ async def get_customer_overview(
         })
 
     return {
-        "profile": UserResponse.model_validate(customer),
+        "profile": await build_user_response(db, customer),
         "wallet_balance_kobo": wallet.balance_kobo,
         "cards": card_overviews,
     }
@@ -625,9 +665,16 @@ async def upload_avatar(
         failure_detail="Could not upload image — please try again",
     )
 
-    current_user.avatar_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/avatars/{filename}"
+    # current_user may be the cached (unattached) object — fetch a real
+    # session-attached row before mutating, so this persists. Unlike
+    # withdrawal_password_hash, avatar_url IS a cached field, so also
+    # invalidate the cache — otherwise other requests could keep serving
+    # the old avatar for up to the 30s TTL.
+    user = await db.get(User, current_user.id)
+    user.avatar_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/avatars/{filename}"
     await db.flush()
-    return current_user
+    await invalidate_user_cache(str(user.id))
+    return user
 
 
 
@@ -641,22 +688,17 @@ async def update_bank_details(
 ):
     """
     Lets a customer change their registered bank account — e.g. the old
-    one stopped working. Gated behind the same protection as a
-    withdrawal (password or biometric), since this controls where future
-    withdrawals get paid out to.
+    one stopped working. Gated behind the withdrawal password, since
+    this controls where future withdrawals get paid out to. (Biometric
+    step-up was previously an alternative here — removed for now, per
+    instruction, specifically for this endpoint: it's the single
+    highest-value target for an attacker to redirect, so the fewer
+    paths into it, the better, at least until biometrics has had a
+    full pass on live deployment. KYC's own biometric option is
+    unaffected — see UpdateBankDetailsRequest's docstring.)
     """
-    if body.auth_method == "password":
-        if not body.withdrawal_password:
-            raise HTTPException(status_code=400, detail="Withdrawal password required")
-        from app.services.withdrawal_auth_service import check_withdrawal_password
-        await check_withdrawal_password(db, current_user, body.withdrawal_password)
-    elif body.auth_method == "biometric":
-        if not body.webauthn_assertion:
-            raise HTTPException(status_code=400, detail="WebAuthn assertion required")
-        from app.services.webauthn_service import verify_authentication
-        await verify_authentication(db, current_user, body.webauthn_assertion)
-    else:
-        raise HTTPException(status_code=400, detail="Invalid auth method")
+    from app.services.withdrawal_auth_service import check_withdrawal_password
+    await check_withdrawal_password(db, current_user, body.withdrawal_password)
 
     from app.integrations.monnify import get_payment_provider
     provider = get_payment_provider()
@@ -669,11 +711,15 @@ async def update_bank_details(
         raise HTTPException(status_code=502, detail="Could not verify this account right now. Please try again.")
 
     old_bank = current_user.bank_name
-    current_user.bank_name      = body.bank_name
-    current_user.bank_code      = body.bank_code
-    current_user.account_number = body.account_number
-    current_user.account_name   = verified_account_name
+    # current_user may be the cached (unattached) object — fetch a real
+    # session-attached row before mutating, so these persist.
+    user = await db.get(User, current_user.id)
+    user.bank_name      = body.bank_name
+    user.bank_code      = body.bank_code
+    user.account_number = body.account_number
+    user.account_name   = verified_account_name
     await db.flush()
+    await invalidate_user_cache(str(user.id))
 
     # This controls where future withdrawals get paid — if a withdrawal
     # password or biometric were ever compromised, this is exactly the
@@ -697,13 +743,13 @@ async def update_bank_details(
         old_value={"bank_name": old_bank},
         new_value={"bank_name": body.bank_name, "account_number": body.account_number},
     )
-    return current_user
+    return user
 
 
 @router.post("/{officer_id}/unassign-zone")
 async def unassign_officer_zone(
     officer_id: str,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
 ):
     """Removes an officer from their current zone without assigning them
@@ -719,7 +765,7 @@ async def unassign_officer_zone(
 @router.get("/{officer_id}/zone-history")
 async def get_officer_zone_history(
     officer_id: str,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
     start_date: str | None = None,
     end_date: str | None = None,
@@ -758,3 +804,49 @@ async def get_officer_zone_history(
         }
         for r in rows
     ]
+
+
+@router.patch("/{user_id}/sms-alerts", response_model=UserResponse)
+async def update_sms_alerts(
+    user_id: str,
+    body: UpdateSmsAlertsRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Enable or disable SMS notifications for a customer.
+    Allowed for:
+    - Customer themselves (managing their notifications)
+    - Officers (with customer's consent, within their zone)
+    - Directors and Admins
+    """
+    target = await resolve_user(db, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    if user_role == "customer" and target.id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if user_role == "officer":
+        if not current_user.zone_id or target.zone_id != current_user.zone_id:
+            raise HTTPException(status_code=403, detail="Access denied — customer is not in your zone")
+
+    old_status = target.sms_alerts_enabled
+    target.sms_alerts_enabled = body.enabled
+
+    action_text = "activated" if body.enabled else "deactivated"
+    await log_action(
+        db,
+        actor_id=current_user.id,
+        action=f"sms_alerts_{action_text}",
+        entity_type="user",
+        entity_id=str(target.id),
+        old_value={"sms_alerts_enabled": old_status},
+        new_value={"sms_alerts_enabled": body.enabled},
+    )
+
+    await db.commit()
+    await db.refresh(target)
+    await invalidate_user_cache(target.id)
+
+    return await build_user_response(db, target)
+

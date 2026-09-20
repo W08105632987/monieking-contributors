@@ -41,13 +41,25 @@ CHALLENGE_TTL_MINUTES = 3
 
 
 async def _set_challenge(db: AsyncSession, user: User, challenge: bytes) -> None:
+    # Same reasoning as _consume_challenge below: re-fetch fresh/attached
+    # rather than trust whatever `user` object was passed in.
+    user = await db.get(User, user.id)
     user.webauthn_challenge = bytes_to_base64url(challenge)
     user.webauthn_challenge_expires_at = datetime.now(timezone.utc) + timedelta(minutes=CHALLENGE_TTL_MINUTES)
     await db.flush()
 
 
 async def _consume_challenge(db: AsyncSession, user: User) -> bytes:
-    """One-time use — cleared immediately whether verification succeeds or not."""
+    """One-time use — cleared immediately whether verification succeeds or not.
+
+    Re-fetches `user` fresh by id first: webauthn_challenge and
+    webauthn_challenge_expires_at are deliberately excluded from the
+    current_user cache in dependencies.py (short-lived, actively mutated
+    mid-flow — caching either risks serving a stale/already-consumed
+    challenge), and a cached current_user also isn't session-attached, so
+    the clears below wouldn't persist against it either.
+    """
+    user = await db.get(User, user.id)
     if not user.webauthn_challenge or not user.webauthn_challenge_expires_at:
         raise HTTPException(status_code=400, detail="No pending biometric request. Request a new one and try again.")
     if user.webauthn_challenge_expires_at < datetime.now(timezone.utc):

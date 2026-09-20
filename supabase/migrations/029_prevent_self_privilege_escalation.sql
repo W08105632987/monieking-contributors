@@ -1,0 +1,142 @@
+-- 029_prevent_self_privilege_escalation.sql
+-- ─────────────────────────────────────────────────────────────────────
+-- Security fix (external audit finding): the `users_update` RLS policy
+-- (002_row_level_security.sql) correctly lets a user update THEIR OWN
+-- row, but has no column-level restriction — nothing stops a customer
+-- from calling Supabase's public REST API directly (bypassing the
+-- FastAPI backend entirely) and setting their own `role` to 'admin',
+-- clearing their own `status`, reassigning their own `zone_id`, or
+-- resetting their own login-lockout counters. RLS's USING clause only
+-- controls WHICH ROWS a statement can touch, not which COLUMNS — this
+-- adds the missing column-level check via a BEFORE UPDATE trigger,
+-- which is the standard way to express "can update this row, but not
+-- these specific fields on it" in Postgres.
+--
+-- The backend's OWN legitimate writes to these same columns (KYC
+-- verification completing, an admin approving a role change, a
+-- lockout resetting after a successful login, etc.) all go through
+-- the Supabase SERVICE ROLE connection, which this trigger exempts
+-- entirely — same trust boundary already used everywhere else in this
+-- project's RLS policies. The service role is the backend server
+-- itself, never handed to an end user's browser, so it's fully
+-- trusted by design; this trigger exists specifically for the gap
+-- that isn't that: an authenticated end user's own JWT hitting
+-- Supabase's public API directly.
+-- ─────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION prevent_self_privilege_escalation()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Backend server (service role) — fully trusted, not subject to this check.
+  IF auth.role() = 'service_role' THEN
+    RETURN NEW;
+  END IF;
+
+  -- An admin acting through their own authenticated session (not the
+  -- service role) is allowed to change these — e.g. an admin-facing
+  -- flow that updates a user's role directly under RLS rather than
+  -- through the backend.
+  IF current_user_role() = 'admin' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Everyone else — including a user updating their own row, which is
+  -- everything `users_update`'s USING clause otherwise allows — may
+  -- not change any of the following on themselves.
+
+  -- Privilege / account state
+  IF NEW.role IS DISTINCT FROM OLD.role THEN
+    RAISE EXCEPTION 'Not permitted to change role';
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    RAISE EXCEPTION 'Not permitted to change status';
+  END IF;
+
+  -- Management assignment
+  IF NEW.zone_id IS DISTINCT FROM OLD.zone_id THEN
+    RAISE EXCEPTION 'Not permitted to change zone assignment';
+  END IF;
+  IF NEW.managing_officer_id IS DISTINCT FROM OLD.managing_officer_id THEN
+    RAISE EXCEPTION 'Not permitted to change managing officer';
+  END IF;
+  IF NEW.is_manual_customer IS DISTINCT FROM OLD.is_manual_customer THEN
+    RAISE EXCEPTION 'Not permitted to change is_manual_customer';
+  END IF;
+  IF NEW.created_by IS DISTINCT FROM OLD.created_by THEN
+    RAISE EXCEPTION 'Not permitted to change created_by';
+  END IF;
+  IF NEW.customer_number IS DISTINCT FROM OLD.customer_number THEN
+    RAISE EXCEPTION 'Not permitted to change customer_number';
+  END IF;
+
+  -- Credentials — must only ever be set via the backend's proper
+  -- hashing/verification flows, never a direct column write.
+  IF NEW.login_password_hash IS DISTINCT FROM OLD.login_password_hash THEN
+    RAISE EXCEPTION 'Not permitted to change login_password_hash directly';
+  END IF;
+  IF NEW.withdrawal_password_hash IS DISTINCT FROM OLD.withdrawal_password_hash THEN
+    RAISE EXCEPTION 'Not permitted to change withdrawal_password_hash directly';
+  END IF;
+
+  -- Lockout / brute-force counters — a user must not be able to clear
+  -- their own lockout state.
+  IF NEW.login_failed_attempts IS DISTINCT FROM OLD.login_failed_attempts THEN
+    RAISE EXCEPTION 'Not permitted to change login_failed_attempts';
+  END IF;
+  IF NEW.login_locked_until IS DISTINCT FROM OLD.login_locked_until THEN
+    RAISE EXCEPTION 'Not permitted to change login_locked_until';
+  END IF;
+  IF NEW.login_lockout_level IS DISTINCT FROM OLD.login_lockout_level THEN
+    RAISE EXCEPTION 'Not permitted to change login_lockout_level';
+  END IF;
+  IF NEW.withdrawal_password_failed_attempts IS DISTINCT FROM OLD.withdrawal_password_failed_attempts THEN
+    RAISE EXCEPTION 'Not permitted to change withdrawal_password_failed_attempts';
+  END IF;
+  IF NEW.withdrawal_password_locked_until IS DISTINCT FROM OLD.withdrawal_password_locked_until THEN
+    RAISE EXCEPTION 'Not permitted to change withdrawal_password_locked_until';
+  END IF;
+
+  -- Identity verification status — must only change as a result of an
+  -- actual verification call, never a self-reported column write.
+  IF NEW.bvn_linked IS DISTINCT FROM OLD.bvn_linked THEN
+    RAISE EXCEPTION 'Not permitted to change bvn_linked directly';
+  END IF;
+  IF NEW.nin_linked IS DISTINCT FROM OLD.nin_linked THEN
+    RAISE EXCEPTION 'Not permitted to change nin_linked directly';
+  END IF;
+  IF NEW.bvn_last4 IS DISTINCT FROM OLD.bvn_last4 THEN
+    RAISE EXCEPTION 'Not permitted to change bvn_last4 directly';
+  END IF;
+  IF NEW.nin_last4 IS DISTINCT FROM OLD.nin_last4 THEN
+    RAISE EXCEPTION 'Not permitted to change nin_last4 directly';
+  END IF;
+  IF NEW.kyc_completed_at IS DISTINCT FROM OLD.kyc_completed_at THEN
+    RAISE EXCEPTION 'Not permitted to change kyc_completed_at directly';
+  END IF;
+
+  -- Internal auth-flow secrets/state (2FA, WebAuthn, password reset)
+  IF NEW.two_factor_otp_hash IS DISTINCT FROM OLD.two_factor_otp_hash THEN
+    RAISE EXCEPTION 'Not permitted to change two_factor_otp_hash directly';
+  END IF;
+  IF NEW.two_factor_otp_expires_at IS DISTINCT FROM OLD.two_factor_otp_expires_at THEN
+    RAISE EXCEPTION 'Not permitted to change two_factor_otp_expires_at directly';
+  END IF;
+  IF NEW.login_password_reset_otp_hash IS DISTINCT FROM OLD.login_password_reset_otp_hash THEN
+    RAISE EXCEPTION 'Not permitted to change login_password_reset_otp_hash directly';
+  END IF;
+  IF NEW.webauthn_challenge IS DISTINCT FROM OLD.webauthn_challenge THEN
+    RAISE EXCEPTION 'Not permitted to change webauthn_challenge directly';
+  END IF;
+  IF NEW.webauthn_challenge_expires_at IS DISTINCT FROM OLD.webauthn_challenge_expires_at THEN
+    RAISE EXCEPTION 'Not permitted to change webauthn_challenge_expires_at directly';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_prevent_self_privilege_escalation ON users;
+CREATE TRIGGER trg_prevent_self_privilege_escalation
+  BEFORE UPDATE ON users
+  FOR EACH ROW
+  EXECUTE FUNCTION prevent_self_privilege_escalation();

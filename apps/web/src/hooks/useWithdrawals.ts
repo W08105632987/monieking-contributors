@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { Withdrawal, WithdrawForm, PaginatedResponse } from '@/types'
 import toast from 'react-hot-toast'
+import { showFeedback } from '@/store/feedback.store'
 
 export function useMyWithdrawals() {
   return useQuery({
@@ -35,9 +36,10 @@ export function useRequestWithdrawal() {
       qc.invalidateQueries({ queryKey: ['my-withdrawals'] })
       qc.invalidateQueries({ queryKey: ['cards'] })
       qc.invalidateQueries({ queryKey: ['wallet'] })
-      toast.success('Withdrawal request submitted!')
+      qc.invalidateQueries({ queryKey: ['wallet-transactions'] })
+      showFeedback.success('Withdrawal requested', 'A director will review and process this shortly.')
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => showFeedback.error('Withdrawal request failed', e.message),
   })
 }
 
@@ -50,9 +52,9 @@ export function useClaimWithdrawal() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pending-withdrawals'] })
-      toast.success('Withdrawal claimed!')
+      showFeedback.success('Withdrawal claimed', 'This request is now assigned to you.')
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => showFeedback.error('Could not claim withdrawal', e.message),
   })
 }
 
@@ -80,8 +82,8 @@ export function useRejectWithdrawal() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pending-withdrawals'] })
-      toast.success('Withdrawal rejected.')
+      showFeedback.success('Withdrawal rejected', 'The customer will be notified.')
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => showFeedback.error('Could not reject withdrawal', e.message),
   })
 }

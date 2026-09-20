@@ -4,6 +4,7 @@ import { X, Ban, CheckCircle2, Trash2, AlertTriangle } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
+import { showFeedback } from '@/store/feedback.store'
 import type { User } from '@/types'
 
 interface ManageMemberSheetProps {
@@ -33,7 +34,7 @@ export function ManageMemberSheet({ member, onClose, invalidateKeys, onDeleted }
   const deleteMutation = useMutation({
     mutationFn: () => api.delete(`/users/${member.id}`),
     onSuccess: () => {
-      toast.success(`${member.full_name} deleted`)
+      showFeedback.success('Account deleted', `${member.full_name} has been permanently removed.`)
       if (onDeleted) {
         onDeleted()
       } else {
@@ -41,7 +42,7 @@ export function ManageMemberSheet({ member, onClose, invalidateKeys, onDeleted }
         onClose()
       }
     },
-    onError: (e) => toast.error(getErrorMessage(e)),
+    onError: (e) => showFeedback.error('Could not delete', getErrorMessage(e)),
   })
 
   const isActive = member.status === 'active'

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.core.database import get_db
-from app.core.dependencies import CurrentUser, DirectorOnly
+from app.core.dependencies import CurrentUser, DirectorOrAdmin
 from app.models.zone import Zone
 
 router = APIRouter(prefix="/zones", tags=["zones"])
@@ -50,7 +50,7 @@ async def list_zones(current_user: CurrentUser, db: AsyncSession = Depends(get_d
 
 
 @router.post("", response_model=ZoneResponse, status_code=201)
-async def create_zone(body: ZoneCreate, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+async def create_zone(body: ZoneCreate, director: DirectorOrAdmin, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(Zone).where(Zone.name == body.name))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="A zone with this name already exists")
@@ -62,7 +62,7 @@ async def create_zone(body: ZoneCreate, director: DirectorOnly, db: AsyncSession
 
 
 @router.delete("/{zone_id}", status_code=200)
-async def delete_zone(zone_id: uuid.UUID, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+async def delete_zone(zone_id: uuid.UUID, director: DirectorOrAdmin, db: AsyncSession = Depends(get_db)):
     """
     Deleting a zone is safe even if officers or customers are currently
     assigned to it — the zone_id foreign key is ON DELETE SET NULL (see
@@ -88,7 +88,7 @@ class AssignOfficerRequest(BaseModel):
 async def assign_officer(
     zone_id: uuid.UUID,
     body: AssignOfficerRequest,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
 ):
     """

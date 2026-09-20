@@ -8,6 +8,7 @@ import App from './App'
 import './index.css'
 import { queryClient } from '@/lib/queryClient'
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary'
+import { FeedbackModalHost } from '@/components/ui/FeedbackModalHost'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -15,6 +16,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <App />
+          <FeedbackModalHost />
           <Toaster
             position="top-center"
             containerStyle={{

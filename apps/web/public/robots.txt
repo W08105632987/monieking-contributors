@@ -1,0 +1,16 @@
+# MonieKing is a financial application — everything behind login is
+# deliberately excluded here. Only the public marketing page and the
+# auth entry points are meant to be crawled.
+User-agent: *
+Allow: /$
+Allow: /auth/login
+Allow: /auth/register
+Disallow: /customer/
+Disallow: /officer/
+Disallow: /director/
+Disallow: /disputes/
+Disallow: /services/
+Disallow: /auth/location-consent
+Disallow: /auth/forgot-password
+
+Sitemap: https://monieking.webodemos.com/sitemap.xml

@@ -14,7 +14,7 @@ from app.models.card import (
     ContributionCard, ContributionRecord,
     CardType, CardStatus, CardCompletionStatus, ContributionMethod,
 )
-from app.models.wallet import TxCategory
+from app.models.wallet import TxCategory, Wallet
 from app.core.config import settings
 from app.core.security import generate_reference
 from app.utils.kobo import is_valid_contribution, days_from_contribution
@@ -23,6 +23,48 @@ from app.schemas.card import GridCell, CardGridResponse
 
 
 CARD_TOTAL_DAYS = settings.CARD_TOTAL_DAYS   # 372
+
+
+async def recompute_card_completion_status(db: AsyncSession, card: ContributionCard) -> None:
+    """
+    The single source of truth for a completed card's paid/unpaid/partially-paid
+    badge — call this any time a withdrawal is requested, paid, or rejected
+    against a card, instead of ever setting completion_status by hand.
+
+    Previously mark_withdrawal_paid only flipped UNPAID -> PAID when the card
+    was in a WITHDRAWAL_PENDING state — a state nothing in the codebase ever
+    actually set. So that transition could never fire, and every completed
+    card stayed stuck on "Unpaid" forever regardless of how many withdrawals
+    were made and paid out. This replaces that dead check with a real
+    computation: count how many of the card's contribution records are
+    withdrawn versus the total, and derive the status from that ratio —
+    the same withdrawn/total split the day-grid's red/green coloring
+    already uses, so the badge and the grid can never disagree.
+
+    No-ops on a card that hasn't completed yet (completion_status is only
+    meaningful — and only ever set — once a card reaches 372/372 or is
+    otherwise closed); an active card's UI doesn't read this field at all.
+    """
+    if card.completion_status is None:
+        return
+
+    total_result = await db.execute(
+        select(func.count()).select_from(ContributionRecord).where(ContributionRecord.card_id == card.id)
+    )
+    total = total_result.scalar_one()
+    withdrawn_result = await db.execute(
+        select(func.count()).select_from(ContributionRecord).where(
+            ContributionRecord.card_id == card.id, ContributionRecord.is_withdrawn == True,
+        )
+    )
+    withdrawn = withdrawn_result.scalar_one()
+
+    if withdrawn == 0:
+        card.completion_status = CardCompletionStatus.UNPAID
+    elif withdrawn >= total:
+        card.completion_status = CardCompletionStatus.PAID
+    else:
+        card.completion_status = CardCompletionStatus.PARTIALLY_PAID
 
 
 async def create_card(
@@ -157,10 +199,22 @@ async def post_contribution(
     contributed_by: uuid.UUID,
     wallet_owner_id: uuid.UUID,
     method: ContributionMethod = ContributionMethod.DIGITAL,
-) -> list[ContributionRecord]:
+) -> tuple[list[ContributionRecord], ContributionCard, Wallet]:
     """
     Validate, debit wallet, insert contribution records, update card totals.
     All inside a single DB transaction (caller owns commit).
+
+    Returns (records, card, wallet) — the caller (post_card_contribution)
+    used to re-fetch the card with a SEPARATE query right after this
+    returned, purely to build its response. That was redundant (this
+    function already has the freshly-updated card and wallet in hand
+    from the same locked rows it just wrote to) and was part of why the
+    contribution response arrived without the authoritative updated
+    balance/card data the frontend needed to update instantly — it had
+    to wait for a completely separate refetch cycle instead. Returning
+    them directly here means the route can build a complete, immediate,
+    authoritative response from data that's already correct and already
+    in memory, no extra round trip needed.
     """
     # Fetch card with lock
     result = await db.execute(
@@ -245,11 +299,17 @@ async def post_contribution(
     # since that's what actually determines whether any room is left.
     if (total_slots_used + days) >= CARD_TOTAL_DAYS:
         card.status           = CardStatus.COMPLETED
-        card.completion_status= CardCompletionStatus.UNPAID
         card.completed_at     = datetime.now(timezone.utc)
+        # Set a placeholder first so recompute (which no-ops on None) has
+        # something to work from, then let it compute the real value —
+        # covers the case where some of this card's records were already
+        # withdrawn before it finished filling.
+        card.completion_status = CardCompletionStatus.UNPAID
+        await db.flush()
+        await recompute_card_completion_status(db, card)
 
     await db.flush()
-    return records
+    return records, card, wallet
 
 
 def build_card_grid_from_records(

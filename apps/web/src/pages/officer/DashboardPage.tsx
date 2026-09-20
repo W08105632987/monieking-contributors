@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Users, Wallet, ArrowUpRight, ArrowDownLeft,
   TrendingUp, UserPlus, ClipboardList,
-  Eye, EyeOff, Lock, AlertCircle, X, Copy,
+  Eye, EyeOff, Lock, AlertCircle, X, Copy, MapPin, Scan,
 } from 'lucide-react'
+import { FoodQrScannerModal } from '@/components/food/FoodQrScannerModal'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
@@ -14,9 +15,11 @@ import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { PromoBannerCarousel } from '@/components/dashboard/PromoBannerCarousel'
+import { CustomerStatsPanel } from '@/components/dashboard/CustomerStatsPanel'
 import { formatNaira, initials, formatDate, copyToClipboard } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { ContributionCard, User } from '@/types'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 const OFFICER_WALLET_WITHDRAWAL_CHARGE_KOBO = 5_000 // ₦50, flat
 
@@ -63,7 +66,7 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
       className="fixed inset-0 z-50 bg-white dark:bg-night-700 overflow-y-auto"
     >
       <div className="sticky top-0 bg-white dark:bg-night-700 flex items-center gap-3 px-5 pt-5 pb-3 border-b border-green-50 z-10">
-        <button onClick={onClose} className="w-9 h-9 rounded-full bg-green-50 flex items-center justify-center">
+        <button onClick={onClose} className="w-9 h-9 rounded-full bg-green-50 dark:bg-night-600 flex items-center justify-center">
           <X className="w-4 h-4 text-green-700 dark:text-night-100" />
         </button>
         <div className="flex items-center gap-2">
@@ -91,8 +94,8 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
         </div>
         {amountKobo > (wallet?.balance_kobo ?? 0) && (
           <div className="flex items-center gap-1.5 mb-3">
-            <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-            <p className="text-red-400 text-xs font-semibold">Exceeds wallet balance</p>
+            <AlertCircle className="w-3.5 h-3.5 text-red-400 dark:text-red-300 flex-shrink-0" />
+            <p className="text-red-400 dark:text-red-300 text-xs font-semibold">Exceeds wallet balance</p>
           </div>
         )}
 
@@ -104,7 +107,7 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
             </div>
             <div className="flex justify-between text-sm mb-2">
               <span className="text-green-600 dark:text-night-200">Processing charge</span>
-              <span className="text-red-400 font-semibold">- {formatNaira(OFFICER_WALLET_WITHDRAWAL_CHARGE_KOBO)}</span>
+              <span className="text-red-400 dark:text-red-300 font-semibold">- {formatNaira(OFFICER_WALLET_WITHDRAWAL_CHARGE_KOBO)}</span>
             </div>
             <div className="h-px bg-green-100 dark:bg-night-600 mb-2" />
             <div className="flex justify-between">
@@ -168,6 +171,7 @@ export default function OfficerDashboardPage() {
   const { user }    = useAuthStore()
   const { wallet, isLoading: walletLoading } = useWallet()
   const [showWalletWithdraw, setShowWalletWithdraw] = useState(false)
+  const [showFoodScanner, setShowFoodScanner] = useState(false)
 
   // Fetch zone customers
   const { data: customers = [], isLoading: customersLoading } = useQuery({
@@ -192,19 +196,11 @@ export default function OfficerDashboardPage() {
   const foodCards             = cards.filter(c => c.card_type === 'food').length
 
   return (
-    <div className="min-h-dvh flex flex-col bg-green-50">
+    <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
 
       {/* Top bar */}
-      <header className="flex items-center justify-between px-4 py-3 bg-green-50">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-green-900 rounded-xl flex items-center justify-center shadow-card">
-            <span className="text-amber-400 font-extrabold text-base">₦</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-green-900 dark:text-white font-extrabold text-xl tracking-tight leading-none">Monie</span>
-            <span className="text-amber-500 font-extrabold text-xl tracking-tight leading-none">King</span>
-          </div>
-        </div>
+      <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
+        <BrandBlobLogo height={36} />
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold bg-green-900 text-amber-400 px-2.5 py-1 rounded-full">Officer</span>
           <button onClick={() => navigate('/officer/profile')} className="rounded-full shadow-card">
@@ -221,6 +217,21 @@ export default function OfficerDashboardPage() {
           <h1 className="text-green-900 dark:text-white text-2xl font-extrabold mt-0.5">
             {user?.full_name.split(' ').slice(0, 2).join(' ')}
           </h1>
+          {/* Zone badge — persistent, so an officer always knows which
+              zone they're working with, and immediately sees if they
+              have none (which now also blocks customer registration —
+              see CustomersPage.tsx). */}
+          {user?.zone_id ? (
+            <div className="inline-flex items-center gap-1.5 mt-2 bg-green-100 dark:bg-night-600 rounded-full px-3 py-1.5">
+              <MapPin className="w-3.5 h-3.5 text-green-700 dark:text-night-100" />
+              <span className="text-green-800 dark:text-night-100 text-xs font-bold">{user.zone_name}</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-1.5 mt-2 bg-amber-50 dark:bg-night-600 rounded-full px-3 py-1.5">
+              <MapPin className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="text-amber-700 dark:text-amber-300 text-xs font-bold">No zone assigned</span>
+            </div>
+          )}
         </motion.div>
 
         {/* Officer wallet card */}
@@ -309,6 +320,27 @@ export default function OfficerDashboardPage() {
           </div>
         </motion.div>
 
+        {/* Customer statistics — All time by default, with a compact
+            dropdown (same style as the director's hero-card period
+            picker) to narrow to Today / 7 days / Custom. Inactive-list
+            + bulk-ping stays behind "See more" to keep this card
+            compact on the dashboard. */}
+        {user?.zone_id && (
+          <motion.div custom={1} variants={fadeUp} initial="hidden" animate="show" className="mb-4">
+            <CustomerStatsPanel
+              scope={{ kind: 'my_zone' }}
+              showInactiveList={false}
+              title="Customer statistics"
+            />
+            <button
+              onClick={() => navigate('/officer/customer-stats')}
+              className="w-full text-center bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 text-green-700 dark:text-night-100 font-bold text-xs rounded-2xl py-3 -mt-1 active:scale-95 transition-all"
+            >
+              See more
+            </button>
+          </motion.div>
+        )}
+
         {/* Promo banners */}
         <PromoBannerCarousel />
 
@@ -330,23 +362,31 @@ export default function OfficerDashboardPage() {
                 label: 'Post contribution',
                 sublabel: 'Record a cash payment',
                 color: 'bg-amber-400',
-                textColor: 'text-green-900 dark:text-white',
+                textColor: 'text-green-950',
                 onClick: () => navigate('/officer/customers'),
               },
               {
                 icon: ArrowUpRight,
                 label: 'Request withdrawal',
                 sublabel: 'On behalf of customer',
-                color: 'bg-white',
+                color: 'bg-white dark:bg-night-700',
                 textColor: 'text-green-900 dark:text-white',
                 border: true,
                 onClick: () => navigate('/officer/customers'),
               },
               {
+                icon: Scan,
+                label: 'Food QR Scanner',
+                sublabel: 'Verify Dec 10 collection',
+                color: 'bg-green-900 dark:bg-night-600',
+                textColor: 'text-white',
+                onClick: () => setShowFoodScanner(true),
+              },
+              {
                 icon: Users,
                 label: 'View customers',
                 sublabel: 'See your full zone list',
-                color: 'bg-white',
+                color: 'bg-white dark:bg-night-700',
                 textColor: 'text-green-900 dark:text-white',
                 border: true,
                 onClick: () => navigate('/officer/customers'),
@@ -362,13 +402,13 @@ export default function OfficerDashboardPage() {
                 )}
               >
                 <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center mb-3',
-                  color === 'bg-green-900' ? 'bg-green-800' :
-                  color === 'bg-amber-400' ? 'bg-amber-500' : 'bg-green-50'
+                  color.includes('bg-green-900') ? 'bg-green-800 dark:bg-night-500' :
+                  color === 'bg-amber-400' ? 'bg-amber-500/30' : 'bg-green-50 dark:bg-night-600'
                 )}>
-                  <Icon className={cn('w-4 h-4', color === 'bg-white' ? 'text-green-600 dark:text-night-200' : textColor)} />
+                  <Icon className={cn('w-4 h-4', color.includes('bg-white') ? 'text-green-600 dark:text-night-200' : textColor)} />
                 </div>
                 <p className={cn('font-bold text-sm', textColor)}>{label}</p>
-                <p className={cn('text-xs mt-0.5', color === 'bg-white' ? 'text-green-400 dark:text-night-300' : 'opacity-70', textColor)}>{sublabel}</p>
+                <p className={cn('text-xs mt-0.5', color.includes('bg-white') ? 'text-green-400 dark:text-night-300' : 'opacity-75', textColor)}>{sublabel}</p>
               </button>
             ))}
           </div>
@@ -393,7 +433,7 @@ export default function OfficerDashboardPage() {
                   <div className="w-10 h-10 bg-green-100 dark:bg-night-600 rounded-full animate-pulse flex-shrink-0" />
                   <div className="flex-1 space-y-2">
                     <div className="h-3 bg-green-100 dark:bg-night-600 rounded animate-pulse w-2/3" />
-                    <div className="h-2 bg-green-50 rounded animate-pulse w-1/3" />
+                    <div className="h-2 bg-green-50 dark:bg-night-600 rounded animate-pulse w-1/3" />
                   </div>
                 </div>
               ))}
@@ -446,6 +486,11 @@ export default function OfficerDashboardPage() {
           <OfficerWalletWithdrawSheet onClose={() => setShowWalletWithdraw(false)} />
         )}
       </AnimatePresence>
+
+      <FoodQrScannerModal
+        isOpen={showFoodScanner}
+        onClose={() => setShowFoodScanner(false)}
+      />
 
       <BottomNav />
     </div>

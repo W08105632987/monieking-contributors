@@ -14,6 +14,8 @@ import { queryClient } from '@/lib/queryClient'
 import { useAuthStore } from '@/store/auth.store'
 import { Button } from '@/components/ui/Button'
 import type { AuthUser } from '@/types'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { LegalDocumentModal } from '@/pages/legal/LegalDocumentModal'
 
 // ── Validation schema ─────────────────────────────────────────────
 const schema = z.object({
@@ -63,6 +65,8 @@ export default function RegisterPage() {
   const [showPwd, setShowPwd]             = useState(false)
   const [showConfirm, setShowConfirm]     = useState(false)
   const [showWithdraw, setShowWithdraw]   = useState(false)
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null)
 
   const { register, handleSubmit, trigger, formState: { errors } } =
     useForm<FormData>({ resolver: zodResolver(schema), mode: 'onBlur' })
@@ -80,6 +84,10 @@ export default function RegisterPage() {
   }
 
   const onSubmit = async (values: FormData) => {
+    if (!acceptedTerms) {
+      toast.error('Please accept the Terms of Service and Privacy Policy to continue')
+      return
+    }
     setLoading(true)
     try {
       const emailAlias = `${values.phone_number.replace(/\s+/g, '')}@monieking.app`
@@ -120,6 +128,7 @@ export default function RegisterPage() {
           next_of_kin_phone:   values.next_of_kin_phone.replace(/\s+/g, ''),
           password:            values.password,
           withdrawal_password: values.withdrawal_password,
+          accepted_terms:      true,
         })
       } catch (apiErr: any) {
         const msg = apiErr?.response?.data?.detail ?? apiErr?.message ?? 'Registration failed'
@@ -150,12 +159,7 @@ export default function RegisterPage() {
 
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 pt-safe pt-4 pb-2">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-green-800 rounded-xl flex items-center justify-center">
-            <span className="text-copper-400 font-extrabold text-sm">₦</span>
-          </div>
-          <span className="text-green-300 font-semibold text-sm">MonieKing</span>
-        </div>
+        <BrandBlobLogo height={34} hideBlob />
         <Link to="/auth/login" className="text-green-400 text-sm hover:text-green-300 font-medium">
           Sign in instead
         </Link>
@@ -345,6 +349,25 @@ export default function RegisterPage() {
                 </div>
                 {errors.withdrawal_password && <p className="input-error">{errors.withdrawal_password.message}</p>}
               </div>
+
+              <label className="flex items-start gap-2.5 pt-1">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={e => setAcceptedTerms(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-green-700 flex-shrink-0"
+                />
+                <span className="text-green-600 text-xs leading-relaxed">
+                  I agree to MonieKing's{' '}
+                  <button type="button" onClick={() => setLegalDoc('terms')} className="text-green-800 font-semibold underline">
+                    Terms of Service
+                  </button>{' '}
+                  and{' '}
+                  <button type="button" onClick={() => setLegalDoc('privacy')} className="text-green-800 font-semibold underline">
+                    Privacy Policy
+                  </button>
+                </span>
+              </label>
             </div>
           )}
 
@@ -364,7 +387,7 @@ export default function RegisterPage() {
               </Button>
             ) : (
               <Button type="submit" variant="accent" size="md"
-                loading={loading} className="flex-1">
+                loading={loading} disabled={!acceptedTerms} className="flex-1">
                 {loading ? 'Creating account…' : 'Create account'}
                 {!loading && <Check className="w-4 h-4" />}
               </Button>
@@ -381,6 +404,7 @@ export default function RegisterPage() {
           )}
         </form>
       </div>
+      <LegalDocumentModal doc={legalDoc} onClose={() => setLegalDoc(null)} />
     </div>
   )
 }

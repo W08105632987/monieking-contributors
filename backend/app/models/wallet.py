@@ -19,6 +19,7 @@ class TxCategory(str, enum.Enum):
     CHARGE              = "charge"
     OFFICER_CONTRIBUTION= "officer_contribution"
     REVERSAL            = "reversal"
+    SMS_FEE             = "sms_fee"
 
 
 class Wallet(Base):

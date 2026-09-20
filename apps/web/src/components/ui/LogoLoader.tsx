@@ -1,3 +1,5 @@
+import { AppLogo } from './AppLogo'
+
 export function LogoLoader({ size = 64 }: { size?: number }) {
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
@@ -8,7 +10,7 @@ export function LogoLoader({ size = 64 }: { size?: number }) {
         className="bg-green-900 rounded-2xl flex items-center justify-center"
         style={{ width: size * 0.55, height: size * 0.55 }}
       >
-        <span className="text-copper-400 font-extrabold" style={{ fontSize: size * 0.28 }}>₦</span>
+        <AppLogo size={size * 0.42} rounded="6px" />
       </div>
     </div>
   )

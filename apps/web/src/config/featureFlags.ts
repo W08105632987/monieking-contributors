@@ -15,6 +15,11 @@
 //     bank details, withdrawals) has had a full pass on a live
 //     deployment, not just sandbox/dev testing.
 export const FEATURE_FLAGS = {
-  WITHDRAWALS_ENABLED: false,
+  // Only the automated wallet-balance-to-bank instant withdrawal is
+  // blocked — that's the one that actually depends on Monnify's
+  // disbursement API being fully live-ready (OTP disabled + IP
+  // whitelisted). Card withdrawal (director reviews and pays out
+  // manually) was never dependent on that and stays fully enabled.
+  INSTANT_WITHDRAWAL_ENABLED: false,
   BIOMETRICS_ENABLED:  false,
 } as const

@@ -12,6 +12,7 @@ from app.core.idempotency import claim_idempotency_key, store_result, release_ke
 from app.models.card import ContributionCard, ContributionRecord, CardType, CardStatus, CardCompletionStatus, ContributionMethod
 from app.models.user import User, UserRole
 from app.models.withdrawal import Withdrawal
+from app.schemas.withdrawal import WithdrawalResponse
 from app.schemas.card import (
     CreateCardRequest, ContributeRequest, CloseCardRequest,
     CardResponse, CardGridResponse, ContributionRecordResponse,
@@ -22,6 +23,7 @@ from app.services.withdrawal_auth_service import check_withdrawal_password
 from app.utils.audit import log_action
 from app.models.notification import NotificationType
 from app.services.notification_service import send_notification
+from app.integrations.termii import send_sms
 
 router = APIRouter(tags=["cards"])
 
@@ -147,6 +149,38 @@ async def get_card(
         )
         response.latest_withdrawal_id = w_result.scalar_one_or_none()
     return response
+
+
+@router.get("/cards/{card_id}/withdrawals", response_model=list[WithdrawalResponse])
+async def get_card_withdrawals(
+    card_id: str,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Full withdrawal history for one card — every request ever made
+    against it, whatever happened to each one (paid, rejected, still
+    pending). This is what the closed-card detail page shows instead of
+    the "keep contributing" UI a still-active card gets: a completed
+    card's story from here on is entirely about what was withdrawn and
+    when, not about filling more of the grid.
+    Same authorization as the card detail endpoint above — kept
+    identical on purpose, since seeing a card's history without being
+    able to see the card itself makes no sense."""
+    card = await resolve_card(db, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if current_user.role == UserRole.CUSTOMER and card.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if current_user.role == UserRole.OFFICER:
+        owner_result = await db.execute(select(User).where(User.id == card.owner_id))
+        owner = owner_result.scalar_one_or_none()
+        if not owner or not current_user.zone_id or owner.zone_id != current_user.zone_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    result = await db.execute(
+        select(Withdrawal).where(Withdrawal.card_id == card.id).order_by(Withdrawal.requested_at.desc())
+    )
+    return result.scalars().all()
 
 
 @router.get("/cards/{card_id}/grid", response_model=CardGridResponse)
@@ -311,7 +345,7 @@ async def post_card_contribution(
             if not owner_check or not current_user.zone_id or owner_check.zone_id != current_user.zone_id:
                 raise HTTPException(status_code=403, detail="You do not manage this customer")
 
-        records = await post_contribution(
+        records, card, wallet = await post_contribution(
             db,
             card_id=         body.card_id,
             amount_kobo=     body.amount_kobo,
@@ -323,18 +357,30 @@ async def post_card_contribution(
         await release_key(redis, str(current_user.id), idem_key)
         raise
 
-    card_result = await db.execute(select(ContributionCard).where(ContributionCard.id == body.card_id))
-    card = card_result.scalar_one_or_none()
-
     amount_str = f"₦{body.amount_kobo // 100:,}"
+    is_self_contribution = card.owner_id == current_user.id
+    # BUG FIX: this notification — sent to whoever ACTUALLY performed the
+    # contribution (current_user), not necessarily the card owner — used
+    # to say "added to your card" unconditionally. That's correct when a
+    # customer contributes to their own card, but wrong the moment an
+    # officer contributes on a customer's behalf: the officer isn't the
+    # owner, so "your card" was misleading in their own notification feed.
+    # Only fetch the owner's name when actually needed (officer/admin
+    # case) — no extra query for the far more common self-contribution path.
+    if is_self_contribution:
+        actor_body = f"{amount_str} contributed — {len(records)} day(s) added to your card."
+    else:
+        owner_name_result = await db.execute(select(User.full_name).where(User.id == card.owner_id))
+        owner_name = owner_name_result.scalar_one_or_none() or "the customer"
+        actor_body = f"{amount_str} contributed — {len(records)} day(s) added to {owner_name}'s card."
     await send_notification(
         db, user_id=current_user.id,
         title="Contribution posted ✓",
-        body=f"{amount_str} contributed — {len(records)} day(s) added to your card.",
+        body=actor_body,
         type=NotificationType.SUCCESS,
         related_entity_id=body.card_id,
     )
-    if card and card.owner_id != current_user.id:
+    if card and not is_self_contribution:
         await send_notification(
             db, user_id=card.owner_id,
             title="Contribution received ✓",
@@ -343,9 +389,57 @@ async def post_card_contribution(
             related_entity_id=body.card_id,
         )
 
+    # SMS confirmation — every contribution, not just officer-marked
+    # ones. Originally this only fired for officer/cash contributions
+    # (the reasoning being a customer marking their own card already
+    # sees the confirmation on screen) — but the same detailed record
+    # is just as valuable for a self-service contribution: it's the
+    # one message a customer can point to later showing exactly what
+    # landed on which card and when, without needing to reopen the
+    # app. Same template either way; the "by <officer>" clause is the
+    # only part that changes, since a self-service customer isn't
+    # "under" anyone marking it for them.
+    if card:
+        owner_result = await db.execute(select(User).where(User.id == card.owner_id))
+        owner = owner_result.scalar_one_or_none()
+        if owner and owner.phone_number:
+            is_officer_marked = card.owner_id != current_user.id
+            marked_by_clause = (
+                f" by {current_user.full_name if current_user.role == UserRole.OFFICER else 'an officer'}"
+                if is_officer_marked else ""
+            )
+            try:
+                await send_sms(
+                    owner.phone_number,
+                    (
+                        f"MonieKing: {amount_str} contributed to Card #{card.card_number} "
+                        f"({card.card_type.value} card){marked_by_clause} — {len(records)} day(s) added "
+                        f"for this contribution. Total contributed on Card #{card.card_number} so far: "
+                        f"₦{card.total_contributed_kobo // 100:,}. Didn't make this contribution? "
+                        f"Contact {'your officer or ' if is_officer_marked else ''}MonieKing support immediately."
+                    ),
+                )
+            except Exception as e:
+                # SMS delivery failing must never roll back or fail a
+                # contribution that already succeeded and was already
+                # debited/recorded — same fail-open principle as every
+                # other non-critical side effect in this codebase (see
+                # wallet_service.py's Redis idempotency comments). The
+                # in-app notification above already covers confirmation
+                # either way.
+                print(f"[contribution-sms] failed to notify {owner.phone_number} for card {card.card_number}: {e}")
+
     result = {
-        "message":   f"Contribution successful — {len(records)} day(s) recorded",
-        "days_added": len(records),
+        "message":     f"Contribution successful — {len(records)} day(s) recorded",
+        "days_added":   len(records),
+        # Authoritative, already-committed data from the SAME locked
+        # rows this transaction just wrote — not a fresh query, and not
+        # something the frontend has to go fetch separately and wait
+        # on. This is what lets the UI (the card grid especially) shade
+        # in immediately on response instead of waiting for a slower
+        # background refetch to eventually catch up.
+        "card":               CardResponse.model_validate(card).model_dump(mode="json"),
+        "wallet_balance_kobo": wallet.balance_kobo,
     }
     await store_result(redis, str(current_user.id), idem_key, result)
     return result

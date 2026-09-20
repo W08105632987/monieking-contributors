@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import DirectorOnly
+from app.core.dependencies import DirectorOrAdmin
 from app.models.settings import SystemConfig, PendingRateChange, PendingRateChangeStatus
 from app.schemas.settings import (
     SystemConfigItem, SystemConfigUpdate,
@@ -26,8 +26,19 @@ def _next_jan_1(from_date: date) -> date:
 
 
 # ── Plain immediate settings ────────────────────────────────────
+@router.get("/sms-fee")
+async def get_sms_fee(db: AsyncSession = Depends(get_db)):
+    """Fetch the active monthly SMS subscription fee configured by Directors."""
+    val = await get_config_value(db, "monthly_sms_fee_kobo")
+    fee_kobo = int(val) if val else 10000
+    return {
+        "monthly_sms_fee_kobo": fee_kobo,
+        "monthly_sms_fee_naira": fee_kobo / 100,
+    }
+
+
 @router.get("", response_model=list[SystemConfigItem])
-async def list_settings(director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+async def list_settings(director: DirectorOrAdmin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(SystemConfig).order_by(SystemConfig.key))
     return result.scalars().all()
 
@@ -36,7 +47,7 @@ async def list_settings(director: DirectorOnly, db: AsyncSession = Depends(get_d
 async def update_setting(
     key: str,
     body: SystemConfigUpdate,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
 ):
     if key in DEFERRED_KEYS:
@@ -59,7 +70,7 @@ async def update_setting(
 @router.post("/rate-changes/preview", response_model=RateChangePreview)
 async def preview_rate_change(
     body: RateChangeRequest,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
 ):
     if body.setting_key not in DEFERRED_KEYS:
@@ -85,7 +96,7 @@ async def preview_rate_change(
 @router.post("/rate-changes", response_model=PendingRateChangeResponse, status_code=201)
 async def create_rate_change(
     body: RateChangeRequest,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
 ):
     if body.setting_key not in DEFERRED_KEYS:
@@ -137,7 +148,7 @@ async def create_rate_change(
 
 
 @router.get("/rate-changes", response_model=list[PendingRateChangeResponse])
-async def list_rate_changes(director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+async def list_rate_changes(director: DirectorOrAdmin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(PendingRateChange).order_by(PendingRateChange.created_at.desc()))
     rows = result.scalars().all()
     today = datetime.now(timezone.utc).date()
@@ -154,7 +165,7 @@ async def list_rate_changes(director: DirectorOnly, db: AsyncSession = Depends(g
 async def edit_rate_change(
     change_id: uuid.UUID,
     body: RateChangeEditRequest,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(PendingRateChange).where(PendingRateChange.id == change_id))
@@ -195,7 +206,7 @@ async def edit_rate_change(
 @router.delete("/rate-changes/{change_id}", status_code=200)
 async def cancel_rate_change(
     change_id: uuid.UUID,
-    director: DirectorOnly,
+    director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(PendingRateChange).where(PendingRateChange.id == change_id))

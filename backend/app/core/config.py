@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: str = ""
 
     # ── CORS ──────────────────────────────────────────────────────
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:3001"
 
     @property
     def cors_origins_list(self) -> List[str]:
@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     MONNIFY_WEBHOOK_SECRET: str = ""
     MONNIFY_SOURCE_ACCOUNT_NUMBER: str = "5856364342"  
 
+    YOUVERIFY_BASE_URL: str = "https://api.youverify.co"
+    YOUVERIFY_TOKEN: str = ""
+
     # ── Redis ─────────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
 
@@ -64,6 +67,28 @@ class Settings(BaseSettings):
     # ── SMS ───────────────────────────────────────────────────────
     TERMII_API_KEY: str = ""
     TERMII_SENDER_ID: str = "MonieKing"
+
+    # ── Email (SMTP) — for system-health alerts, see integrations/email_sender.py.
+    # Plain SMTP rather than a vendor SDK deliberately: works with
+    # Gmail, SendGrid, Mailgun, SES, or any provider's SMTP relay
+    # without a new dependency per-provider, matching how Termii is the
+    # only SMS integration rather than juggling several. ─────────────
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "alerts@monieking.app"
+    SMTP_USE_TLS: bool = True
+
+    # ── System health monitoring — where alerts go. Deliberately NOT
+    # tied to a user account (no email field exists on User at all
+    # today) — these are the operator's own contact details, set once
+    # in .env, completely separate from any customer/staff data. ─────
+    ALERT_EMAIL_TO: str = ""             # comma-separated if more than one
+    ALERT_PHONE_TO: str = ""             # comma-separated if more than one
+    HEALTH_CHECK_ALERT_COOLDOWN_MINUTES: int = 20   # don't re-SMS every 2 minutes for the same ongoing outage
+    HEALTH_CHECK_DB_LATENCY_WARN_MS: int = 500
+    HEALTH_CHECK_DB_LATENCY_CRITICAL_MS: int = 2000
 
     # ── Financial constants ───────────────────────────────────────
     CARD_TOTAL_MONTHS: int = 12

@@ -132,6 +132,24 @@ class User(Base):
     login_password_hash:      Mapped[str | None] = mapped_column(Text)
     withdrawal_password_hash: Mapped[str | None] = mapped_column(Text)
 
+    # Set when an officer taps "mark as contacted" on this customer from
+    # the inactive-customers list (see customer_stats_service.py). NULL =
+    # never contacted. Not role-restricted at the DB level — see 020_
+    # migration comment.
+    last_contacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Admin CRM 2FA — see 022_admin_two_factor.sql for why these are
+    # separate from the password-reset OTP pair above.
+    two_factor_otp_hash:       Mapped[str | None] = mapped_column(Text, nullable=True)
+    two_factor_otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Legal acceptance — see 028_legal_acceptance.sql
+    terms_accepted_at:      Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terms_accepted_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # SMS transaction notifications preference — see 032_sms_subscription_and_wallet_overdraft.sql
+    sms_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
     @property
     def has_withdrawal_password(self) -> bool:
         """Lets the frontend tell first-time setup (no current password to

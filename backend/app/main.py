@@ -13,6 +13,24 @@ from app.core.database import engine
 from app.core.timing import TimingMiddleware, instrument_engine
 from app.core.limiter import limiter
 
+# ── Sentry — was installed (sentry-sdk in requirements.txt) but never
+# actually initialized anywhere. Gated on SENTRY_DSN being set so a
+# blank/dev environment doesn't try to connect anywhere; this is the
+# "catch every unhandled exception automatically" layer that
+# complements the purpose-built health-monitor checks (health_service.py)
+# — Sentry tells you an endpoint is throwing, the health monitor tells
+# you the database is slow or a payment provider is unreachable, which
+# Sentry alone wouldn't notice.
+if settings.SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.APP_ENV,
+        integrations=[FastApiIntegration()],
+        traces_sample_rate=0.1,   # 10% of requests get full performance tracing — enough to spot trends without the overhead/cost of tracing every request
+    )
+
 app = FastAPI(
     title="MonieKing Contributors",
     version="0.1.0",
@@ -48,17 +66,101 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+
+# ── Bank-grade HTTP security headers ──────────────────────────────
+# Every response gets these headers. They don't cost a single DB query
+# but shut down entire categories of attack (XSS, clickjacking, MIME
+# sniffing, referrer leaking, camera/mic/geolocation abuse).
+# Starlette doesn't have a built-in security-headers middleware, so
+# we add our own thin wrapper.
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response as StarletteResponse
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: StarletteResponse = await call_next(request)
+
+        # ── Content-Security-Policy ──
+        # Restricts which origins can serve scripts, styles, images, fonts,
+        # and connections. 'self' = same origin only. data: for inline SVGs
+        # and base64 images. 'unsafe-inline' for styles only (many UI
+        # libraries inject <style> tags). Scripts are NOT allowed inline —
+        # this blocks reflected XSS payloads.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob: https:; "
+            "connect-src 'self' https://api.monnify.com https://sandbox.monnify.com; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self';"
+        )
+
+        # ── Strict-Transport-Security ──
+        # Force HTTPS for 1 year, include subdomains, allow HSTS preload.
+        # Once a browser sees this header it will NEVER make a plain HTTP
+        # request to this domain — even if the user types http://…
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains; preload"
+        )
+
+        # ── X-Content-Type-Options ──
+        # Prevents browsers from sniffing a response away from the declared
+        # Content-Type. Stops attacks that upload a .jpg containing JS and
+        # trick the browser into executing it.
+        response.headers["X-Content-Type-Options"] = "nosniff"
+
+        # ── X-Frame-Options ──
+        # Prevents the page from being embedded in an <iframe> on another
+        # site (clickjacking). DENY is strictest — not even same-origin
+        # framing is allowed, which is correct for a financial app.
+        response.headers["X-Frame-Options"] = "DENY"
+
+        # ── Referrer-Policy ──
+        # Controls what the Referer header leaks when navigating away.
+        # strict-origin-when-cross-origin sends only the origin (no path)
+        # on cross-origin requests, and full URL on same-origin.
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # ── Permissions-Policy ──
+        # Disables browser features the app never uses (camera, mic,
+        # geolocation, payment, USB). Even if a XSS payload runs, it
+        # can't silently activate the camera or read the GPS.
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), "
+            "payment=(), usb=(), magnetometer=(), gyroscope=()"
+        )
+
+        # ── Cache-Control for API responses ──
+        # Financial data must never be cached by proxies or shared caches.
+        # no-store tells the browser not to write the response to disk at
+        # all, no-cache forces revalidation every time, private blocks
+        # CDN/proxy caching.
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, private, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
 # ── Import and mount routers AFTER middleware ──────────────────────
 from app.api.v1.routes import (
     auth, users, wallets, cards, notifications, admin, withdrawals,
     settings as settings_routes, instant_messages, promo_banners, zones,
-    webauthn as webauthn_routes, disputes,
+    webauthn as webauthn_routes, disputes, identity_services, bill_payments,
+    customer_stats, auth_admin, admin_crm, analytics, system_health,
+    food_collections,
 )
 from app.api.v1.routes.webhooks import router as webhook_router
 
 PREFIX = "/api/v1"
 
 app.include_router(auth.router,          prefix=PREFIX)
+app.include_router(auth_admin.router,    prefix=PREFIX)
 app.include_router(users.router,         prefix=PREFIX)
 app.include_router(wallets.router,       prefix=PREFIX)
 app.include_router(cards.router,         prefix=PREFIX)
@@ -71,7 +173,16 @@ app.include_router(notifications.router, prefix=PREFIX)
 app.include_router(admin.router,         prefix=PREFIX)
 app.include_router(webauthn_routes.router, prefix=PREFIX)
 app.include_router(disputes.router,       prefix=PREFIX)
+app.include_router(identity_services.router, prefix=PREFIX)
+app.include_router(bill_payments.router,     prefix=PREFIX)
+app.include_router(customer_stats.router,    prefix=PREFIX)
+app.include_router(admin_crm.router,         prefix=PREFIX)
+app.include_router(analytics.router,         prefix=PREFIX)
+app.include_router(system_health.router,     prefix=PREFIX)
+app.include_router(food_collections.router,  prefix=PREFIX)
 app.include_router(webhook_router)
+app.include_router(webhook_router,           prefix=PREFIX)
+
 
 # ── Global error handler — full detail logged server-side, only a
 # generic message ever goes back to the client. Returning str(exc)

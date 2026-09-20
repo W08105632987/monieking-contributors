@@ -83,38 +83,38 @@ export default function PromoBannersPage() {
   })
 
   return (
-    <div className="min-h-dvh flex flex-col bg-green-50">
-      <header className="flex items-center gap-3 px-4 py-3 bg-green-50">
-        <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-full bg-white border border-green-100 flex items-center justify-center">
-          <ArrowLeft className="w-4 h-4 text-green-700" />
+    <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
+      <header className="flex items-center gap-3 px-4 py-3 bg-green-50 dark:bg-night-800">
+        <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-full bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 flex items-center justify-center">
+          <ArrowLeft className="w-4 h-4 text-green-700 dark:text-night-100" />
         </button>
-        <h1 className="text-green-900 font-extrabold text-lg">Promo Banners</h1>
+        <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Promo Banners</h1>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 pb-10">
         {!showCreate ? (
           <button
             onClick={() => setShowCreate(true)}
-            className="w-full flex items-center justify-center gap-2 bg-amber-400 text-green-900 font-bold text-sm rounded-2xl py-3.5 active:scale-95 transition-all mb-5"
+            className="w-full flex items-center justify-center gap-2 bg-amber-400 dark:bg-night-100 text-green-900 dark:text-white font-bold text-sm rounded-2xl py-3.5 active:scale-95 transition-all mb-5"
           >
             <Plus className="w-4 h-4" /> New Banner
           </button>
         ) : (
-          <div className="bg-white rounded-2xl border border-green-100 shadow-card p-4 mb-5">
-            <p className="text-green-900 font-bold text-sm mb-3">New banner</p>
+          <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-5">
+            <p className="text-green-900 dark:text-white font-bold text-sm mb-3">New banner</p>
 
             <LivePreview title={title} subtitle={subtitle} from={gradientFrom} to={gradientTo} />
 
             <div className="mt-4 space-y-3">
               <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title, e.g. Refer a friend"
-                className="w-full border border-green-200 rounded-xl px-4 py-2.5 text-sm text-green-900" />
+                className="w-full border border-green-200 dark:border-night-500 rounded-xl px-4 py-2.5 text-sm text-green-900 dark:text-white" />
               <input value={subtitle} onChange={e => setSubtitle(e.target.value)} placeholder="Subtitle (optional)"
-                className="w-full border border-green-200 rounded-xl px-4 py-2.5 text-sm text-green-900" />
+                className="w-full border border-green-200 dark:border-night-500 rounded-xl px-4 py-2.5 text-sm text-green-900 dark:text-white" />
 
               <div className="flex gap-2">
                 {PRESETS.map(p => (
                   <button key={p.label} onClick={() => { setGradientFrom(p.from); setGradientTo(p.to) }}
-                    className={cn('flex-1 h-9 rounded-lg border-2', gradientFrom === p.from ? 'border-green-900' : 'border-transparent')}
+                    className={cn('flex-1 h-9 rounded-lg border-2', gradientFrom === p.from ? 'border-green-900 dark:border-night-200' : 'border-transparent')}
                     style={{ background: `linear-gradient(115deg, ${p.from}, ${p.to})` }}
                     title={p.label}
                   />
@@ -122,12 +122,12 @@ export default function PromoBannersPage() {
               </div>
 
               <div>
-                <label className="text-green-700 text-xs font-bold uppercase tracking-wide block mb-1.5">Show to</label>
+                <label className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide block mb-1.5">Show to</label>
                 <div className="flex gap-2">
                   {(['all', 'customer', 'officer'] as const).map(a => (
                     <button key={a} onClick={() => setAudience(a)}
                       className={cn('flex-1 py-2 rounded-xl text-xs font-bold',
-                        audience === a ? 'bg-green-900 text-white' : 'bg-green-50 text-green-600')}
+                        audience === a ? 'bg-green-900 dark:bg-night-100 text-white' : 'bg-green-50 dark:bg-night-600 text-green-600 dark:text-night-200')}
                     >
                       {a === 'all' ? 'Everyone' : a === 'customer' ? 'Customers' : 'Officers'}
                     </button>
@@ -137,13 +137,13 @@ export default function PromoBannersPage() {
             </div>
 
             <div className="flex gap-2 mt-4">
-              <button onClick={() => setShowCreate(false)} className="flex-1 border border-green-200 text-green-700 font-bold text-sm rounded-full py-3">
+              <button onClick={() => setShowCreate(false)} className="flex-1 border border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 font-bold text-sm rounded-full py-3">
                 Cancel
               </button>
               <button
                 onClick={() => createMutation.mutate()}
                 disabled={!title.trim() || createMutation.isPending}
-                className="flex-1 bg-green-900 text-white font-bold text-sm rounded-full py-3 disabled:opacity-40"
+                className="flex-1 bg-green-900 dark:bg-night-100 text-white font-bold text-sm rounded-full py-3 disabled:opacity-40"
               >
                 {createMutation.isPending ? 'Creating…' : 'Create'}
               </button>
@@ -151,17 +151,17 @@ export default function PromoBannersPage() {
           </div>
         )}
 
-        <p className="text-green-900 font-bold text-sm mb-3">All banners</p>
+        <p className="text-green-900 dark:text-white font-bold text-sm mb-3">All banners</p>
         {isLoading ? (
-          <div className="h-24 bg-white rounded-2xl border border-green-100 animate-pulse" />
+          <div className="h-24 bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 animate-pulse" />
         ) : banners.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-green-100 shadow-card text-center py-10 px-6">
-            <p className="text-green-500 text-sm">No banners yet</p>
+          <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card text-center py-10 px-6">
+            <p className="text-green-500 dark:text-night-200 text-sm">No banners yet</p>
           </div>
         ) : (
           <div className="space-y-3">
             {banners.map(b => (
-              <div key={b.id} className="bg-white rounded-2xl border border-green-100 shadow-card p-3">
+              <div key={b.id} className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-3">
                 <div className="rounded-xl overflow-hidden mb-2">
                   <LivePreview title={b.title} subtitle={b.subtitle ?? ''} from={b.gradient_from} to={b.gradient_to} />
                 </div>
@@ -169,19 +169,19 @@ export default function PromoBannersPage() {
                   <button
                     onClick={() => toggleMutation.mutate({ id: b.id, is_active: !b.is_active })}
                     disabled={toggleMutation.isPending && toggleMutation.variables?.id === b.id}
-                    className={cn('text-xs font-bold px-3 py-1.5 rounded-full disabled:opacity-60', b.is_active ? 'bg-green-100 text-green-700' : 'bg-green-50 text-green-400')}
+                    className={cn('text-xs font-bold px-3 py-1.5 rounded-full disabled:opacity-60', b.is_active ? 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' : 'bg-green-50 dark:bg-night-600 text-green-400 dark:text-night-300')}
                   >
                     {toggleMutation.isPending && toggleMutation.variables?.id === b.id
                       ? 'Updating…'
                       : b.is_active ? 'Active' : 'Inactive'}
                   </button>
-                  <span className="text-green-400 text-xs capitalize">
+                  <span className="text-green-400 dark:text-night-300 text-xs capitalize">
                     {b.target_roles === 'all' ? 'Everyone' : `${b.target_roles}s only`}
                   </span>
                   <button
                     onClick={() => deleteMutation.mutate(b.id)}
                     disabled={deleteMutation.isPending && deleteMutation.variables === b.id}
-                    className="flex items-center gap-1.5 text-xs font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-full disabled:opacity-60"
+                    className="flex items-center gap-1.5 text-xs font-bold text-red-500 dark:text-red-300 bg-red-50 dark:bg-red-900 px-3 py-1.5 rounded-full disabled:opacity-60"
                   >
                     {deleteMutation.isPending && deleteMutation.variables === b.id ? (
                       'Removing…'

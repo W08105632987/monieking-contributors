@@ -59,3 +59,10 @@ class WithdrawalResponse(BaseModel):
     requested_at:          datetime
     customer_name:         Optional[str] = None
     customer_avatar_url:   Optional[str] = None
+    # Only populated by the wallet-withdrawal endpoint (source=WALLET) —
+    # the authoritative post-debit balance, straight from the same
+    # locked row this transaction just wrote to. Lets the frontend
+    # update the wallet balance on screen immediately from this
+    # response, instead of a separate GET /wallets/me the UI would
+    # otherwise have to wait on.
+    wallet_balance_kobo:   Optional[int] = None

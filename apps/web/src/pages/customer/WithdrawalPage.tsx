@@ -27,7 +27,7 @@ function WalletWithdrawSheet({ onClose }: { onClose: () => void }) {
   const [bioLoading, setBioLoading]     = useState(false)
   const autoPromptedRef = useRef(false)
 
-  useEffect(() => { isBiometricAvailable().then(setBioAvailable) }, [])
+  useEffect(() => { if (FEATURE_FLAGS.BIOMETRICS_ENABLED) isBiometricAvailable().then(setBioAvailable) }, [])
 
   const amountKobo  = Math.round(parseFloat(amountNaira || '0') * 100)
   const netPayable  = amountKobo - WALLET_WITHDRAWAL_CHARGE_KOBO
@@ -201,32 +201,6 @@ interface WithdrawalPreview {
 }
 
 export default function WithdrawalPage() {
-  const navigate = useNavigate()
-
-  if (!FEATURE_FLAGS.WITHDRAWALS_ENABLED) {
-    return (
-      <div className="min-h-dvh flex flex-col items-center justify-center bg-green-50 dark:bg-night-800 px-6 text-center">
-        <div className="w-16 h-16 bg-amber-100 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center mb-4">
-          <span className="text-2xl">🛠️</span>
-        </div>
-        <h1 className="text-green-900 dark:text-white font-extrabold text-xl mb-1">Withdrawals — coming soon</h1>
-        <p className="text-green-500 dark:text-night-300 text-sm max-w-xs mb-6">
-          We're putting the final touches on instant withdrawals. Your balance is safe, and this will open back up shortly.
-        </p>
-        <button
-          onClick={() => navigate(-1)}
-          className="bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full px-6 py-3 active:scale-95 transition-all"
-        >
-          Go back
-        </button>
-      </div>
-    )
-  }
-
-  return <WithdrawalPageLive />
-}
-
-function WithdrawalPageLive() {
   const navigate       = useNavigate()
   const [params]       = useSearchParams()
   const idemKeyRef = useRef(idempotencyKey())
@@ -251,7 +225,7 @@ function WithdrawalPageLive() {
   // there.
   const pendingAuthRef = useRef<Record<string, any> | null>(null)
 
-  useEffect(() => { isBiometricAvailable().then(setBioAvailable) }, [])
+  useEffect(() => { if (FEATURE_FLAGS.BIOMETRICS_ENABLED) isBiometricAvailable().then(setBioAvailable) }, [])
 
   const { data: cards = [], isLoading: cardsLoading } = useQuery({
     queryKey: ['cards-for-withdrawal'],
@@ -395,8 +369,9 @@ function WithdrawalPageLive() {
 
         {/* Withdraw directly from wallet — instant, no approval wait */}
         <button
-          onClick={() => setShowWalletWithdraw(true)}
-          className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-dashed border-green-300 bg-white dark:bg-night-700 mb-5 text-left active:scale-[0.99] transition-all"
+          onClick={() => FEATURE_FLAGS.INSTANT_WITHDRAWAL_ENABLED && setShowWalletWithdraw(true)}
+          disabled={!FEATURE_FLAGS.INSTANT_WITHDRAWAL_ENABLED}
+          className="relative w-full flex items-center justify-between p-4 rounded-2xl border-2 border-dashed border-green-300 dark:border-night-500 bg-white dark:bg-night-700 mb-5 text-left active:scale-[0.99] transition-all disabled:opacity-50 disabled:active:scale-100"
         >
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-green-100 dark:bg-night-600 flex items-center justify-center flex-shrink-0">
@@ -404,10 +379,16 @@ function WithdrawalPageLive() {
             </div>
             <div>
               <p className="text-green-900 dark:text-white font-semibold text-sm">Withdraw to my account</p>
-              <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">Instant — straight from your wallet balance</p>
+              <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">
+                {FEATURE_FLAGS.INSTANT_WITHDRAWAL_ENABLED ? 'Instant — straight from your wallet balance' : 'Coming soon — instant wallet withdrawal'}
+              </p>
             </div>
           </div>
-          <ChevronRight className="w-4 h-4 text-green-300 dark:text-night-300" />
+          {FEATURE_FLAGS.INSTANT_WITHDRAWAL_ENABLED ? (
+            <ChevronRight className="w-4 h-4 text-green-300 dark:text-night-300" />
+          ) : (
+            <span className="text-[9px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/20 px-2 py-1 rounded-full flex-shrink-0">SOON</span>
+          )}
         </button>
 
         {/* Amount */}
@@ -430,7 +411,10 @@ function WithdrawalPageLive() {
 
             {/* Breakdown */}
             {amountKobo > 0 && (
-              <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+              <motion.div
+                layout
+                initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ layout: { duration: 0.25, ease: 'easeOut' } }}
                 className="bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-2xl p-4 mb-5 shadow-card"
               >
                 {!isValidMultiple ? (

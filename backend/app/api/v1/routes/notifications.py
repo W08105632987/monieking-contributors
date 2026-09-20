@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.dependencies import CurrentUser, DirectorOrAdmin
 from app.models.notification import Notification, Broadcast, NotificationType
 from app.models.user import User, UserRole
+from app.schemas.notification import BroadcastRequest
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -90,25 +91,22 @@ async def mark_all_read(
 
 @router.post("/broadcasts", status_code=201)
 async def send_broadcast(
-    body: dict,
+    body: BroadcastRequest,
     staff: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
 ):
     """Admin or Director sends a broadcast to all or targeted users."""
-    title        = body.get("title", "")
-    message_body = body.get("body", "")
-    target_roles = body.get("target_roles", "all")
-    zone_id      = body.get("zone_id")
-
-    if not title or not message_body:
-        raise HTTPException(status_code=400, detail="Title and body are required")
+    title        = body.title
+    message_body = body.body
+    target_roles = body.target_roles
+    zone_id      = body.zone_id
 
     broadcast = Broadcast(
         sent_by=       staff.id,
         title=         title,
         body=          message_body,
         target_roles=  target_roles,
-        target_zone_id=uuid.UUID(zone_id) if zone_id else None,
+        target_zone_id=zone_id,
     )
     db.add(broadcast)
     await db.flush()
@@ -119,7 +117,7 @@ async def send_broadcast(
         roles = [r.strip() for r in target_roles.split(",")]
         query = query.where(User.role.in_(roles))
     if zone_id:
-        query = query.where(User.zone_id == uuid.UUID(zone_id))
+        query = query.where(User.zone_id == zone_id)
 
     result = await db.execute(query)
     users  = result.scalars().all()

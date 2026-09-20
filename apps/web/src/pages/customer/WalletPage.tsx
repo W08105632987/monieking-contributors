@@ -17,7 +17,8 @@ import { formatNaira, formatDateTime, timeAgo, copyToClipboard } from '@/lib/uti
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import type { WalletTransaction } from '@/types'
-import { FEATURE_FLAGS } from '@/config/featureFlags'
+import { FallbackError } from '@/components/ui/FallbackError'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 const TX_CATEGORY_LABEL: Record<string, string> = {
   wallet_funding:       'Wallet funded',
@@ -251,16 +252,29 @@ export default function WalletPage() {
   const [showFundSheet, setShowFundSheet] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null)
-  const [statRange, setStatRange] = useState<'week' | 'month' | 'all'>('all')
+  const [statRange, setStatRange] = useState<'week' | 'month' | 'all' | 'custom'>('all')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
 
-  const { data: summary } = useQuery({
-    queryKey: ['wallet-summary', statRange],
+  const { data: summary, isLoading: summaryLoading, isError: summaryError, refetch: refetchSummary } = useQuery({
+    queryKey: ['wallet-summary', statRange, statRange === 'custom' ? customStart : null, statRange === 'custom' ? customEnd : null],
     queryFn: async () => {
       const { data } = await api.get<{ total_in_kobo: number; total_out_kobo: number; range_label: string }>(
-        '/wallets/me/summary', { params: { range: statRange } }
+        '/wallets/me/summary', {
+          params: {
+            range: statRange,
+            ...(statRange === 'custom' && customStart ? { start_date: customStart } : {}),
+            ...(statRange === 'custom' && customEnd ? { end_date: customEnd } : {}),
+          },
+        }
       )
       return data
     },
+    // A custom range with no start date yet isn't a real query — wait
+    // for the customer to actually pick one, rather than firing a
+    // request for "custom, no dates" that the backend would just treat
+    // as all-time anyway.
+    enabled: statRange !== 'custom' || !!customStart,
   })
 
   const handleRefresh = async () => {
@@ -277,15 +291,7 @@ export default function WalletPage() {
 
       {/* Top bar */}
       <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-green-900 dark:bg-white/10 rounded-xl flex items-center justify-center shadow-card">
-            <span className="text-amber-400 font-extrabold text-base">₦</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-green-900 dark:text-white font-extrabold text-xl tracking-tight leading-none">Monie</span>
-            <span className="text-amber-500 font-extrabold text-xl tracking-tight leading-none">King</span>
-          </div>
-        </div>
+        <BrandBlobLogo height={36} />
         <div className="flex items-center gap-2">
           <button
             onClick={handleRefresh}
@@ -335,14 +341,10 @@ export default function WalletPage() {
                   <ArrowDownLeft className="w-4 h-4" /> Fund wallet
                 </button>
                 <button
-                  onClick={() => FEATURE_FLAGS.WITHDRAWALS_ENABLED && navigate('/customer/withdrawals/new')}
-                  disabled={!FEATURE_FLAGS.WITHDRAWALS_ENABLED}
-                  className="relative flex-1 min-w-0 flex items-center justify-center gap-2 border-2 border-green-500 dark:border-night-300 text-green-300 dark:text-night-300 font-bold text-sm rounded-full py-3 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
+                  onClick={() => navigate('/customer/withdrawals/new')}
+                  className="flex-1 min-w-0 flex items-center justify-center gap-2 border-2 border-green-500 dark:border-night-300 text-green-300 dark:text-night-300 font-bold text-sm rounded-full py-3 active:scale-95 transition-all"
                 >
                   <ArrowUpRight className="w-4 h-4" /> Withdraw
-                  {!FEATURE_FLAGS.WITHDRAWALS_ENABLED && (
-                    <span className="absolute -top-2 -right-2 text-[9px] font-bold text-amber-900 bg-amber-300 px-1.5 py-0.5 rounded-full">SOON</span>
-                  )}
                 </button>
               </div>
             </div>
@@ -351,7 +353,7 @@ export default function WalletPage() {
 
         {/* Money in / out stats */}
         <div className="px-4 flex items-center gap-2 mb-3">
-          {(['week', 'month', 'all'] as const).map(r => (
+          {(['week', 'month', 'all', 'custom'] as const).map(r => (
             <button
               key={r}
               onClick={() => setStatRange(r)}
@@ -362,10 +364,37 @@ export default function WalletPage() {
                   : 'bg-white dark:bg-night-700 text-green-600 dark:text-night-200 border border-green-100 dark:border-night-500'
               )}
             >
-              {r === 'week' ? '7 days' : r === 'month' ? '30 days' : 'All time'}
+              {r === 'week' ? '7 days' : r === 'month' ? '30 days' : r === 'all' ? 'All time' : 'Custom'}
             </button>
           ))}
         </div>
+        {statRange === 'custom' && (
+          <div className="px-4 flex items-center gap-2 mb-3">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              max={customEnd || undefined}
+              className="flex-1 bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-xl px-3 py-2 text-xs font-semibold text-green-900 dark:text-white"
+            />
+            <span className="text-green-400 dark:text-night-300 text-xs">to</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              min={customStart || undefined}
+              className="flex-1 bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-xl px-3 py-2 text-xs font-semibold text-green-900 dark:text-white"
+            />
+          </div>
+        )}
+        {summaryError ? (
+          <div className="px-4 mb-5">
+            <FallbackError
+              title="Couldn't load your totals"
+              onRetry={() => refetchSummary()}
+            />
+          </div>
+        ) : (
         <div className="px-4 grid grid-cols-2 gap-3 mb-5">
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -374,8 +403,17 @@ export default function WalletPage() {
               </div>
               <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-wide">Money in</p>
             </div>
-            <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(summary?.total_in_kobo ?? 0)}</p>
-            <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{summary?.range_label ?? 'All time'}</p>
+            {summaryLoading ? (
+              <>
+                <div className="h-6 w-24 bg-green-100 dark:bg-night-600 rounded animate-pulse mb-1" />
+                <div className="h-3 w-16 bg-green-100 dark:bg-night-600 rounded animate-pulse" />
+              </>
+            ) : (
+              <>
+                <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(summary?.total_in_kobo ?? 0)}</p>
+                <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{summary?.range_label ?? 'All time'}</p>
+              </>
+            )}
           </div>
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -384,10 +422,20 @@ export default function WalletPage() {
               </div>
               <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-wide">Money out</p>
             </div>
-            <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(summary?.total_out_kobo ?? 0)}</p>
-            <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{summary?.range_label ?? 'All time'}</p>
+            {summaryLoading ? (
+              <>
+                <div className="h-6 w-24 bg-green-100 dark:bg-night-600 rounded animate-pulse mb-1" />
+                <div className="h-3 w-16 bg-green-100 dark:bg-night-600 rounded animate-pulse" />
+              </>
+            ) : (
+              <>
+                <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(summary?.total_out_kobo ?? 0)}</p>
+                <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{summary?.range_label ?? 'All time'}</p>
+              </>
+            )}
           </div>
         </div>
+        )}
 
         {/* Transaction history — last 5 only, full list lives on its own page */}
         <div className="px-4">
