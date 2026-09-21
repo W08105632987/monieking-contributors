@@ -15,7 +15,7 @@ def set_session_cookies(response: Response, access_token: str, refresh_token: st
     cookie_kwargs = dict(
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite="none" if settings.cookie_secure else "lax",
         path="/",
     )
     if settings.COOKIE_DOMAIN:
@@ -27,7 +27,11 @@ def set_session_cookies(response: Response, access_token: str, refresh_token: st
 
 
 def clear_session_cookies(response: Response) -> None:
-    cookie_kwargs = dict(path="/")
+    cookie_kwargs = dict(
+        path="/",
+        secure=settings.cookie_secure,
+        samesite="none" if settings.cookie_secure else "lax",
+    )
     if settings.COOKIE_DOMAIN:
         cookie_kwargs["domain"] = settings.COOKIE_DOMAIN
     response.delete_cookie(ACCESS_COOKIE, **cookie_kwargs)

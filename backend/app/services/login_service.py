@@ -127,6 +127,7 @@ async def password_grant(email: str, password: str) -> dict:
             failure_detail="Could not sign you in right now. Please try again.",
         )
     except HTTPException as e:
+        print(f"[AUTH_ERROR] password_grant failed for {email}: status={e.status_code}, detail={e.detail}", flush=True)
         if e.status_code == status.HTTP_400_BAD_REQUEST:
             # Supabase's standard "invalid_grant" response for a wrong
             # password — this is the one case we translate into "wrong

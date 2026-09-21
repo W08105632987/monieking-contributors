@@ -93,30 +93,54 @@ export default function RegisterPage() {
       const emailAlias = `${values.phone_number.replace(/\s+/g, '')}@monieking.app`
 
       // Step 1 — Create or reuse Supabase Auth account
+      let token: string | null = null
       if (!isResume) {
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email:    emailAlias,
           password: values.password,
         })
         if (signUpError && !signUpError.message.toLowerCase().includes('already')) {
           throw new Error(signUpError.message)
         }
+        token = signUpData?.session?.access_token ?? null
+      }
+
+      if (!token) {
+        const { data: sessionData } = await supabase.auth.getSession()
+        token = sessionData?.session?.access_token ?? null
+      }
+      if (!token) {
+        try {
+          const { data: signInData } = await supabase.auth.signInWithPassword({
+            email:    emailAlias,
+            password: values.password,
+          })
+          token = signInData?.session?.access_token ?? null
+        } catch {
+          // Continue to session cookie attempt below
+        }
       }
 
       // Small delay to ensure Supabase Auth has committed the user
       await new Promise(resolve => setTimeout(resolve, 1500))
 
-      // Step 2 — Start a session (backend sets it as an httpOnly cookie;
-      // there's no platform `users` row yet at this point, so this can't
-      // go through the normal /auth/login lockout-tracked flow — see
-      // /auth/signup-session in auth.py)
-      await api.post('/auth/signup-session', {
-        phone_number: values.phone_number.replace(/\s+/g, ''),
-        password:     values.password,
-      })
+      // Step 2 — Start a session (backend sets it as an httpOnly cookie)
+      try {
+        await api.post('/auth/signup-session', {
+          phone_number: values.phone_number.replace(/\s+/g, ''),
+          password:     values.password,
+        })
+      } catch (sessionErr) {
+        console.warn('Signup session cookie setup note:', sessionErr)
+      }
 
       // Step 3 — Create platform user record on backend
-      // The session cookie set above authenticates this call automatically.
+      // Accepts session cookie OR Authorization Bearer token as fallback.
+      const authHeaders: Record<string, string> = {}
+      if (token) {
+        authHeaders['Authorization'] = `Bearer ${token}`
+      }
+
       try {
         await api.post('/auth/register', {
           full_name:           values.full_name,
@@ -129,7 +153,7 @@ export default function RegisterPage() {
           password:            values.password,
           withdrawal_password: values.withdrawal_password,
           accepted_terms:      true,
-        })
+        }, { headers: authHeaders })
       } catch (apiErr: any) {
         const msg = apiErr?.response?.data?.detail ?? apiErr?.message ?? 'Registration failed'
         // If backend says already registered, just continue — user may be retrying
@@ -139,7 +163,7 @@ export default function RegisterPage() {
       }
 
       // Step 4 — Fetch profile and set in store
-      const { data: profile } = await api.get<AuthUser>('/users/me')
+      const { data: profile } = await api.get<AuthUser>('/users/me', { headers: authHeaders })
       queryClient.clear()  // same reasoning as login — never trust leftover cache from a prior session on this device
       setUser(profile)
 

@@ -209,6 +209,37 @@ async def health_versioned():
     # "is the server back yet?" check needs this one specifically.
     return {"status": "ok", "app": "MonieKing Contributors"}
 
+@app.get(f"{PREFIX}/health/auth-config")
+async def health_auth_config():
+    import httpx
+    clean_url = settings.SUPABASE_URL.strip().strip('"').strip("'").rstrip("/")
+    clean_key = settings.SUPABASE_SERVICE_ROLE_KEY.strip().strip('"').strip("'")
+    status_code = None
+    body_snippet = None
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.get(
+                f"{clean_url}/auth/v1/settings",
+                headers={"apikey": clean_key, "Authorization": f"Bearer {clean_key}"}
+            )
+            status_code = resp.status_code
+            body_snippet = resp.text[:150]
+    except Exception as e:
+        body_snippet = f"Error: {e}"
+
+    return {
+        "app_env": settings.APP_ENV,
+        "cookie_domain": settings.COOKIE_DOMAIN,
+        "cookie_secure": settings.cookie_secure,
+        "cors_origins": settings.cors_origins_list,
+        "supabase_url": clean_url,
+        "service_role_key_prefix": clean_key[:12] + "..." + clean_key[-6:] if clean_key else "EMPTY",
+        "jwt_secret_prefix": settings.SUPABASE_JWT_SECRET[:8] + "..." if settings.SUPABASE_JWT_SECRET else "EMPTY",
+        "supabase_connectivity_status": status_code,
+        "supabase_connectivity_response": body_snippet,
+    }
+
+
 @app.get("/")
 async def root():
     return {"message": "MonieKing Contributors API is running."}

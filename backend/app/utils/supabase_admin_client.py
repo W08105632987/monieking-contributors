@@ -37,9 +37,10 @@ SUPABASE_TIMEOUT = httpx.Timeout(connect=5.0, read=12.0, write=12.0, pool=5.0)
 
 
 def _admin_headers(extra: dict | None = None) -> dict:
+    key = settings.SUPABASE_SERVICE_ROLE_KEY.strip().strip('"').strip("'")
     headers = {
-        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
     }
     if extra:
         headers.update(extra)
@@ -69,11 +70,12 @@ async def supabase_admin_request(
     if json is not None:
         headers.setdefault("Content-Type", "application/json")
 
+    base_url = settings.SUPABASE_URL.strip().strip('"').strip("'").rstrip("/")
     try:
         async with httpx.AsyncClient(timeout=SUPABASE_TIMEOUT) as client:
             resp = await client.request(
                 method,
-                f"{settings.SUPABASE_URL}{path}",
+                f"{base_url}{path}",
                 headers=headers,
                 json=json,
                 content=content,
@@ -98,6 +100,7 @@ async def supabase_admin_request(
 
     ok = resp.status_code in ok_statuses or (not_found_ok and resp.status_code == 404)
     if not ok:
+        print(f"[SUPABASE_ERROR] {method} {base_url}{path} returned {resp.status_code}: {resp.text[:300]}", flush=True)
         try:
             body = resp.json()
             message = body.get("msg") or body.get("message") or body.get("error_description")
