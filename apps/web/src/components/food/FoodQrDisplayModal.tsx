@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ShieldCheck, Calendar, AlertTriangle, Eye, EyeOff, X } from 'lucide-react'
 import { QrCodeSvg } from '@/components/ui/QrCodeSvg'
 
@@ -24,22 +24,32 @@ export function FoodQrDisplayModal({
 }: FoodQrDisplayModalProps) {
   const [showPin, setShowPin] = useState(false)
 
-  if (!isOpen) return null
-
   const isCollected = status === 'used'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/75 backdrop-blur-md" />
+    <AnimatePresence>
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={onClose}
+        >
+          <motion.div
+            className="absolute inset-0 bg-green-950/75 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          />
 
-      <motion.div
-        initial={{ y: '100%', opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: '100%', opacity: 0 }}
-        transition={{ type: 'spring', damping: 26, stiffness: 280 }}
-        className="relative bg-white dark:bg-night-700 rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-center"
-        onClick={e => e.stopPropagation()}
-      >
+          <motion.div
+            initial={{ y: '100%', opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300, mass: 0.8 }}
+            style={{ willChange: 'transform' }}
+            className="relative bg-white dark:bg-night-700 rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-center"
+            onClick={e => e.stopPropagation()}
+          >
         {/* Top Header */}
         <div className="px-6 pt-6 pb-3 border-b border-green-100 dark:border-night-600 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -132,7 +142,9 @@ export function FoodQrDisplayModal({
             Close Pass
           </button>
         </div>
-      </motion.div>
-    </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   )
 }

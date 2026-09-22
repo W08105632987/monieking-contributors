@@ -15,15 +15,14 @@ export const roleDashboard: Record<UserRole, string> = {
   officer:  '/officer/dashboard',
   admin:    '/director/dashboard',   // Admin role kept in the DB enum for safety, but has no portal of its own anymore
   director: '/director/dashboard',
+  service_worker: '/worker/dashboard',
 }
 
 export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
   const { user, isLoading, isAuthenticated } = useAuthStore()
   const location = useLocation()
 
-  // All portals (customer, officer, director) now support dark mode,
-  // so we no longer force-remove the dark class for non-customer roles.
-
+  // All portals (customer, officer, director, worker) support dark mode
 
   if (isLoading) {
     return (
@@ -35,6 +34,10 @@ export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/auth/login" state={{ from: location }} replace />
+  }
+
+  if (user.role === 'service_worker' && !user.onboarding_completed && location.pathname !== '/worker/onboarding') {
+    return <Navigate to="/worker/onboarding" replace />
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {

@@ -72,14 +72,6 @@ export function CameraQrScanner({ onScan, onClose }: CameraQrScannerProps) {
   const html5ScannerRef = useRef<any | null>(null)
   const scannedRef = useRef(false)
 
-  const handleDetected = useCallback((text: string) => {
-    if (scannedRef.current) return
-    scannedRef.current = true
-    setIsScanning(false)
-    playScanBeep()
-    onScan(text)
-  }, [onScan])
-
   const stopStream = useCallback(() => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current)
@@ -99,6 +91,19 @@ export function CameraQrScanner({ onScan, onClose }: CameraQrScannerProps) {
       trackRef.current = null
     }
   }, [])
+
+  const handleDetected = useCallback((text: string) => {
+    if (scannedRef.current) return
+    scannedRef.current = true
+    setIsScanning(false)
+    // Stop the camera stream immediately on scan — no need to wait
+    // for the parent's state update; this makes closure feel instant.
+    stopStream()
+    playScanBeep()
+    onScan(text)
+  }, [onScan, stopStream])
+
+
 
   useEffect(() => {
     scannedRef.current = false

@@ -17,6 +17,25 @@ export default function ServiceRequestFormPage() {
   // the customer_id query param, see identity_services.py)
   const { serviceId, customerId } = useParams<{ serviceId: string; customerId?: string }>()
   const [values, setValues] = useState<Record<string, string | boolean>>({})
+  const [referralCode, setReferralCode] = useState('')
+  const [referralWorker, setReferralWorker] = useState<string | null>(null)
+
+  const handleReferralCodeChange = async (code: string) => {
+    const clean = code.trim().toUpperCase()
+    setReferralCode(clean)
+    if (clean.length >= 6) {
+      try {
+        const { data } = await api.get(`/manual-services/validate-referral/${clean}`)
+        if (data.valid) {
+          setReferralWorker(data.worker_name || 'Verified Service Worker')
+        }
+      } catch {
+        setReferralWorker(null)
+      }
+    } else {
+      setReferralWorker(null)
+    }
+  }
 
   // There's no GET /identity-services/:id — the catalog is small and
   // already fetched wherever this is linked from, so pulling the full
@@ -32,9 +51,13 @@ export default function ServiceRequestFormPage() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
+      const payloadData = {
+        ...values,
+        ...(referralCode ? { referral_code: referralCode, referred_worker: referralWorker } : {}),
+      }
       const { data } = await api.post<IdentityServiceRequest>(
         '/identity-services/requests',
-        { service_id: serviceId, payload: values },
+        { service_id: serviceId, payload: payloadData },
         { params: customerId ? { customer_id: customerId } : {} }
       )
       return data
@@ -127,7 +150,27 @@ export default function ServiceRequestFormPage() {
                 ))}
             </div>
 
-            <div className="flex items-start gap-2 rounded-2xl p-3 mt-5 bg-green-100 dark:bg-night-600">
+            {/* Optional Service Worker Referral Code */}
+            <div className="mt-4 pt-3 border-t border-green-100 dark:border-night-600">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-green-600 dark:text-night-300 text-xs font-semibold uppercase tracking-wide">
+                  Worker Referral Code (Optional)
+                </label>
+                {referralWorker && (
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold text-xs">
+                    ✓ {referralWorker}
+                  </span>
+                )}
+              </div>
+              <input
+                value={referralCode}
+                onChange={e => handleReferralCodeChange(e.target.value)}
+                placeholder="e.g. SW-A1B2C3"
+                className="w-full rounded-xl border-2 border-green-100 dark:border-night-500 bg-white dark:bg-night-600 px-4 py-2.5 text-sm font-mono text-green-900 dark:text-white uppercase outline-none focus:border-green-400"
+              />
+            </div>
+
+            <div className="flex items-start gap-2 rounded-2xl p-3 mt-4 bg-green-100 dark:bg-night-600">
               <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5 text-green-700 dark:text-night-100" />
               <button
                 onClick={() => setValues(v => ({ ...v, isSubjectConsent: !v.isSubjectConsent }))}

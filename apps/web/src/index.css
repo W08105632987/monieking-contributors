@@ -82,14 +82,13 @@
 
   body {
     @apply bg-surface text-green-900 font-sans antialiased;
-    height: 100dvh;
-    overflow: hidden;
-    overscroll-behavior: none;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overscroll-behavior-y: none;
   }
 
   #root {
-    height: 100dvh;
-    overflow: hidden;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
   }

@@ -200,10 +200,12 @@ def require_role(*roles: UserRole):
 
 
 # ── Typed dependency aliases ──────────────────────────────────────
-CurrentUser       = Annotated[User, Depends(get_current_user)]
-CustomerOnly      = Annotated[User, Depends(require_role(UserRole.CUSTOMER))]
-OfficerOnly       = Annotated[User, Depends(require_role(UserRole.OFFICER))]
-DirectorOnly      = Annotated[User, Depends(require_role(UserRole.DIRECTOR))]
-AdminOnly         = Annotated[User, Depends(require_role(UserRole.ADMIN))]
-CustomerOrOfficer = Annotated[User, Depends(require_role(UserRole.CUSTOMER, UserRole.OFFICER))]
-DirectorOrAdmin   = Annotated[User, Depends(require_role(UserRole.DIRECTOR, UserRole.ADMIN))]
+CurrentUser        = Annotated[User, Depends(get_current_user)]
+CustomerOnly       = Annotated[User, Depends(require_role(UserRole.CUSTOMER))]
+OfficerOnly        = Annotated[User, Depends(require_role(UserRole.OFFICER))]
+DirectorOnly       = Annotated[User, Depends(require_role(UserRole.DIRECTOR))]
+AdminOnly          = Annotated[User, Depends(require_role(UserRole.ADMIN))]
+ServiceWorkerOnly  = Annotated[User, Depends(require_role(UserRole.SERVICE_WORKER))]
+CustomerOrOfficer  = Annotated[User, Depends(require_role(UserRole.CUSTOMER, UserRole.OFFICER))]
+DirectorOrAdmin    = Annotated[User, Depends(require_role(UserRole.DIRECTOR, UserRole.ADMIN))]
+DirectorOrWorker   = Annotated[User, Depends(require_role(UserRole.DIRECTOR, UserRole.SERVICE_WORKER))]

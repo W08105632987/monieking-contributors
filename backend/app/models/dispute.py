@@ -1,7 +1,7 @@
 import uuid
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import String, Enum, ForeignKey, DateTime, Text
+from sqlalchemy import String, Enum, ForeignKey, DateTime, Text, Boolean, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -67,14 +67,28 @@ class Dispute(Base):
     resolution_summary: Mapped[str | None] = mapped_column(Text)
     resolved_at:         Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Service Worker routing (manual service disputes) — see migration 036
+    service_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("manual_service_requests.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    assigned_worker_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    is_escalated:    Mapped[bool]             = mapped_column(Boolean, nullable=False, default=False)
+    escalated_at:    Mapped[datetime | None]  = mapped_column(DateTime(timezone=True), nullable=True)
+    escalation_reason: Mapped[str | None]    = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    customer: Mapped["User"] = relationship("User", foreign_keys=[raised_by])
-    handler:  Mapped["User | None"] = relationship("User", foreign_keys=[assigned_to])
+    customer:        Mapped["User"] = relationship("User", foreign_keys=[raised_by])
+    handler:         Mapped["User | None"] = relationship("User", foreign_keys=[assigned_to])
+    assigned_worker: Mapped["User | None"] = relationship("User", foreign_keys=[assigned_worker_id])
     messages: Mapped[list["DisputeMessage"]] = relationship(
         "DisputeMessage", back_populates="dispute", order_by="DisputeMessage.created_at",
         cascade="all, delete-orphan",
@@ -89,6 +103,12 @@ class DisputeMessage(Base):
     sender_id:  Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     message:    Mapped[str] = mapped_column(Text, nullable=False)
     read_at:    Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # File attachment — see migration 036
+    attachment_url:  Mapped[str | None] = mapped_column(Text, nullable=True)
+    attachment_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    attachment_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     dispute: Mapped["Dispute"] = relationship("Dispute", back_populates="messages")

@@ -1,5 +1,5 @@
 // ─── Enums ────────────────────────────────────────────────────────
-export type UserRole = 'customer' | 'officer' | 'admin' | 'director'
+export type UserRole = 'customer' | 'officer' | 'admin' | 'director' | 'service_worker'
 export type UserStatus = 'active' | 'suspended' | 'pending_verification'
 export type CardType = 'regular' | 'food'
 export type CardStatus = 'active' | 'completed' | 'converted' | 'archived'
@@ -44,6 +44,10 @@ export interface User {
   bvn_last4?: string | null
   nin_last4?: string | null
   sms_alerts_enabled?: boolean
+  onboarding_completed?: boolean
+  state_of_residence?: string | null
+  referral_code?: string | null
+  commission_balance_kobo?: number
   created_at: string
   updated_at: string
 }
@@ -418,6 +422,9 @@ export interface DisputeMessage {
   sender_id: string
   sender_name: string
   message: string
+  attachment_url?: string | null
+  attachment_name?: string | null
+  attachment_size?: number | null
   read_at: string | null
   created_at: string
 }
@@ -434,6 +441,11 @@ export interface Dispute {
   handler_name: string | null
   resolution_summary: string | null
   can_resolve: boolean
+  service_request_id?: string | null
+  assigned_worker_id?: string | null
+  is_escalated?: boolean
+  escalated_at?: string | null
+  escalation_reason?: string | null
   created_at: string
   updated_at: string
   resolved_at: string | null
@@ -529,4 +541,64 @@ export interface BillPaymentRequest {
   monnify_transaction_reference: string | null
   created_at: string
   completed_at: string | null
+}
+
+// ─── Manual Services & Service Worker ────────────────────────────
+export type ManualServiceStatus = 'pending' | 'in_progress' | 'completed' | 'rejected' | 'disputed'
+
+export interface ManualServiceRequest {
+  id: string
+  customer_id: string
+  customer_name?: string
+  customer_phone?: string
+  service_id: string
+  service_title: string
+  service_category: string
+  fee_kobo: number
+  commission_kobo: number
+  form_data: Record<string, any>
+  referral_code_used?: string | null
+  status: ManualServiceStatus
+  assigned_worker_id?: string | null
+  assigned_worker_name?: string | null
+  claimed_at?: string | null
+  claim_expires_at?: string | null
+  completed_at?: string | null
+  resolution_notes?: string | null
+  result_file_url?: string | null
+  rejection_reason?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkerStats {
+  free_workers: number
+  busy_workers: number
+  unattended_jobs: number
+  completed_today: number
+  total_workers: number
+}
+
+export interface WorkerEarningsSummary {
+  commission_balance_kobo: number
+  total_earned_kobo: number
+  total_withdrawn_kobo: number
+  jobs_completed: number
+  jobs_in_progress: number
+}
+
+export interface ServiceWorkerWithdrawal {
+  id: string
+  worker_id: string
+  worker_name?: string
+  worker_phone?: string
+  amount_kobo: number
+  bank_name: string
+  account_number: string
+  account_name: string
+  status: 'pending' | 'approved' | 'rejected'
+  approved_by?: string | null
+  rejection_reason?: string | null
+  created_at: string
+  approved_at?: string | null
 }

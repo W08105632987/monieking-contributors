@@ -71,6 +71,13 @@ const DirectorBroadcast      = lazy(() => import('@/pages/director/BroadcastPage
 const DirectorNotifications  = lazy(() => import('@/pages/director/NotificationsPage'))
 const DirectorProfile        = lazy(() => import('@/pages/director/ProfilePage'))
 const DirectorMore           = lazy(() => import('@/pages/director/MorePage'))
+const DirectorServiceWorkers = lazy(() => import('@/pages/director/ServiceWorkersPage'))
+
+// ── Service Worker portal ──────────────────────────────────────────
+const WorkerOnboardingPage   = lazy(() => import('@/pages/worker/WorkerOnboardingPage'))
+const WorkerDashboardPage    = lazy(() => import('@/pages/worker/WorkerDashboardPage'))
+const WorkerEarningsPage     = lazy(() => import('@/pages/worker/WorkerEarningsPage'))
+const WorkerDisputesPage     = lazy(() => import('@/pages/worker/WorkerDisputesPage'))
 
 // ── Disputes (shared across customer/officer/director — backend already
 // role-filters the list, and the detail page's actions are role-aware) ──
@@ -242,9 +249,16 @@ export default function App() {
           <Route path="/director/profile"         element={<AuthGuard allowedRoles={['director']}><DirectorProfile /></AuthGuard>} />
           <Route path="/director/more"            element={<AuthGuard allowedRoles={['director']}><DirectorMore /></AuthGuard>} />
           <Route path="/director/disputes"        element={<AuthGuard allowedRoles={['director']}><DisputesListPage /></AuthGuard>} />
+          <Route path="/director/service-workers" element={<AuthGuard allowedRoles={['director']}><DirectorServiceWorkers /></AuthGuard>} />
 
-          {/* ── Disputes detail — one shared route, all three roles ── */}
-          <Route path="/disputes/:disputeId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director']}><DisputeDetailPage /></AuthGuard>} />
+          {/* ── Service Worker ── */}
+          <Route path="/worker/onboarding" element={<AuthGuard allowedRoles={['service_worker']}><WorkerOnboardingPage /></AuthGuard>} />
+          <Route path="/worker/dashboard"  element={<AuthGuard allowedRoles={['service_worker']}><WorkerDashboardPage /></AuthGuard>} />
+          <Route path="/worker/earnings"   element={<AuthGuard allowedRoles={['service_worker']}><WorkerEarningsPage /></AuthGuard>} />
+          <Route path="/worker/disputes"   element={<AuthGuard allowedRoles={['service_worker']}><WorkerDisputesPage /></AuthGuard>} />
+
+          {/* ── Disputes detail — shared route, all roles ── */}
+          <Route path="/disputes/:disputeId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director', 'service_worker']}><DisputeDetailPage /></AuthGuard>} />
 
           {/* ── Service request detail — one shared route, all three roles ── */}
           <Route path="/services/requests/:requestId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director']}><ServiceRequestDetailPage /></AuthGuard>} />

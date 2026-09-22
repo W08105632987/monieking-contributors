@@ -1,11 +1,12 @@
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Settings, Megaphone, Image, BarChart3, LineChart, Activity,
-  FileClock, Send, Users, User, AlertTriangle, Fingerprint,
+  FileClock, Send, Users, User, AlertTriangle, Fingerprint, UserCheck,
 } from 'lucide-react'
 import { BottomNav } from '@/components/layout/BottomNav'
 
 const actions = [
+  { label: 'Service Workers Command', icon: UserCheck, href: '/director/service-workers', color: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300' },
   { label: 'Business Settings', icon: Settings,   href: '/director/settings',   color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
   { label: 'Identity Services & Pricing', icon: Fingerprint, href: '/director/identity-services', color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
   { label: 'Instant Message',   icon: Megaphone,  href: '/director/instant-message', color: 'bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-300' },

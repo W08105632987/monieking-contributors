@@ -21,6 +21,8 @@ from app.models.health_check import HealthCheckResult, HealthAlertState
 from app.models.food_entitlement import (
     FoodEntitlement, FoodCollectionPoint, FoodCollectionAudit, EntitlementStatus,
 )
+from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus
+from app.models.service_worker_withdrawal import ServiceWorkerWithdrawal, SWWithdrawalStatus
 
 
 __all__ = [
@@ -43,5 +45,7 @@ __all__ = [
     "AnalyticsEvent",
     "HealthCheckResult", "HealthAlertState",
     "FoodEntitlement", "FoodCollectionPoint", "FoodCollectionAudit", "EntitlementStatus",
+    "ManualServiceRequest", "ManualServiceStatus",
+    "ServiceWorkerWithdrawal", "SWWithdrawalStatus",
 ]
 

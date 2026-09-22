@@ -37,6 +37,35 @@ async def get_sms_fee(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/food-card-window")
+async def get_food_card_window(db: AsyncSession = Depends(get_db)):
+    """Fetch food card enrollment window for customer and portal awareness."""
+    open_from = await get_config_value(db, "food_card_open_from", default="2026-01-01")
+    open_until = await get_config_value(db, "food_card_open_until", default="2026-11-30")
+    today = datetime.now(timezone.utc).date()
+
+    is_open = True
+    if open_from:
+        try:
+            if today < date.fromisoformat(open_from):
+                is_open = False
+        except ValueError:
+            pass
+    if open_until:
+        try:
+            if today > date.fromisoformat(open_until):
+                is_open = False
+        except ValueError:
+            pass
+
+    return {
+        "open_from": open_from,
+        "open_until": open_until,
+        "is_open": is_open,
+        "today": str(today),
+    }
+
+
 @router.get("", response_model=list[SystemConfigItem])
 async def list_settings(director: DirectorOrAdmin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(SystemConfig).order_by(SystemConfig.key))

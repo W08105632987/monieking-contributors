@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload, aliased
@@ -21,6 +22,7 @@ from app.models.dispute import Dispute, DisputeMessage, DisputeStatus, DisputeEn
 from app.models.user import User, UserRole
 from app.models.wallet import Wallet, WalletTransaction
 from app.models.withdrawal import Withdrawal
+from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus
 from app.models.notification import NotificationType
 from app.schemas.dispute import (
     CreateDisputeRequest, AddMessageRequest, ResolveDisputeRequest,
@@ -63,6 +65,11 @@ def _serialize_dispute(d: Dispute, current_user: User) -> dict:
         "handler_name":       d.handler.full_name if d.handler else None,
         "resolution_summary": d.resolution_summary,
         "can_resolve":        can_resolve,
+        "service_request_id": d.service_request_id,
+        "assigned_worker_id": d.assigned_worker_id,
+        "is_escalated":       d.is_escalated,
+        "escalated_at":       d.escalated_at,
+        "escalation_reason":  d.escalation_reason,
         "created_at":         d.created_at,
         "updated_at":         d.updated_at,
         "resolved_at":        d.resolved_at,
@@ -72,14 +79,22 @@ def _serialize_dispute(d: Dispute, current_user: User) -> dict:
 def _serialize_detail(d: Dispute, current_user: User) -> dict:
     return {
         **_serialize_dispute(d, current_user),
+        "service_request_id": str(d.service_request_id) if d.service_request_id else None,
+        "assigned_worker_id": str(d.assigned_worker_id) if d.assigned_worker_id else None,
+        "is_escalated":       d.is_escalated,
+        "escalated_at":       d.escalated_at,
+        "escalation_reason":  d.escalation_reason,
         "messages": [
             {
-                "id":          m.id,
-                "sender_id":   m.sender_id,
-                "sender_name": m.sender.full_name if m.sender else "Unknown",
-                "message":     m.message,
-                "read_at":     m.read_at,
-                "created_at":  m.created_at,
+                "id":              m.id,
+                "sender_id":       m.sender_id,
+                "sender_name":     m.sender.full_name if m.sender else "Unknown",
+                "message":         m.message,
+                "attachment_url":  m.attachment_url,
+                "attachment_name": m.attachment_name,
+                "attachment_size": m.attachment_size,
+                "read_at":         m.read_at,
+                "created_at":      m.created_at,
             }
             for m in d.messages
         ],
@@ -104,8 +119,11 @@ def _assert_can_view(dispute: Dispute, user: User) -> None:
         raise HTTPException(status_code=403, detail="Access denied")
     if user.role == UserRole.OFFICER and not _officer_has_zone_access(dispute, user):
         raise HTTPException(status_code=403, detail="Access denied")
-    # Directors can view any dispute — including ones still sitting with
-    # an officer — so they have full context if it does get escalated.
+    if user.role == UserRole.SERVICE_WORKER:
+        # Workers can only view disputes linked to their own jobs
+        if dispute.assigned_worker_id != user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+    # Directors can view any dispute
 
 
 def _officer_has_zone_access(dispute: Dispute, officer: User) -> bool:
@@ -288,7 +306,14 @@ async def add_message(
     if dispute.status == DisputeStatus.RESOLVED:
         raise HTTPException(status_code=400, detail="This dispute is already resolved")
 
-    db.add(DisputeMessage(dispute_id=dispute.id, sender_id=current_user.id, message=body.message))
+    db.add(DisputeMessage(
+        dispute_id=dispute.id,
+        sender_id=current_user.id,
+        message=body.message,
+        attachment_url=getattr(body, 'attachment_url', None),
+        attachment_name=getattr(body, 'attachment_name', None),
+        attachment_size=getattr(body, 'attachment_size', None),
+    ))
     if dispute.status == DisputeStatus.OPEN and current_user.id != dispute.raised_by:
         dispute.status = DisputeStatus.UNDER_REVIEW
     if current_user.role == UserRole.OFFICER and dispute.assigned_to != current_user.id:
@@ -386,30 +411,159 @@ async def resolve_dispute(
 @router.post("/{dispute_id}/escalate", response_model=DisputeResponse)
 async def escalate_dispute(
     dispute_id: uuid.UUID,
-    customer: CustomerOnly,
+    body: dict | None = None,
+    current_user: CurrentUser = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Customer disagrees with an officer's resolution — drops the
-    dispute back into the open director queue. Only available once an
-    officer (not a director) has resolved it; director resolutions are
-    final."""
+    """Customer or Service Worker escalates to Director.
+    Customers can only escalate their own disputes.
+    Workers can escalate disputes linked to their jobs.
+    Director resolutions are final."""
+    if body is None:
+        body = {}
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     dispute = await _load_dispute(db, dispute_id)
-    if not dispute or dispute.raised_by != customer.id:
+    if not dispute:
         raise HTTPException(status_code=404, detail="Dispute not found")
-    if dispute.status != DisputeStatus.RESOLVED:
-        raise HTTPException(status_code=400, detail="Only a resolved dispute can be escalated")
+
+    # Access check
+    if current_user.role == UserRole.CUSTOMER and dispute.raised_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if current_user.role == UserRole.SERVICE_WORKER and dispute.assigned_worker_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if current_user.role not in (UserRole.CUSTOMER, UserRole.SERVICE_WORKER):
+        raise HTTPException(status_code=403, detail="Only customers and service workers can escalate")
+
+    if dispute.status not in (DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW, DisputeStatus.RESOLVED):
+        raise HTTPException(status_code=400, detail="This dispute cannot be escalated in its current state")
     if dispute.handler and dispute.handler.role in (UserRole.DIRECTOR, UserRole.ADMIN):
         raise HTTPException(status_code=400, detail="This was already resolved by a director — nowhere further to escalate")
 
-    dispute.status       = DisputeStatus.ESCALATED
-    dispute.assigned_to  = None
-    dispute.resolved_at  = None
+    escalation_reason = body.get("reason") if isinstance(body, dict) else None
+
+    dispute.status            = DisputeStatus.ESCALATED
+    dispute.assigned_to       = None
+    dispute.resolved_at       = None
+    dispute.is_escalated      = True
+    dispute.escalated_at      = datetime.now(timezone.utc)
+    dispute.escalation_reason = escalation_reason
     await db.flush()
 
     await _notify_all_directors(
         db, dispute, "Dispute escalated",
-        f"{customer.full_name} escalated a dispute after disagreeing with the resolution — tap to review.",
+        f"{current_user.full_name} escalated a dispute — tap to review.",
     )
 
     dispute = await _load_dispute(db, dispute.id)
-    return _serialize_dispute(dispute, customer)
+    return _serialize_dispute(dispute, current_user)
+
+
+# ─── Manual Service Dispute ──────────────────────────────────────────────────
+
+class CreateManualServiceDisputeRequest(BaseModel):
+    service_request_id: uuid.UUID
+    message:            str
+    attachment_url:     str | None = None
+    attachment_name:    str | None = None
+    attachment_size:    int | None = None
+
+
+@router.post("/manual-service", status_code=201)
+async def create_manual_service_dispute(
+    body: CreateManualServiceDisputeRequest,
+    customer: CustomerOnly,
+    db: AsyncSession = Depends(get_db),
+):
+    """Customer disputes a completed manual service request.
+    Routes to the assigned Service Worker first; escalates to Director if needed.
+    """
+    from pydantic import BaseModel as _BaseModel
+
+    req = await db.scalar(
+        select(ManualServiceRequest).where(
+            ManualServiceRequest.id == body.service_request_id,
+            ManualServiceRequest.user_id == customer.id,
+        )
+    )
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found on your account.")
+    if req.status not in (ManualServiceStatus.SUCCESSFUL, ManualServiceStatus.FAILED):
+        raise HTTPException(status_code=400, detail="You can only dispute completed service requests.")
+
+    # Check for existing open dispute on this service request
+    existing = await db.scalar(
+        select(Dispute).where(
+            Dispute.service_request_id == body.service_request_id,
+            Dispute.status != DisputeStatus.RESOLVED,
+        )
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="There's already an open dispute for this service request.")
+
+    # Route to the service worker who handled the job, or director if none
+    assigned_worker_id = req.claimed_by_id
+    assigned_to: uuid.UUID | None = assigned_worker_id  # workers use assigned_to column
+
+    # Use a pseudo entity_type for display (wallet_transaction as fallback)
+    dispute = Dispute(
+        raised_by=          customer.id,
+        entity_type=        DisputeEntityType.WALLET_TRANSACTION,  # placeholder; real context from service_request_id
+        entity_id=          body.service_request_id,
+        reason=             "other",
+        status=             DisputeStatus.OPEN,
+        assigned_to=        assigned_to,
+        assigned_worker_id= assigned_worker_id,
+        service_request_id= body.service_request_id,
+        zone_id=            customer.zone_id,
+    )
+    db.add(dispute)
+    await db.flush()
+
+    db.add(DisputeMessage(
+        dispute_id=dispute.id,
+        sender_id=customer.id,
+        message=body.message,
+        attachment_url=body.attachment_url,
+        attachment_name=body.attachment_name,
+        attachment_size=body.attachment_size,
+    ))
+    await db.flush()
+
+    # Notify the assigned worker
+    if assigned_worker_id:
+        await send_notification(
+            db, user_id=assigned_worker_id, type=NotificationType.WARNING,
+            title="Service dispute raised",
+            body=f"{customer.full_name} has disputed a service you handled.",
+            related_entity_id=dispute.id,
+        )
+    else:
+        await _notify_all_directors(
+            db, dispute, "Unassigned service dispute",
+            f"{customer.full_name} raised a dispute on a service with no assigned worker.",
+        )
+
+    dispute = await _load_dispute(db, dispute.id)
+    return _serialize_detail(dispute, customer)
+
+
+# ─── Worker: view their disputes ─────────────────────────────────────────────
+
+@router.get("/worker/mine")
+async def list_worker_disputes(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Service Worker sees disputes assigned to them."""
+    from app.models.user import UserRole
+    if current_user.role != UserRole.SERVICE_WORKER:
+        raise HTTPException(status_code=403, detail="Service Workers only")
+    result = await db.execute(
+        select(Dispute)
+        .options(selectinload(Dispute.customer), selectinload(Dispute.handler))
+        .where(Dispute.assigned_worker_id == current_user.id)
+        .order_by(Dispute.created_at.desc())
+    )
+    return [_serialize_dispute(d, current_user) for d in result.scalars().all()]

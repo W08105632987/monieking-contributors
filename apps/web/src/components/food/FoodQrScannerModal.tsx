@@ -1,8 +1,7 @@
-import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useRef } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ShieldCheck, Scan, CheckCircle2, AlertCircle, Loader2, ArrowRight, X, UserCheck, Camera, Keyboard } from 'lucide-react'
 import { api } from '@/lib/api'
-import { toast } from 'react-hot-toast'
 import { CameraQrScanner } from './CameraQrScanner'
 
 interface FoodQrScannerModalProps {
@@ -28,23 +27,28 @@ export function FoodQrScannerModal({ isOpen, onClose }: FoodQrScannerModalProps)
   const [showCamera, setShowCamera] = useState(false)
   const [verification, setVerification] = useState<MaskedVerification | null>(null)
   const [confirmedAudit, setConfirmedAudit] = useState<{ audit_code: string; message: string } | null>(null)
-
-  if (!isOpen) return null
+  const [inlineError, setInlineError] = useState<string | null>(null)
+  // tracks the token currently being processed to prevent re-scans of same code
+  const processingTokenRef = useRef<string | null>(null)
 
   // Core verification routine
   const verifyQrToken = async (rawToken: string) => {
     const trimmed = rawToken.trim()
     if (!trimmed) return
+    if (processingTokenRef.current === trimmed) return // already processing this token
 
+    processingTokenRef.current = trimmed
+    setInlineError(null)
     setLoading(true)
+    setShowCamera(false) // close camera immediately on scan
     try {
       const { data } = await api.post<MaskedVerification>('/food-collections/verify-qr', {
         qr_token: trimmed,
       })
       setVerification(data)
-      setShowCamera(false)
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to verify food QR code.')
+      setInlineError(err?.response?.data?.detail || 'Failed to verify food QR code.')
+      processingTokenRef.current = null // allow retry on error
     } finally {
       setLoading(false)
     }
@@ -56,7 +60,7 @@ export function FoodQrScannerModal({ isOpen, onClose }: FoodQrScannerModalProps)
     await verifyQrToken(tokenInput)
   }
 
-  // Camera scan callback
+  // Camera scan callback — camera closes itself, we show processing immediately
   const handleCameraScan = async (scannedText: string) => {
     setTokenInput(scannedText)
     await verifyQrToken(scannedText)
@@ -67,6 +71,7 @@ export function FoodQrScannerModal({ isOpen, onClose }: FoodQrScannerModalProps)
     e.preventDefault()
     if (!verification || !pinInput.trim()) return
 
+    setInlineError(null)
     setLoading(true)
     try {
       const { data } = await api.post<{ audit_code: string; message: string }>('/food-collections/confirm', {
@@ -74,9 +79,8 @@ export function FoodQrScannerModal({ isOpen, onClose }: FoodQrScannerModalProps)
         collection_pin: pinInput.trim(),
       })
       setConfirmedAudit(data)
-      toast.success('Food collection confirmed successfully!')
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Incorrect PIN or collection failed.')
+      setInlineError(err?.response?.data?.detail || 'Incorrect PIN or collection failed.')
     } finally {
       setLoading(false)
     }
@@ -88,6 +92,8 @@ export function FoodQrScannerModal({ isOpen, onClose }: FoodQrScannerModalProps)
     setVerification(null)
     setConfirmedAudit(null)
     setShowCamera(false)
+    setInlineError(null)
+    processingTokenRef.current = null
   }
 
   const handleClose = () => {
@@ -96,217 +102,269 @@ export function FoodQrScannerModal({ isOpen, onClose }: FoodQrScannerModalProps)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={handleClose}>
-      <div className="absolute inset-0 bg-green-950/75 backdrop-blur-md" />
+    <AnimatePresence>
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={handleClose}
+        >
+          <motion.div
+            className="absolute inset-0 bg-green-950/75 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          />
 
-      <motion.div
-        initial={{ y: '100%', opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: '100%', opacity: 0 }}
-        transition={{ type: 'spring', damping: 26, stiffness: 280 }}
-        className="relative bg-white dark:bg-night-700 rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-6 pt-6 pb-3 border-b border-green-100 dark:border-night-600 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-night-600 text-green-800 dark:text-night-100 flex items-center justify-center">
-              <Scan className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-green-950 dark:text-white font-extrabold text-base">Food Distribution Scanner</h2>
-              <p className="text-green-600 dark:text-night-200 text-xs">Officer Verification & Dispensation Terminal</p>
-            </div>
-          </div>
-          <button
-            onClick={handleClose}
-            className="w-8 h-8 rounded-full bg-green-50 dark:bg-night-600 flex items-center justify-center text-green-700 dark:text-night-200 hover:bg-green-100 dark:hover:bg-night-500"
+          <motion.div
+            initial={{ y: '100%', opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300, mass: 0.8 }}
+            style={{ willChange: 'transform' }}
+            className="relative bg-white dark:bg-night-700 rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
           >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          {/* Confirmed Success State */}
-          {confirmedAudit ? (
-            <div className="text-center py-6 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-10 h-10" />
-              </div>
-              <h3 className="text-green-950 dark:text-white font-extrabold text-xl">Package Dispensed!</h3>
-              <p className="text-green-700 dark:text-night-200 text-sm">
-                Audit Confirmation Code:
-              </p>
-              <div className="p-3 bg-green-50 dark:bg-night-800 rounded-2xl border border-green-200 dark:border-night-600">
-                <span className="font-mono text-lg font-bold text-green-900 dark:text-white">
-                  {confirmedAudit.audit_code}
-                </span>
+            {/* Header */}
+            <div className="px-6 pt-6 pb-3 border-b border-green-100 dark:border-night-600 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-night-600 text-green-800 dark:text-night-100 flex items-center justify-center">
+                  <Scan className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-green-950 dark:text-white font-extrabold text-base">Food Distribution Scanner</h2>
+                  <p className="text-green-600 dark:text-night-200 text-xs">Officer Verification & Dispensation Terminal</p>
+                </div>
               </div>
               <button
-                onClick={handleReset}
-                className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-3.5 mt-4"
+                onClick={handleClose}
+                className="w-8 h-8 rounded-full bg-green-50 dark:bg-night-600 flex items-center justify-center text-green-700 dark:text-night-200 hover:bg-green-100 dark:hover:bg-night-500"
               >
-                Scan Next Customer
+                <X className="w-4 h-4" />
               </button>
             </div>
-          ) : !verification ? (
-            /* Step 1: Scan with Camera OR Enter QR Token */
-            <div className="space-y-4 text-left">
-              {showCamera ? (
-                /* Live Camera Scanner Viewfinder */
-                <div className="space-y-3">
-                  <CameraQrScanner
-                    onScan={handleCameraScan}
-                    onClose={() => setShowCamera(false)}
-                  />
-                  <div className="text-center">
-                    <button
-                      type="button"
-                      onClick={() => setShowCamera(false)}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-green-800 dark:text-night-100 hover:underline py-1"
-                    >
-                      <Keyboard className="w-3.5 h-3.5" /> Switch to Manual Code Entry
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* Manual / Barcode input mode with prominent camera button */
-                <div className="space-y-4">
-                  {/* Big Primary "Scan with Camera" Button */}
-                  <button
-                    type="button"
-                    onClick={() => setShowCamera(true)}
-                    className="w-full bg-gradient-to-r from-green-800 to-green-950 dark:from-night-600 dark:to-night-700 text-white font-bold text-sm rounded-2xl py-4 flex items-center justify-center gap-2.5 shadow-card hover:opacity-95 active:scale-98 transition-all border border-green-700/50"
-                  >
-                    <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
-                      <Camera className="w-4 h-4 text-white" />
-                    </div>
-                    <span>Open Live Camera Scanner</span>
-                  </button>
 
-                  <div className="flex items-center gap-3 my-2">
-                    <div className="flex-1 h-px bg-green-100 dark:bg-night-600" />
-                    <span className="text-[11px] font-bold text-green-600 dark:text-night-300 uppercase tracking-wider">
-                      Or enter pass code manually
-                    </span>
-                    <div className="flex-1 h-px bg-green-100 dark:bg-night-600" />
-                  </div>
-
-                  <form onSubmit={handleVerify} className="space-y-3">
-                    <div>
-                      <label className="block text-green-800 dark:text-night-100 text-xs font-bold uppercase tracking-wider mb-1.5">
-                        Customer QR Token / Pass ID
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={tokenInput}
-                          onChange={e => setTokenInput(e.target.value)}
-                          placeholder="Scan QR or enter MKF_..."
-                          className="w-full border-2 border-green-200 dark:border-night-500 rounded-2xl px-4 py-3.5 text-sm text-green-900 dark:text-white font-mono focus:outline-none focus:border-green-600 dark:focus:border-night-200 bg-white dark:bg-night-800"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={loading || !tokenInput.trim()}
-                      className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-3.5 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-card"
-                    >
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Verify Customer Pass <ArrowRight className="w-4 h-4" /></>}
-                    </button>
-                  </form>
-                </div>
-              )}
-
-              <div className="bg-green-50 dark:bg-night-800/80 rounded-2xl p-4 border border-green-200 dark:border-night-600 text-xs text-green-700 dark:text-night-200 space-y-1.5 mt-2">
-                <p className="font-bold flex items-center gap-1.5 text-green-900 dark:text-white">
-                  <ShieldCheck className="w-4 h-4 text-green-600" /> Two-Factor Verification Protocol
-                </p>
-                <p>Scanning the QR identifies the entitlement, but does not allow collection until the customer provides their matching 4-digit PIN.</p>
-              </div>
-            </div>
-          ) : (
-            /* Step 2: Show Masked Beneficiary & Prompt for PIN */
-            <form onSubmit={handleConfirm} className="space-y-4 text-left">
-              {/* Beneficiary Card */}
-              <div className="p-4 bg-green-50/90 dark:bg-night-800 rounded-2xl border border-green-200 dark:border-night-600 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-green-600 dark:text-night-200 uppercase">Beneficiary</span>
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-green-200/70 dark:bg-night-600 text-green-900 dark:text-white">
-                    {verification.masked_card}
-                  </span>
-                </div>
-                <p className="text-lg font-extrabold text-green-950 dark:text-white flex items-center gap-2">
-                  <UserCheck className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  {verification.masked_name}
-                </p>
-                <p className="text-xs text-green-700 dark:text-night-200">
-                  Package: <strong className="text-green-900 dark:text-white">{verification.package_name}</strong>
-                </p>
-                <div className="pt-2 border-t border-green-200 dark:border-night-700">
-                  <p className="text-xs font-semibold text-green-800 dark:text-night-100">
-                    {verification.message}
-                  </p>
-                </div>
-              </div>
-
-              {verification.is_eligible_for_collection ? (
-                <>
-                  <div>
-                    <label className="block text-green-800 dark:text-night-100 text-xs font-bold uppercase tracking-wider mb-2">
-                      Enter Customer's 4-Digit Collection PIN
-                    </label>
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={4}
-                      value={pinInput}
-                      onChange={e => setPinInput(e.target.value.replace(/\D/g, ''))}
-                      placeholder="••••"
-                      autoFocus
-                      className="w-full border-2 border-green-200 dark:border-night-500 rounded-2xl px-4 py-3.5 text-center text-2xl tracking-[0.5em] font-mono text-green-950 dark:text-white focus:outline-none focus:border-green-600 dark:focus:border-night-200 bg-white dark:bg-night-800"
-                    />
-                  </div>
-
-                  <div className="flex gap-2">
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              {/* Inline error card */}
+              {inlineError && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-2xl flex gap-2 items-start"
+                >
+                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-red-900 dark:text-red-200 text-xs font-semibold">{inlineError}</p>
                     <button
                       type="button"
                       onClick={handleReset}
-                      className="flex-1 border-2 border-green-200 dark:border-night-500 text-green-700 dark:text-night-200 font-bold text-sm rounded-full py-3.5"
+                      className="mt-2 text-xs font-bold text-red-700 dark:text-red-300 hover:underline"
                     >
-                      Back
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={loading || pinInput.length !== 4}
-                      className="flex-1 bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-3.5 disabled:opacity-50 flex items-center justify-center gap-2 shadow-card"
-                    >
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm & Dispense'}
+                      Try Again
                     </button>
                   </div>
-                </>
-              ) : (
-                <div className="space-y-4">
-                  <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-2xl flex gap-2">
-                    <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
-                    <p className="text-red-900 dark:text-red-200 text-xs">
-                      This QR code cannot be collected because the entitlement status is <strong>{verification.status.toUpperCase()}</strong>.
-                    </p>
+                </motion.div>
+              )}
+
+              {/* Processing state */}
+              {loading && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="flex flex-col items-center justify-center py-10 gap-4"
+                >
+                  <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-night-600 flex items-center justify-center">
+                    <Loader2 className="w-7 h-7 text-green-700 dark:text-green-400 animate-spin" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-green-950 dark:text-white font-bold text-sm">Processing…</p>
+                    <p className="text-green-600 dark:text-night-300 text-xs mt-1">Verifying QR token with the server</p>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Confirmed Success State */}
+              {!loading && confirmedAudit ? (
+                <div className="text-center py-6 space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-10 h-10" />
+                  </div>
+                  <h3 className="text-green-950 dark:text-white font-extrabold text-xl">Package Dispensed!</h3>
+                  <p className="text-green-700 dark:text-night-200 text-sm">
+                    Audit Confirmation Code:
+                  </p>
+                  <div className="p-3 bg-green-50 dark:bg-night-800 rounded-2xl border border-green-200 dark:border-night-600">
+                    <span className="font-mono text-lg font-bold text-green-900 dark:text-white">
+                      {confirmedAudit.audit_code}
+                    </span>
                   </div>
                   <button
-                    type="button"
                     onClick={handleReset}
-                    className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-3.5"
+                    className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-3.5 mt-4"
                   >
-                    Scan Another QR
+                    Scan Next Customer
                   </button>
                 </div>
-              )}
-            </form>
-          )}
+              ) : !loading && !verification ? (
+                /* Step 1: Scan with Camera OR Enter QR Token */
+                <div className="space-y-4 text-left">
+                  {showCamera ? (
+                    /* Live Camera Scanner Viewfinder */
+                    <div className="space-y-3">
+                      <CameraQrScanner
+                        onScan={handleCameraScan}
+                        onClose={() => setShowCamera(false)}
+                      />
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => setShowCamera(false)}
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-green-800 dark:text-night-100 hover:underline py-1"
+                        >
+                          <Keyboard className="w-3.5 h-3.5" /> Switch to Manual Code Entry
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Manual / Barcode input mode with prominent camera button */
+                    <div className="space-y-4">
+                      {/* Big Primary "Scan with Camera" Button */}
+                      <button
+                        type="button"
+                        onClick={() => setShowCamera(true)}
+                        className="w-full bg-gradient-to-r from-green-800 to-green-950 dark:from-night-600 dark:to-night-700 text-white font-bold text-sm rounded-2xl py-4 flex items-center justify-center gap-2.5 shadow-card hover:opacity-95 active:scale-98 transition-all border border-green-700/50"
+                      >
+                        <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
+                          <Camera className="w-4 h-4 text-white" />
+                        </div>
+                        <span>Open Live Camera Scanner</span>
+                      </button>
+
+                      <div className="flex items-center gap-3 my-2">
+                        <div className="flex-1 h-px bg-green-100 dark:bg-night-600" />
+                        <span className="text-[11px] font-bold text-green-600 dark:text-night-300 uppercase tracking-wider">
+                          Or enter pass code manually
+                        </span>
+                        <div className="flex-1 h-px bg-green-100 dark:bg-night-600" />
+                      </div>
+
+                      <form onSubmit={handleVerify} className="space-y-3">
+                        <div>
+                          <label className="block text-green-800 dark:text-night-100 text-xs font-bold uppercase tracking-wider mb-1.5">
+                            Customer QR Token / Pass ID
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={tokenInput}
+                              onChange={e => setTokenInput(e.target.value)}
+                              placeholder="Scan QR or enter MKF_..."
+                              className="w-full border-2 border-green-200 dark:border-night-500 rounded-2xl px-4 py-3.5 text-sm text-green-900 dark:text-white font-mono focus:outline-none focus:border-green-600 dark:focus:border-night-200 bg-white dark:bg-night-800"
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={loading || !tokenInput.trim()}
+                          className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-3.5 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-card"
+                        >
+                          <>Verify Customer Pass <ArrowRight className="w-4 h-4" /></>
+                        </button>
+                      </form>
+                    </div>
+                  )}
+
+                  <div className="bg-green-50 dark:bg-night-800/80 rounded-2xl p-4 border border-green-200 dark:border-night-600 text-xs text-green-700 dark:text-night-200 space-y-1.5 mt-2">
+                    <p className="font-bold flex items-center gap-1.5 text-green-900 dark:text-white">
+                      <ShieldCheck className="w-4 h-4 text-green-600" /> Two-Factor Verification Protocol
+                    </p>
+                    <p>Scanning the QR identifies the entitlement, but does not allow collection until the customer provides their matching 4-digit PIN.</p>
+                  </div>
+                </div>
+              ) : !loading && verification ? (
+                /* Step 2: Show Masked Beneficiary & Prompt for PIN */
+                <form onSubmit={handleConfirm} className="space-y-4 text-left">
+                  {/* Beneficiary Card */}
+                  <div className="p-4 bg-green-50/90 dark:bg-night-800 rounded-2xl border border-green-200 dark:border-night-600 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-green-600 dark:text-night-200 uppercase">Beneficiary</span>
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-green-200/70 dark:bg-night-600 text-green-900 dark:text-white">
+                        {verification.masked_card}
+                      </span>
+                    </div>
+                    <p className="text-lg font-extrabold text-green-950 dark:text-white flex items-center gap-2">
+                      <UserCheck className="w-5 h-5 text-green-600 dark:text-green-400" />
+                      {verification.masked_name}
+                    </p>
+                    <p className="text-xs text-green-700 dark:text-night-200">
+                      Package: <strong className="text-green-900 dark:text-white">{verification.package_name}</strong>
+                    </p>
+                    <div className="pt-2 border-t border-green-200 dark:border-night-700">
+                      <p className="text-xs font-semibold text-green-800 dark:text-night-100">
+                        {verification.message}
+                      </p>
+                    </div>
+                  </div>
+
+                  {verification.is_eligible_for_collection ? (
+                    <>
+                      <div>
+                        <label className="block text-green-800 dark:text-night-100 text-xs font-bold uppercase tracking-wider mb-2">
+                          Enter Customer's 4-Digit Collection PIN
+                        </label>
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          maxLength={4}
+                          value={pinInput}
+                          onChange={e => setPinInput(e.target.value.replace(/\D/g, ''))}
+                          placeholder="••••"
+                          autoFocus
+                          className="w-full border-2 border-green-200 dark:border-night-500 rounded-2xl px-4 py-3.5 text-center text-2xl tracking-[0.5em] font-mono text-green-950 dark:text-white focus:outline-none focus:border-green-600 dark:focus:border-night-200 bg-white dark:bg-night-800"
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleReset}
+                          className="flex-1 border-2 border-green-200 dark:border-night-500 text-green-700 dark:text-night-200 font-bold text-sm rounded-full py-3.5"
+                        >
+                          Back
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={loading || pinInput.length !== 4}
+                          className="flex-1 bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-3.5 disabled:opacity-50 flex items-center justify-center gap-2 shadow-card"
+                        >
+                          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm & Dispense'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-2xl flex gap-2">
+                        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+                        <p className="text-red-900 dark:text-red-200 text-xs">
+                          This QR code cannot be collected because the entitlement status is <strong>{verification.status.toUpperCase()}</strong>.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleReset}
+                        className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-3.5"
+                      >
+                        Scan Another QR
+                      </button>
+                    </div>
+                  )}
+                </form>
+              ) : null}
+            </div>
+          </motion.div>
         </div>
-      </motion.div>
-    </div>
+      )}
+    </AnimatePresence>
   )
 }

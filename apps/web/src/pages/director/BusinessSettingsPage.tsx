@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Clock, Pencil, Ban, MapPin, Plus, Trash2, Users } from 'lucide-react'
+import { ArrowLeft, Clock, Pencil, Ban, MapPin, Plus, Trash2, Users, Calendar } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
@@ -10,6 +10,7 @@ import type { SystemConfigItem, PendingRateChange, RateChangePreview, Zone } fro
 
 const DEFERRED_KEYS = new Set(['food_card_rate_kobo'])
 const MONTHLY_KEYS  = new Set(['monthly_sms_fee_kobo'])
+const DATE_KEYS     = new Set(['food_card_open_from', 'food_card_open_until'])
 
 const KEY_LABELS: Record<string, string> = {
   food_card_rate_kobo:                 'Food Card daily rate',
@@ -374,6 +375,106 @@ function ZonesSection() {
   )
 }
 
+// ── Food Card Enrollment Date Window ──────────────────────────────
+function FoodCardDateWindowSection({ settings }: { settings: SystemConfigItem[] }) {
+  const qc = useQueryClient()
+  const fromSetting = settings.find(s => s.key === 'food_card_open_from')
+  const untilSetting = settings.find(s => s.key === 'food_card_open_until')
+
+  const initialFrom = fromSetting?.value || '2026-01-01'
+  const initialUntil = untilSetting?.value || '2026-11-30'
+
+  const [openFrom, setOpenFrom] = useState(initialFrom)
+  const [openUntil, setOpenUntil] = useState(initialUntil)
+  const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    if (fromSetting?.value) setOpenFrom(fromSetting.value)
+    if (untilSetting?.value) setOpenUntil(untilSetting.value)
+  }, [fromSetting?.value, untilSetting?.value])
+
+  const todayStr = new Date().toISOString().split('T')[0]
+  const isOpenNow = (!openFrom || todayStr >= openFrom) && (!openUntil || todayStr <= openUntil)
+
+  const hasChanges = openFrom !== (fromSetting?.value || initialFrom) || openUntil !== (untilSetting?.value || initialUntil)
+
+  const handleSave = async () => {
+    if (openFrom && openUntil && openFrom > openUntil) {
+      toast.error('Opening date must be on or before the closing date')
+      return
+    }
+    setIsSaving(true)
+    try {
+      await Promise.all([
+        api.patch('/settings/food_card_open_from', { value: openFrom }),
+        api.patch('/settings/food_card_open_until', { value: openUntil }),
+      ])
+      toast.success('Food card enrollment window updated')
+      qc.invalidateQueries({ queryKey: ['settings'] })
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-green-600 dark:text-night-200" />
+          <p className="text-green-900 dark:text-white font-bold text-sm">Food Card Enrollment Window</p>
+        </div>
+        <span
+          className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+            isOpenNow
+              ? 'bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300'
+              : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+          }`}
+        >
+          {isOpenNow ? 'Enrollment Active' : 'Enrollment Closed'}
+        </span>
+      </div>
+      <p className="text-green-500 dark:text-night-300 text-xs mb-4">
+        Dates during which customers can create and begin contributing toward annual holiday food packages.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className="block text-green-700 dark:text-night-200 text-xs font-semibold mb-1">
+            Opening Date (From)
+          </label>
+          <input
+            type="date"
+            value={openFrom}
+            onChange={e => setOpenFrom(e.target.value)}
+            className="w-full border border-green-200 dark:border-night-500 rounded-xl px-3 py-2 text-sm text-green-900 dark:text-white bg-green-50 dark:bg-night-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+        <div>
+          <label className="block text-green-700 dark:text-night-200 text-xs font-semibold mb-1">
+            Closing Date (Until)
+          </label>
+          <input
+            type="date"
+            value={openUntil}
+            onChange={e => setOpenUntil(e.target.value)}
+            className="w-full border border-green-200 dark:border-night-500 rounded-xl px-3 py-2 text-sm text-green-900 dark:text-white bg-green-50 dark:bg-night-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+      </div>
+
+      <button
+        onClick={handleSave}
+        disabled={!hasChanges || isSaving}
+        className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-2.5 disabled:opacity-40 transition-opacity"
+      >
+        {isSaving ? 'Saving Window…' : 'Save Enrollment Dates'}
+      </button>
+    </div>
+  )
+}
+
 export default function BusinessSettingsPage() {
   const navigate = useNavigate()
 
@@ -407,14 +508,18 @@ export default function BusinessSettingsPage() {
 
         <ZonesSection />
 
+        <FoodCardDateWindowSection settings={settings} />
+
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2].map(i => <div key={i} className="h-32 bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 animate-pulse" />)}
           </div>
         ) : (
-          settings.map(setting => (
-            <SettingRow key={setting.key} setting={setting} pendingChange={pendingByKey.get(setting.key)} />
-          ))
+          settings
+            .filter(setting => !DATE_KEYS.has(setting.key))
+            .map(setting => (
+              <SettingRow key={setting.key} setting={setting} pendingChange={pendingByKey.get(setting.key)} />
+            ))
         )}
       </div>
 

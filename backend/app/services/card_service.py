@@ -89,12 +89,35 @@ async def create_card(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Maximum of {settings.MAX_FOOD_CARDS_PER_CUSTOMER} Food Cards allowed",
             )
-        # Food card rate is director-editable (Business Settings), read live at
-        # card-open time. Once set here it's immutable for this card's lifetime —
-        # a later rate change never touches cards that already exist, and any
-        # change to it goes through the deferred-pricing flow (next Jan 1 only),
-        # never live, so every card opened in the same year gets the same rate.
-        from app.services.settings_service import get_config_int
+        # Enforce enrollment window
+        from datetime import date
+        from app.services.settings_service import get_config_value, get_config_int
+        open_from_str = await get_config_value(db, "food_card_open_from")
+        open_until_str = await get_config_value(db, "food_card_open_until")
+        today = datetime.now(timezone.utc).date()
+
+        if open_from_str:
+            try:
+                open_from_dt = date.fromisoformat(open_from_str)
+                if today < open_from_dt:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Food Card registration has not opened yet. It opens on {open_from_dt.strftime('%b %d, %Y')}.",
+                    )
+            except ValueError:
+                pass
+
+        if open_until_str:
+            try:
+                open_until_dt = date.fromisoformat(open_until_str)
+                if today > open_until_dt:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Food Card registration has closed for the season. It closed on {open_until_dt.strftime('%b %d, %Y')}.",
+                    )
+            except ValueError:
+                pass
+
         rate_kobo = await get_config_int(db, "food_card_rate_kobo", default=100_000)
 
     card = ContributionCard(

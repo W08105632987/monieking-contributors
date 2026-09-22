@@ -7,7 +7,7 @@ import { api } from '@/lib/api'
 import { useCards } from '@/hooks/useCards'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { useAuthStore } from '@/store/auth.store'
-import { formatNaira, MONTH_NAMES } from '@/lib/utils'
+import { formatNaira, formatDate, MONTH_NAMES } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn } from '@/lib/utils'
 import type { ContributionCard, CardGrid } from '@/types'
@@ -226,15 +226,36 @@ function CreateCardModal({ onClose }: { onClose: () => void }) {
   const [foodRulesAccepted, setFoodRulesAccepted] = useState(false)
   const [showRulesModal, setShowRulesModal] = useState(false)
 
+  const { data: foodWindow } = useQuery({
+    queryKey: ['food-card-window'],
+    queryFn: async () => {
+      const { data } = await api.get<{
+        open_from: string | null
+        open_until: string | null
+        is_open: boolean
+        today: string
+      }>('/settings/food-card-window')
+      return data
+    },
+  })
+
+  const isFoodOpen = foodWindow ? foodWindow.is_open : true
+
   const FOOD_RATE_KOBO = 100000
   const rateKobo = cardType === 'food' ? FOOD_RATE_KOBO : Math.round(parseFloat(rateNaira || '0') * 100)
-  const isValid  = cardType === 'food' ? true : (rateKobo >= 5000 && rateKobo % 5000 === 0)
+  const isValid  = cardType === 'food' ? isFoodOpen : (rateKobo >= 5000 && rateKobo % 5000 === 0)
 
   const handleCreate = async () => {
     if (!isValid) return
-    if (cardType === 'food' && !foodRulesAccepted) {
-      setShowRulesModal(true)
-      return
+    if (cardType === 'food') {
+      if (!isFoodOpen) {
+        toast.error('Food Card registration is currently closed.')
+        return
+      }
+      if (!foodRulesAccepted) {
+        setShowRulesModal(true)
+        return
+      }
     }
     setLoading(true)
     try {
@@ -270,24 +291,43 @@ function CreateCardModal({ onClose }: { onClose: () => void }) {
           <p className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide mb-3">Card type</p>
           <div className="grid grid-cols-2 gap-3 mb-6">
             {[
-              { type: 'regular' as const, label: 'Regular Card', desc: 'Choose your daily rate', icon: '📋' },
-              { type: 'food'    as const, label: 'Food Card',    desc: 'Fixed ₦1,000/day · Locked', icon: '🍱' },
+              { type: 'regular' as const, label: 'Regular Card', desc: 'Choose your daily rate', icon: '📋', badge: null },
+              {
+                type: 'food' as const,
+                label: 'Food Card',
+                desc: isFoodOpen ? 'Fixed ₦1,000/day · Locked' : 'Enrollment Closed',
+                icon: '🍱',
+                badge: !isFoodOpen ? 'Closed' : null,
+              },
             ].map(opt => (
               <button
                 key={opt.type}
                 onClick={() => {
+                  if (opt.type === 'food' && !isFoodOpen) {
+                    const windowText = foodWindow?.open_from && foodWindow?.open_until
+                      ? ` (${formatDate(foodWindow.open_from)} – ${formatDate(foodWindow.open_until)})`
+                      : ''
+                    toast.error(`Food Card registration is currently closed${windowText}.`)
+                    return
+                  }
                   setCardType(opt.type)
                   if (opt.type === 'food' && !foodRulesAccepted) {
                     setShowRulesModal(true)
                   }
                 }}
                 className={cn(
-                  'p-4 rounded-2xl border-2 text-left transition-all',
+                  'relative p-4 rounded-2xl border-2 text-left transition-all',
                   cardType === opt.type
                     ? 'border-green-900 dark:border-night-200 bg-green-50 dark:bg-night-600'
-                    : 'border-green-100 dark:border-night-500 bg-white dark:bg-night-700'
+                    : 'border-green-100 dark:border-night-500 bg-white dark:bg-night-700',
+                  opt.type === 'food' && !isFoodOpen && 'opacity-80'
                 )}
               >
+                {opt.badge && (
+                  <span className="absolute top-3 right-3 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                    {opt.badge}
+                  </span>
+                )}
                 <span className="text-2xl block mb-2">{opt.icon}</span>
                 <p className={cn('font-bold text-sm', cardType === opt.type ? 'text-green-900 dark:text-white' : 'text-green-700 dark:text-night-100')}>{opt.label}</p>
                 <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{opt.desc}</p>
@@ -322,25 +362,36 @@ function CreateCardModal({ onClose }: { onClose: () => void }) {
 
           {cardType === 'food' && (
             <div className="bg-green-50 dark:bg-night-600 rounded-2xl p-4 mb-6 border border-green-200 dark:border-night-500">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-green-700 dark:text-night-100 text-sm font-semibold">🔒 Food Card Rules</p>
-                {foodRulesAccepted ? (
-                  <span className="text-[11px] font-bold text-green-700 dark:text-green-400 bg-green-200/60 dark:bg-green-900/40 px-2 py-0.5 rounded-full">
-                    ✓ Accepted
+              {!isFoodOpen ? (
+                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 text-xs font-semibold">
+                  <Lock className="w-4 h-4 shrink-0" />
+                  <span>
+                    Enrollment closed. Registration window is {foodWindow?.open_from ? formatDate(foodWindow.open_from) : 'TBD'} to {foodWindow?.open_until ? formatDate(foodWindow.open_until) : 'TBD'}.
                   </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowRulesModal(true)}
-                    className="text-xs font-bold text-amber-700 dark:text-amber-300 underline"
-                  >
-                    View 5 Rules
-                  </button>
-                )}
-              </div>
-              <p className="text-green-600 dark:text-night-200 text-xs leading-relaxed">
-                Fixed at ₦1,000/day. Complete all 372 days by Nov 30 to qualify for Dec 10 food distribution.
-              </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-green-700 dark:text-night-100 text-sm font-semibold">🔒 Food Card Rules</p>
+                    {foodRulesAccepted ? (
+                      <span className="text-[11px] font-bold text-green-700 dark:text-green-400 bg-green-200/60 dark:bg-green-900/40 px-2 py-0.5 rounded-full">
+                        ✓ Accepted
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowRulesModal(true)}
+                        className="text-xs font-bold text-amber-700 dark:text-amber-300 underline"
+                      >
+                        View 5 Rules
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-green-600 dark:text-night-200 text-xs leading-relaxed">
+                    Fixed at ₦1,000/day. Complete all 372 days by Nov 30 to qualify for Dec 10 food distribution.
+                  </p>
+                </>
+              )}
             </div>
           )}
 
@@ -349,7 +400,11 @@ function CreateCardModal({ onClose }: { onClose: () => void }) {
             disabled={loading || !isValid}
             className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-4 active:scale-95 transition-all disabled:opacity-50 shadow-card"
           >
-            {loading ? 'Creating card…' : `Create ${cardType === 'food' ? 'Food' : 'Regular'} Card`}
+            {loading
+              ? 'Creating card…'
+              : cardType === 'food' && !isFoodOpen
+              ? 'Food Card Enrollment Closed'
+              : `Create ${cardType === 'food' ? 'Food' : 'Regular'} Card`}
           </button>
         </motion.div>
       </div>
@@ -536,17 +591,16 @@ export default function CardsPage() {
         {showCreateModal && <CreateCardModal onClose={() => setShowCreateModal(false)} />}
       </AnimatePresence>
 
-      {foodPassData && (
-        <FoodQrDisplayModal
-          isOpen={showFoodPass}
-          onClose={() => setShowFoodPass(false)}
-          qrToken={foodPassData.qr_token || ''}
-          collectionPin={foodPassData.collection_pin || ''}
-          cardNumber={foodPassData.card_number}
-          packageName={foodPassData.package_name || 'Standard Holiday Food Package'}
-          status={foodPassData.status || 'active'}
-        />
-      )}
+      <FoodQrDisplayModal
+        isOpen={showFoodPass && !!foodPassData}
+        onClose={() => setShowFoodPass(false)}
+        qrToken={foodPassData?.qr_token || ''}
+        collectionPin={foodPassData?.collection_pin || ''}
+        cardNumber={foodPassData?.card_number ?? null}
+        packageName={foodPassData?.package_name || 'Standard Holiday Food Package'}
+        status={foodPassData?.status || 'active'}
+      />
+
     </div>
   )
 }

@@ -31,11 +31,13 @@ async def set_config_value(
     result = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
     row = result.scalar_one_or_none()
     if not row:
-        raise ValueError(f"Unknown setting key: {key}")
-
-    old_value = row.value
-    row.value = value
-    row.updated_by = updated_by
+        row = SystemConfig(key=key, value=value, updated_by=updated_by)
+        db.add(row)
+        old_value = None
+    else:
+        old_value = row.value
+        row.value = value
+        row.updated_by = updated_by
     await db.flush()
 
     await log_action(

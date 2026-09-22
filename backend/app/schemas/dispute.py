@@ -13,6 +13,9 @@ class CreateDisputeRequest(BaseModel):
 
 class AddMessageRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
+    attachment_url: str | None = None
+    attachment_name: str | None = None
+    attachment_size: int | None = None
 
 
 class ResolveDisputeRequest(BaseModel):
@@ -24,6 +27,9 @@ class DisputeMessageResponse(BaseModel):
     sender_id:  uuid.UUID
     sender_name: str
     message:    str
+    attachment_url:  str | None = None
+    attachment_name: str | None = None
+    attachment_size: int | None = None
     read_at:    datetime | None
     created_at: datetime
 
@@ -43,6 +49,11 @@ class DisputeResponse(BaseModel):
     handler_name: str | None
     resolution_summary: str | None
     can_resolve:  bool = False
+    service_request_id: uuid.UUID | None = None
+    assigned_worker_id: uuid.UUID | None = None
+    is_escalated:  bool = False
+    escalated_at:  datetime | None = None
+    escalation_reason: str | None = None
     created_at:   datetime
     updated_at:   datetime
     resolved_at:  datetime | None

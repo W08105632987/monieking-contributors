@@ -8,10 +8,11 @@ from app.core.database import Base
 
 
 class UserRole(str, enum.Enum):
-    CUSTOMER = "customer"
-    OFFICER  = "officer"
-    ADMIN    = "admin"
-    DIRECTOR = "director"
+    CUSTOMER       = "customer"
+    OFFICER        = "officer"
+    ADMIN          = "admin"
+    DIRECTOR       = "director"
+    SERVICE_WORKER = "service_worker"
 
 
 class UserStatus(str, enum.Enum):
@@ -149,6 +150,12 @@ class User(Base):
 
     # SMS transaction notifications preference — see 032_sms_subscription_and_wallet_overdraft.sql
     sms_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    # Service Worker profile — see 036_service_worker_and_job_pool.sql
+    onboarding_completed:  Mapped[bool]         = mapped_column(Boolean, default=False, server_default="false")
+    state_of_residence:    Mapped[str | None]   = mapped_column(String(50), nullable=True)
+    referral_code:         Mapped[str | None]   = mapped_column(String(20), unique=True, nullable=True)
+    commission_balance_kobo: Mapped[int]        = mapped_column(default=0, server_default="0")
 
     @property
     def has_withdrawal_password(self) -> bool:

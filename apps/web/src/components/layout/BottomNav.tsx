@@ -36,11 +36,18 @@ const directorNav: NavItem[] = [
   { label: 'More',        icon: Grid2x2,  href: '/director/more' },
 ]
 
+const workerNav: NavItem[] = [
+  { label: 'Jobs',      icon: LayoutGrid, href: '/worker/dashboard' },
+  { label: 'Earnings',  icon: Wallet,     href: '/worker/earnings' },
+  { label: 'Disputes',  icon: Bell,       href: '/worker/disputes' },
+]
+
 const navByRole: Record<string, NavItem[]> = {
-  customer: customerNav,
-  officer:  officerNav,
-  director: directorNav,
-  admin:    directorNav,   // Admin role kept in the DB enum for safety, but shares the Director portal now
+  customer:       customerNav,
+  officer:        officerNav,
+  director:       directorNav,
+  admin:          directorNav,   // Admin role kept in the DB enum for safety, but shares the Director portal now
+  service_worker: workerNav,
 }
 
 export function BottomNav() {

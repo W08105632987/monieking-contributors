@@ -7,13 +7,10 @@ type Theme = 'light' | 'dark'
 function getInitialTheme(): Theme {
   const stored = localStorage.getItem(STORAGE_KEY)
   if (stored === 'light' || stored === 'dark') return stored
-  // No explicit choice yet — default to dark (matches the inline
-  // script in index.html, which applies this same rule before React
-  // mounts, so the two can never disagree and cause a flash). Used to
-  // fall back to the device's system color-scheme instead; changed so
-  // every brand-new visitor starts in dark, with the toggle on Login
-  // as how they'd opt into light.
-  return 'dark'
+  // No explicit choice stored yet — default to light mode so every
+  // brand-new visitor lands on a clean, bright interface. The theme
+  // toggle persists their preference via localStorage for future visits.
+  return 'light'
 }
 
 export function useDarkMode() {
