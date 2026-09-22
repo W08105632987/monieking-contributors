@@ -65,8 +65,11 @@ export function useWallet() {
     const walletId = walletQuery.data?.id
     if (!walletId || !isAuthenticated) return
 
+    // Unique channel name per hook instance to prevent collision when multiple
+    // components (e.g. WalletPage and FundWalletSheet) use this hook simultaneously.
+    const channelName = `realtime-wallet-${walletId}-${Math.random().toString(36).slice(2, 9)}`
     const channel = supabase
-      .channel(`realtime-wallet-${walletId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
