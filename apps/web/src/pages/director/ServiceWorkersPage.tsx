@@ -133,7 +133,8 @@ export default function ServiceWorkersPage() {
     queryKey: ['director-pending-payouts'],
     queryFn: async () => {
       const res = await api.get('/worker/payouts/pending')
-      return res.data
+      const payload = res.data
+      return Array.isArray(payload) ? payload : payload?.data || []
     },
     refetchInterval: 10000,
   })
@@ -614,14 +615,14 @@ export default function ServiceWorkersPage() {
                 <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-green-600" />
                 Loading payout requests...
               </div>
-            ) : !payoutsData || payoutsData.length === 0 ? (
+            ) : (!Array.isArray(payoutsData) || payoutsData.length === 0) ? (
               <div className="py-12 text-center rounded-2xl bg-white dark:bg-night-800 border border-green-100 dark:border-night-700 text-xs text-green-600 dark:text-night-400">
                 <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500" />
                 No pending payout requests from service workers.
               </div>
             ) : (
               <div className="space-y-3">
-                {payoutsData.map((p) => (
+                {(Array.isArray(payoutsData) ? payoutsData : []).map((p) => (
                   <div
                     key={p.id}
                     className="p-4 rounded-2xl bg-white dark:bg-night-800 border border-green-100 dark:border-night-700 shadow-sm space-y-3"

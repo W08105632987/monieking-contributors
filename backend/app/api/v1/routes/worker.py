@@ -149,7 +149,15 @@ async def create_service_worker(
         f"Your referral code is: *{referral_code}*"
     )
 
-    await log_action(db, current_user.id, "create_service_worker", {"worker_id": str(worker.id)})
+    await log_action(
+        db,
+        actor_id=current_user.id,
+        action="create_service_worker",
+        entity_type="user",
+        entity_id=str(worker.id),
+        new_value={"worker_id": str(worker.id), "phone": worker.phone_number, "role": "service_worker"},
+    )
+    await db.commit()
 
     return {
         "worker": {
