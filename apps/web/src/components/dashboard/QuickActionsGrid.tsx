@@ -20,7 +20,7 @@ interface QuickActionsGridProps {
 function SheetRow({ service, onOpen }: { service: IdentityService; onOpen: () => void }) {
   return (
     <button
-      onClick={service.is_active ? onOpen : () => toast('Coming soon')}
+      onClick={service.is_active ? onOpen : () => toast('This service is not available right now. Please check back later!')}
       className="w-full flex items-center justify-between px-4 py-4 text-left"
     >
       <span className="text-green-900 dark:text-white text-sm font-medium">{service.name}</span>
@@ -218,9 +218,9 @@ export function QuickActionsGrid({ customerId, title = 'Quick actions' }: QuickA
           <div className="flex-1 overflow-y-auto px-4 pb-8">
             {openGroup.services.length === 0 ? (
               <div className="text-center py-16">
-                <p className="text-green-700 dark:text-night-100 text-sm font-semibold mb-1">Not available yet</p>
+                <p className="text-green-700 dark:text-night-100 text-sm font-semibold mb-1">Service not available</p>
                 <p className="text-green-400 dark:text-night-300 text-xs">
-                  We're still setting this up — check back soon.
+                  This service is not available right now. Please check back later, thank you!
                 </p>
               </div>
             ) : (

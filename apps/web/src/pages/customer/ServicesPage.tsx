@@ -18,7 +18,7 @@ function ServiceCard({ service, categoryIcon: CategoryIcon, onOpen, forceActive 
   const active = service.is_active || forceActive
   return (
     <button
-      onClick={active ? onOpen : () => toast('Coming soon')}
+      onClick={active ? onOpen : () => toast('This service is not available right now. Please check back later!')}
       className="flex flex-col items-start gap-2.5 bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-2xl p-3.5 text-left active:scale-95 transition-transform"
     >
       <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-night-600 flex items-center justify-center">

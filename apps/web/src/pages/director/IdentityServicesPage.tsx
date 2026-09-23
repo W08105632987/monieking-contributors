@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Pencil, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, nairaToKobo, koboToNaira, cn } from '@/lib/utils'
@@ -33,31 +33,21 @@ function ServiceRow({ service }: { service: IdentityService }) {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
-  const noIntegration = service.provider === 'manual'
+
 
   return (
     <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-2.5">
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
           <p className="text-green-900 dark:text-white font-bold text-sm truncate">{service.name}</p>
-          {noIntegration ? (
-            <p className="flex items-center gap-1 text-amber-600 text-xs mt-0.5">
-              <AlertTriangle className="w-3 h-3 flex-shrink-0" /> No confirmed integration yet
-            </p>
-          ) : (
-            <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">via {service.provider}</p>
-          )}
+          <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">
+            {service.provider === 'manual' ? 'Manual service' : `via ${service.provider}`}
+          </p>
         </div>
 
         {/* on/off toggle */}
         <button
-          onClick={() => {
-            if (noIntegration && !service.is_active) {
-              toast.error("Can't activate — this service has no confirmed provider integration yet.")
-              return
-            }
-            activeMutation.mutate(!service.is_active)
-          }}
+          onClick={() => activeMutation.mutate(!service.is_active)}
           disabled={activeMutation.isPending}
           aria-pressed={service.is_active}
           className={cn(
@@ -131,8 +121,7 @@ export default function IdentityServicesPage() {
 
       <div className="flex-1 overflow-y-auto px-4 pb-10">
         <p className="text-green-500 dark:text-night-300 text-sm mb-4">
-          Set what each service costs a customer. A service can only be turned on once it has a real,
-          confirmed integration — that's enforced here, not just a suggestion.
+          Set what each service costs a customer. Toggle any service on or off at any time.
         </p>
 
         {isError ? (

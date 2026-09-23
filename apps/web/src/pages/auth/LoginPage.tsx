@@ -28,6 +28,7 @@ const dashboardMap: Record<string, string> = {
   officer:  '/officer/dashboard',
   admin:    '/director/dashboard',
   director: '/director/dashboard',
+  service_worker: '/worker/dashboard',
 }
 function TypewriterText({ text }: { text: string }) {
   const [displayed, setDisplayed] = useState('')

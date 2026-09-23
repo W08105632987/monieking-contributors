@@ -22,6 +22,7 @@ from app.models.manual_service_request import ManualServiceRequest, ManualServic
 from app.models.service_worker_withdrawal import ServiceWorkerWithdrawal, SWWithdrawalStatus
 from app.services import job_pool_service
 from app.utils.audit import log_action
+from app.utils.supabase_auth import create_supabase_auth_user
 
 router = APIRouter(prefix="/worker", tags=["service-worker"])
 
@@ -125,9 +126,21 @@ async def create_service_worker(
     while await db.scalar(select(User).where(User.referral_code == referral_code)):
         referral_code = "SW-" + "".join(secrets.choice(chars) for _ in range(6))
 
+    placeholder_name = f"Worker {body.phone_number[-4:]}"
+
+    # Create real Supabase Auth user first so public.users.id matches auth.users.id
+    # and the worker can authenticate via /auth/login
+    worker_id = await create_supabase_auth_user(
+        email=f"{body.phone_number}@monieking.app",
+        password=default_password,
+        full_name=placeholder_name,
+        phone=body.phone_number,
+    )
+
     worker = User(
+        id=worker_id,
         role=UserRole.SERVICE_WORKER,
-        full_name=f"Worker {body.phone_number[-4:]}",  # placeholder until onboarding
+        full_name=placeholder_name,  # placeholder until onboarding
         phone_number=body.phone_number,
         login_password_hash=hash_password(default_password),
         status=UserStatus.ACTIVE,

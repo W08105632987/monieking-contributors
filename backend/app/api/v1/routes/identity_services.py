@@ -143,14 +143,6 @@ async def update_active(
     service = await db.get(IdentityService, service_id)
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
-    if body.is_active and service.provider == "manual":
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"'{service.name}' has no confirmed working integration (provider is still 'manual'). "
-                "Set a real provider_endpoint and verify it against the provider's current docs before activating."
-            ),
-        )
     old = service.is_active
     service.is_active = body.is_active
     await db.flush()
