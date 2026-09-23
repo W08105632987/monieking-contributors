@@ -36,6 +36,7 @@ class CompleteProfileRequest(BaseModel):
     account_number:     str = Field(..., min_length=10, max_length=20)
     account_name:       str = Field(..., min_length=2, max_length=200)
     state_of_residence: str = Field(..., min_length=2, max_length=50)
+    new_password:       str | None = None
 
 
 class ResolveJobRequest(BaseModel):
@@ -187,6 +188,7 @@ async def create_service_worker(
 # ─── Worker: Complete Profile (Onboarding) ─────────────────────────────────────
 
 @router.post("/complete-profile")
+@router.post("/profile/complete")
 async def complete_profile(
     body: CompleteProfileRequest,
     current_user: ServiceWorkerOnly,
@@ -203,6 +205,24 @@ async def complete_profile(
     worker.account_name       = body.account_name
     worker.state_of_residence = body.state_of_residence
     worker.onboarding_completed = True
+
+    supabase_payload: dict[str, Any] = {"user_metadata": {"full_name": body.full_name}}
+
+    if body.new_password and len(body.new_password.strip()) >= 6:
+        new_pwd = body.new_password.strip()
+        worker.login_password_hash = hash_password(new_pwd)
+        supabase_payload["password"] = new_pwd
+
+    try:
+        from app.utils.supabase_admin_client import supabase_admin_request
+        await supabase_admin_request(
+            "PUT",
+            f"/auth/v1/admin/users/{worker.id}",
+            json=supabase_payload,
+            failure_detail="Could not update account credentials. Please try again.",
+        )
+    except Exception as e:
+        print(f"[WORKER] Supabase auth update error (non-fatal): {e}")
 
     await db.commit()
     await db.refresh(worker)

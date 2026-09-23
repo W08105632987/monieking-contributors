@@ -85,7 +85,7 @@ class TimingMiddleware(BaseHTTPMiddleware):
         if total > 0.3 and queries:
             slowest = sorted(queries, key=lambda q: -q[0])[:3]
             for elapsed, sql in slowest:
-                print(f"           └─ {elapsed*1000:7.1f}ms  {sql}")
+                print(f"           |-- {elapsed*1000:7.1f}ms  {sql}")
 
         response.headers["X-Response-Time-ms"] = f"{total*1000:.1f}"
         response.headers["X-DB-Time-ms"] = f"{db_time*1000:.1f}"

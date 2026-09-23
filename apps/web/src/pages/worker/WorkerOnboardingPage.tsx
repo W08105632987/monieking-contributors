@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ShieldCheck, User, Building2, MapPin, Lock, Copy, Check, Sparkles } from 'lucide-react'
+import { ShieldCheck, User, Building2, MapPin, Lock, Copy, Check, Sparkles, ArrowLeft, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
+import { useAuth } from '@/hooks/useAuth'
 import { copyToClipboard } from '@/lib/utils'
 
 const NIGERIAN_STATES = [
@@ -25,19 +26,46 @@ const POPULAR_BANKS = [
 export default function WorkerOnboardingPage() {
   const navigate = useNavigate()
   const { user, setUser } = useAuthStore()
+  const { signOut } = useAuth()
 
-  const [fullName, setFullName] = useState(user?.full_name || '')
-  const [stateOfResidence, setStateOfResidence] = useState(user?.state_of_residence || 'Lagos')
-  const [bankName, setBankName] = useState(user?.bank_name || POPULAR_BANKS[0])
+  // Form starts completely un-prefilled with placeholders so workers don't have to clear anything
+  const [fullName, setFullName] = useState('')
+  const [stateOfResidence, setStateOfResidence] = useState('')
+  const [bankName, setBankName] = useState('')
   const [customBank, setCustomBank] = useState('')
-  const [accountNumber, setAccountNumber] = useState(user?.account_number || '')
-  const [accountName, setAccountName] = useState(user?.account_name || '')
+  const [accountNumber, setAccountNumber] = useState('')
+  const [accountName, setAccountName] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [copiedCode, setCopiedCode] = useState(false)
 
   const referralCode = user?.referral_code || 'SW-XXXXXX'
+
+  // Exit back to login handler
+  const handleExitToLogin = async () => {
+    try {
+      await signOut()
+    } catch {
+      // ignore
+    }
+    navigate('/auth/login', { replace: true })
+  }
+
+  // Handle hardware / browser back key: gracefully exit to login without trapping the user
+  useEffect(() => {
+    const handlePopState = async () => {
+      try {
+        await signOut()
+      } catch {
+        // ignore
+      }
+      navigate('/auth/login', { replace: true })
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [signOut, navigate])
 
   const handleCopyCode = async () => {
     await copyToClipboard(referralCode)
@@ -50,8 +78,8 @@ export default function WorkerOnboardingPage() {
 
   const isValid =
     fullName.trim().length >= 2 &&
-    stateOfResidence &&
-    effectiveBank.length >= 2 &&
+    stateOfResidence.trim().length >= 2 &&
+    effectiveBank.trim().length >= 2 &&
     accountNumber.trim().length === 10 &&
     accountName.trim().length >= 2 &&
     newPassword.length >= 6 &&
@@ -72,7 +100,7 @@ export default function WorkerOnboardingPage() {
         new_password: newPassword,
       })
 
-      // Update auth store with fresh user data
+      // Update auth store with fresh user data (includes updated full_name, onboarding_completed, etc.)
       setUser(data)
       toast.success('Profile completed successfully! Welcome to the team.')
       navigate('/worker/dashboard', { replace: true })
@@ -84,7 +112,28 @@ export default function WorkerOnboardingPage() {
   }
 
   return (
-    <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 px-4 py-8 max-w-lg mx-auto w-full">
+    <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 px-4 py-6 max-w-lg mx-auto w-full">
+      {/* Top Exit Navigation Bar */}
+      <div className="flex items-center justify-between pb-3 border-b border-green-100 dark:border-night-800 mb-4">
+        <button
+          type="button"
+          onClick={handleExitToLogin}
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-green-800 dark:text-night-200 hover:text-green-950 dark:hover:text-white px-3 py-1.5 rounded-xl border border-green-200 dark:border-night-700 bg-white dark:bg-night-800 transition-all active:scale-95 shadow-sm"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to Login
+        </button>
+
+        <button
+          type="button"
+          onClick={handleExitToLogin}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 dark:text-red-400 hover:text-red-700 transition-colors"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Exit & Sign out
+        </button>
+      </div>
+
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
@@ -109,7 +158,7 @@ export default function WorkerOnboardingPage() {
             <span className="text-xs uppercase font-bold tracking-wider text-brand-gold">
               Your Unique Referral Code
             </span>
-            <span className="text-[10px] bg-green-800/80 px-2 py-0.5 rounded-full text-green-200">
+            <span className="text-[10px] bg-green-800/80 px-2 py-0.5 rounded-full text-green-200 font-semibold">
               Active
             </span>
           </div>
@@ -145,7 +194,7 @@ export default function WorkerOnboardingPage() {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. Chinedu Okafor"
+                placeholder="Enter your full legal name (e.g. Chinedu Okafor)"
                 className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-green-200 dark:border-night-700 bg-white dark:bg-night-800 text-green-950 dark:text-white text-sm outline-none focus:border-green-600 transition-colors"
               />
             </div>
@@ -159,12 +208,16 @@ export default function WorkerOnboardingPage() {
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3.5 w-4 h-4 text-green-600 dark:text-night-400" />
               <select
+                required
                 value={stateOfResidence}
                 onChange={(e) => setStateOfResidence(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-green-200 dark:border-night-700 bg-white dark:bg-night-800 text-green-950 dark:text-white text-sm outline-none focus:border-green-600 transition-colors"
+                className={`w-full pl-10 pr-4 py-3 rounded-xl border-2 border-green-200 dark:border-night-700 bg-white dark:bg-night-800 text-sm outline-none focus:border-green-600 transition-colors ${
+                  stateOfResidence ? 'text-green-950 dark:text-white font-medium' : 'text-gray-400 dark:text-night-400'
+                }`}
               >
+                <option value="" disabled>Select your state of residence...</option>
                 {NIGERIAN_STATES.map((st) => (
-                  <option key={st} value={st}>
+                  <option key={st} value={st} className="text-green-950 dark:text-white">
                     {st}
                   </option>
                 ))}
@@ -184,14 +237,18 @@ export default function WorkerOnboardingPage() {
                 Bank Name
               </label>
               <select
+                required
                 value={bankName}
                 onChange={(e) => setBankName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-green-200 dark:border-night-700 bg-white dark:bg-night-900 text-green-950 dark:text-white text-sm outline-none focus:border-green-600"
+                className={`w-full px-3.5 py-2.5 rounded-xl border border-green-200 dark:border-night-700 bg-white dark:bg-night-900 text-sm outline-none focus:border-green-600 ${
+                  bankName ? 'text-green-950 dark:text-white font-medium' : 'text-gray-400 dark:text-night-400'
+                }`}
               >
+                <option value="" disabled>Select payout bank...</option>
                 {POPULAR_BANKS.map((b) => (
-                  <option key={b} value={b}>{b}</option>
+                  <option key={b} value={b} className="text-green-950 dark:text-white">{b}</option>
                 ))}
-                <option value="Other">Other Bank...</option>
+                <option value="Other" className="text-green-950 dark:text-white">Other Bank...</option>
               </select>
             </div>
 
@@ -202,7 +259,7 @@ export default function WorkerOnboardingPage() {
                   required
                   value={customBank}
                   onChange={(e) => setCustomBank(e.target.value)}
-                  placeholder="Enter Bank Name"
+                  placeholder="Enter your bank name"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-green-200 dark:border-night-700 bg-white dark:bg-night-900 text-green-950 dark:text-white text-sm outline-none focus:border-green-600"
                 />
               </div>
@@ -218,7 +275,7 @@ export default function WorkerOnboardingPage() {
                 maxLength={10}
                 value={accountNumber}
                 onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
-                placeholder="0123456789"
+                placeholder="Enter 10-digit NUBAN account number"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-green-200 dark:border-night-700 bg-white dark:bg-night-900 text-green-950 dark:text-white text-sm font-mono outline-none focus:border-green-600"
               />
             </div>
@@ -232,7 +289,7 @@ export default function WorkerOnboardingPage() {
                 required
                 value={accountName}
                 onChange={(e) => setAccountName(e.target.value)}
-                placeholder="Exact name on your bank account"
+                placeholder="Account name as registered with bank"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-green-200 dark:border-night-700 bg-white dark:bg-night-900 text-green-950 dark:text-white text-sm outline-none focus:border-green-600"
               />
             </div>
@@ -251,7 +308,7 @@ export default function WorkerOnboardingPage() {
                   required
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="New secure password"
+                  placeholder="Create a new secure password"
                   className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-green-200 dark:border-night-700 bg-white dark:bg-night-800 text-green-950 dark:text-white text-sm outline-none focus:border-green-600 transition-colors"
                 />
               </div>
@@ -268,12 +325,12 @@ export default function WorkerOnboardingPage() {
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-type new password"
+                  placeholder="Re-enter your new password"
                   className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-green-200 dark:border-night-700 bg-white dark:bg-night-800 text-green-950 dark:text-white text-sm outline-none focus:border-green-600 transition-colors"
                 />
               </div>
               {confirmPassword && newPassword !== confirmPassword && (
-                <p className="text-[11px] text-red-500 mt-1">Passwords do not match</p>
+                <p className="text-[11px] text-red-500 mt-1 font-medium">Passwords do not match</p>
               )}
             </div>
           </div>
