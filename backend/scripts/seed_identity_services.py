@@ -87,11 +87,14 @@ SERVICES = [
          provider="manual", provider_endpoint=None, is_active=False, price_kobo=0,
          required_fields=[]),  # Tier 2 — gated behind NIMC FEP license, no live API yet. Do not populate fields until a real integration exists.
     dict(category=IdentityServiceCategory.NIMC, code="nin_modification", name="NIN modification",
-         provider="manual", provider_endpoint=None, is_active=False, price_kobo=0,
-         required_fields=[]),  # Tier 2 — same as above.
+         provider="manual", provider_endpoint=None, is_active=True, price_kobo=500000,
+         required_fields=[]),
     dict(category=IdentityServiceCategory.NIMC, code="nin_validation", name="NIN validation",
-         provider="manual", provider_endpoint=None, is_active=False, price_kobo=0,
-         required_fields=[]),  # Tier 2 — confirm with provider whether this differs from plain verification before activating.
+         provider="manual", provider_endpoint=None, is_active=True, price_kobo=100000,
+         required_fields=[]),
+    dict(category=IdentityServiceCategory.NIMC, code="nin_delinking", name="NIN delinking",
+         provider="manual", provider_endpoint=None, is_active=True, price_kobo=350000,
+         required_fields=[]),
 
     # ── BVN (grouped under the "BVN services" quick-action tile) ────────
     dict(category=IdentityServiceCategory.BVN, code="bvn_verification", name="BVN verification",
@@ -102,32 +105,15 @@ SERVICES = [
              {"key": "isSubjectConsent", "label": "Customer has consented to this check", "type": "boolean", "required": True},
              {"key": "premiumBVN", "label": "Include extended details (gender, address, watchlist status)", "type": "boolean", "required": False},
          ]),
-    dict(category=IdentityServiceCategory.BVN, code="bvn_retrieval_phone", name="BVN retrieval — by phone number",
-         provider="youverify", provider_endpoint="/v2/api/identity/ng/nin-phone", is_active=False, price_kobo=7500,
-         required_fields=[
-             {"key": "mobile", "label": "Phone number", "type": "text", "required": True, "hint": "e.g. 080XXXXXXXX"},
-             {"key": "isSubjectConsent", "label": "Customer has consented to this check", "type": "boolean", "required": True},
-         ]),  # DEACTIVATED (round 19) — this was live and charging N75/lookup while actually calling
-              # Youverify's NIN-by-phone endpoint, not a BVN one. It was returning NIN data under a
-              # service labeled "BVN retrieval". Youverify's public docs don't show a distinct
-              # BVN-by-phone endpoint as of this pass — confirm one exists (sales/support) before
-              # reactivating with a corrected provider_endpoint. If any customer paid for this while
-              # it was live, that's worth a manual look/refund pass separately from the code fix.
+    dict(category=IdentityServiceCategory.BVN, code="bvn_retrieval", name="BVN retrieval",
+         provider="manual", provider_endpoint=None, is_active=True, price_kobo=70000,
+         required_fields=[]),  # Combines phone number and CRM retrieval
     dict(category=IdentityServiceCategory.BVN, code="bvn_modification", name="BVN modification",
-         provider="manual", provider_endpoint=None, is_active=False, price_kobo=0,
-         required_fields=[]),  # Tier 2 — gated behind NIBSS/enrollment-bank access, no live API. The 4-step form we mocked up earlier was illustrative only — don't build against it as if it were sourced from a real schema.
-    dict(category=IdentityServiceCategory.BVN, code="bvn_retrieval_crm", name="BVN retrieval — by CRM",
-         provider="manual", provider_endpoint=None, is_active=False, price_kobo=0,
-         required_fields=[]),  # Not found in Youverify's public docs as a distinct endpoint — confirm with their sales/support before building this form.
-    dict(category=IdentityServiceCategory.BVN, code="ipe_clearance", name="IPE clearance",
-         provider="manual", provider_endpoint=None, is_active=False, price_kobo=0,
-         required_fields=[]),  # Tier 2 — bank/NIBSS-gated, not a Youverify product.
-    dict(category=IdentityServiceCategory.BVN, code="bvn_license_onboarding", name="License onboarding creation",
-         provider="manual", provider_endpoint=None, is_active=False, price_kobo=0,
-         required_fields=[]),  # Tier 2 — this is MonieKing's OWN FEP/NIBSS licensing step, not a customer-facing service. Confirm this belongs in the customer catalog at all.
-    dict(category=IdentityServiceCategory.BVN, code="bvn_self_service_delinking", name="Self-service delinking",
-         provider="manual", provider_endpoint=None, is_active=False, price_kobo=0,
-         required_fields=[]),  # Tier 2 — gated.
+         provider="manual", provider_endpoint=None, is_active=True, price_kobo=600000,
+         required_fields=[]),
+    dict(category=IdentityServiceCategory.BVN, code="bvn_license_onboarding", name="BVN license creation",
+         provider="manual", provider_endpoint=None, is_active=True, price_kobo=700000,
+         required_fields=[]),
 
     # ── Standalone tiles ─────────────────────────────────────────────
     dict(category=IdentityServiceCategory.TIN, code="tin_verification", name="TIN verification",
@@ -136,38 +122,36 @@ SERVICES = [
          required_fields=[
              {"key": "id", "label": "Tax Identification Number (TIN)", "type": "text", "required": True, "hint": "format like 00000000-0000"},
              {"key": "isSubjectConsent", "label": "Customer has consented to this check", "type": "boolean", "required": True},
-         ]),  # NOTE: confirms an EXISTING TIN. Does not register a new one — that still runs through FIRS/CAC directly.
+         ]),
     dict(category=IdentityServiceCategory.TIN, code="tin_registration", name="TIN registration",
-         provider="manual", provider_endpoint=None, is_active=False, price_kobo=0,
-         required_fields=[]),  # New registration, distinct from verification above — no public API, runs through FIRS/CAC directly per the spec.
+         provider="manual", provider_endpoint=None, is_active=True, price_kobo=300000,
+         required_fields=[]),
     dict(category=IdentityServiceCategory.ATTESTATION, code="attestation", name="Attestation",
-         provider="manual", provider_endpoint=None, is_active=False, price_kobo=0,
-         required_fields=[]),  # No confirmed provider endpoint yet — clarify exactly what document type this covers before scoping.
+         provider="manual", provider_endpoint=None, is_active=True, price_kobo=350000,
+         required_fields=[]),
     dict(category=IdentityServiceCategory.CAC, code="cac_business_verification", name="CAC+ (business verification)",
          provider="youverify", provider_endpoint="/v2/api/kyb/ng/business", is_active=True, price_kobo=10000,
          official_document_note=_reference_note("CAC business registration", "Certificate of Incorporation / status report from CAC"),
          required_fields=[
              {"key": "registrationNumber", "label": "CAC registration number (RC/BN number)", "type": "text", "required": True, "hint": "e.g. RC1234567"},
              {"key": "isSubjectConsent", "label": "Business has consented to this check", "type": "boolean", "required": True},
-         ]),  # Confirms an EXISTING registration. Does not register a new business.
+         ]),
+    dict(category=IdentityServiceCategory.CAC, code="cac_registration", name="CAC registration",
+         provider="manual", provider_endpoint=None, is_active=True, price_kobo=1500000,
+         required_fields=[]),  # Added CAC Registration
     dict(category=IdentityServiceCategory.VENDOR, code="become_a_vendor", name="Become a vendor",
          provider="youverify", provider_endpoint="/v2/api/kyb/ng/business", is_active=False, price_kobo=0,
          required_fields=[
              {"key": "registrationNumber", "label": "CAC registration number (RC/BN number)", "type": "text", "required": True, "hint": "e.g. RC1234567"},
              {"key": "isSubjectConsent", "label": "Business has consented to this check", "type": "boolean", "required": True},
-         ]),  # Reuses the KYB endpoint as a vendor-onboarding gate. is_active=False until the vendor approval workflow (officer/director review step) is designed — running the check isn't the same as having somewhere for the result to go yet.
+         ]),
 ]
 
-# Codes removed in round 19: "airtime_data" and "bill_payments" used to sit
-# here as inactive "manual" placeholders pointing at an unbuilt VTpass
-# integration. That feature was since built for real — via Monnify Bills
-# Payment (see app/integrations/monnify_bills.py, app/services/
-# bill_payment_service.py) — which is a completely separate system from
-# this identity-services catalog, not something that belongs in it at all.
-# Keeping the old rows around would mean two different "sources of truth"
-# claiming to represent the same customer-facing feature. seed() below
-# removes them if they're still present from an earlier run.
-STALE_CODES_TO_REMOVE = ["airtime_data", "bill_payments"]
+# Codes removed: stale redundant endpoints combined or deprecated
+STALE_CODES_TO_REMOVE = [
+    "airtime_data", "bill_payments", "bvn_retrieval_phone", "bvn_retrieval_crm",
+    "ipe_clearance", "bvn_self_service_delinking", "nin_personalisation"
+]
 
 
 async def seed():
@@ -193,11 +177,14 @@ async def seed():
                     changed = True
                 if existing.provider_endpoint != row["provider_endpoint"]:
                     existing.provider_endpoint = row["provider_endpoint"]
-                    changed = True
-                if existing.is_active != row["is_active"] and row["code"] == "bvn_retrieval_phone":
-                    # Only auto-correct is_active for the one known-bad row — never
-                    # silently flip is_active for anything else on a re-run.
+                if existing.is_active != row["is_active"]:
                     existing.is_active = row["is_active"]
+                    changed = True
+                if existing.price_kobo != row["price_kobo"]:
+                    existing.price_kobo = row["price_kobo"]
+                    changed = True
+                if existing.name != row["name"]:
+                    existing.name = row["name"]
                     changed = True
                 print(f"{'patched' if changed else 'skip (exists, no change)'}: {row['code']}")
                 continue

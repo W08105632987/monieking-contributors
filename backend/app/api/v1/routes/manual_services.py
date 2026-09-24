@@ -244,6 +244,7 @@ async def upload_document(
 async def submit_service_request(
     body: SubmitServiceRequest,
     current_user: CustomerOrOfficer,
+    customer_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -256,6 +257,10 @@ async def submit_service_request(
             status_code=400,
             detail="You must give explicit consent before submitting this service request."
         )
+
+    target_user_id = current_user.id
+    if customer_id and current_user.role == UserRole.OFFICER:
+        target_user_id = customer_id
 
     # Validate Transaction PIN / withdrawal password if set
     user_row = await db.get(User, current_user.id)
@@ -273,7 +278,7 @@ async def submit_service_request(
 
     # Wallet balance verification & atomic debit
     if price_kobo > 0:
-        wallet = await get_or_create_wallet(db, current_user.id)
+        wallet = await get_or_create_wallet(db, target_user_id)
         if wallet.balance_kobo < price_kobo:
             raise HTTPException(
                 status_code=400,
@@ -310,7 +315,7 @@ async def submit_service_request(
             referred_worker_id = worker.id
 
     req = ManualServiceRequest(
-        user_id=current_user.id,
+        user_id=target_user_id,
         service_category=body.service_category,
         service_type=body.service_type,
         form_data=body.form_data,

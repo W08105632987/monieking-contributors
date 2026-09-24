@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
@@ -8,15 +9,44 @@ import type { IdentityService, IdentityServiceCategory } from '@/types'
 import { CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_ORDER } from '@/lib/identityServices'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { BottomNav } from '@/components/layout/BottomNav'
-import { MANUAL_SERVICE_META } from '@/pages/customer/ManualServicePage'
 
-function ServiceCard({ service, categoryIcon: CategoryIcon, onOpen, forceActive }: {
+// Base starting prices for manual services (in kobo)
+const MANUAL_BASE_PRICES: Record<string, number> = {
+  nin_modification: 500_000,   // From ₦5,000
+  nin_validation:   100_000,   // From ₦1,000
+  nin_delinking:    350_000,   // From ₦3,500
+  bvn_retrieval:    70_000,    // From ₦700
+  bvn_modification: 600_000,   // From ₦6,000
+  bvn_license_onboarding: 700_000, // From ₦7,000
+  tin_registration: 300_000,   // From ₦3,000
+  attestation:      350_000,   // From ₦3,500
+  cac_registration: 1_500_000, // From ₦15,000
+}
+
+function ServiceCard({
+  service,
+  categoryIcon: CategoryIcon,
+  onOpen,
+  forceActive,
+}: {
   service: IdentityService
   categoryIcon: typeof CATEGORY_ICON[IdentityServiceCategory]
   onOpen: () => void
   forceActive?: boolean
 }) {
   const active = service.is_active || forceActive
+
+  // Display price: for manual services with dynamic tiers, show starting price
+  const priceDisplay = (() => {
+    if (MANUAL_BASE_PRICES[service.code]) {
+      return `From ${formatNaira(MANUAL_BASE_PRICES[service.code])}`
+    }
+    if (service.price_kobo > 0) {
+      return formatNaira(service.price_kobo)
+    }
+    return active ? 'Dynamic pricing' : 'Coming soon'
+  })()
+
   return (
     <button
       onClick={active ? onOpen : () => toast('This service is not available right now. Please check back later!')}
@@ -27,7 +57,7 @@ function ServiceCard({ service, categoryIcon: CategoryIcon, onOpen, forceActive 
       </div>
       <div>
         <p className="text-green-900 dark:text-white text-xs font-bold leading-tight">{service.name}</p>
-        <p className="text-green-400 dark:text-night-300 text-[11px] mt-1">{formatNaira(service.price_kobo)}</p>
+        <p className="text-green-500 dark:text-night-300 text-[11px] font-semibold mt-1">{priceDisplay}</p>
       </div>
     </button>
   )
@@ -35,15 +65,9 @@ function ServiceCard({ service, categoryIcon: CategoryIcon, onOpen, forceActive 
 
 export default function ServicesPage() {
   const navigate = useNavigate()
-  // Present at two routes, same dual-purpose pattern as ServiceHistoryPage:
-  // /customer/services (own, self-service) and
-  // /officer/customers/:customerId/services/all (officer, on a customer's behalf)
   const { customerId } = useParams<{ customerId?: string }>()
 
-  // No active_only filter — Coming Soon services need to be VISIBLE (as
-  // disabled cards with Notify Me), not hidden entirely. Hiding them was
-  // the actual bug behind "NIMC only shows two services".
-  const { data: services = [], isLoading, isError, refetch, isFetching } = useQuery({
+  const { data: rawServices = [], isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['identity-services', 'all'],
     queryFn: async () => {
       const { data } = await api.get<IdentityService[]>('/identity-services')
@@ -51,34 +75,110 @@ export default function ServicesPage() {
     },
   })
 
+  // Normalize services:
+  // 1. Collapse separate BVN retrieval cards into a single "BVN retrieval" card
+  // 2. Add CAC registration if not in the catalog
+  // 3. Remove stale/duplicate rows
+  // 4. Ensure manual services are active and clean
+  const services = useMemo(() => {
+    const list: IdentityService[] = []
+    let seenBvnRetrieval = false
+    let hasCacRegistration = false
+    let hasNinDelinking = false
+
+    for (const s of rawServices) {
+      // Overload check: combine bvn_retrieval_phone and bvn_retrieval_crm into one
+      if (s.code === 'bvn_retrieval_phone' || s.code === 'bvn_retrieval_crm' || s.code === 'bvn_retrieval') {
+        if (!seenBvnRetrieval) {
+          list.push({
+            ...s,
+            code: 'bvn_retrieval',
+            name: 'BVN retrieval',
+            is_active: true,
+            price_kobo: 70000,
+          })
+          seenBvnRetrieval = true
+        }
+        continue
+      }
+
+      // Skip deprecated or redundant placeholders
+      if (
+        s.code === 'ipe_clearance' ||
+        s.code === 'bvn_self_service_delinking' ||
+        s.code === 'nin_personalisation'
+      ) {
+        continue
+      }
+
+      if (s.code === 'cac_registration') hasCacRegistration = true
+      if (s.code === 'nin_delinking') hasNinDelinking = true
+
+      // Activate all manual services
+      if (MANUAL_BASE_PRICES[s.code]) {
+        list.push({ ...s, is_active: true })
+      } else {
+        list.push(s)
+      }
+    }
+
+    // Ensure CAC registration card exists under CAC+
+    if (!hasCacRegistration) {
+      list.push({
+        id: 'cac_registration',
+        category: 'cac',
+        code: 'cac_registration',
+        name: 'CAC registration',
+        description: 'Business name and company registration',
+        provider: 'manual',
+        provider_endpoint: null,
+        price_kobo: 1500000,
+        is_active: true,
+        required_fields: [],
+        updated_at: new Date().toISOString(),
+      })
+    }
+
+    // Ensure NIN delinking exists under NIMC
+    if (!hasNinDelinking) {
+      list.push({
+        id: 'nin_delinking',
+        category: 'nimc',
+        code: 'nin_delinking',
+        name: 'NIN delinking',
+        description: 'Delink phone or SIM from NIN',
+        provider: 'manual',
+        provider_endpoint: null,
+        price_kobo: 350000,
+        is_active: true,
+        required_fields: [],
+        updated_at: new Date().toISOString(),
+      })
+    }
+
+    return list
+  }, [rawServices])
+
   const grouped = CATEGORY_ORDER
     .map(cat => ({ category: cat, services: services.filter(s => s.category === cat) }))
     .filter(g => g.services.length > 0)
 
-  const requestPath = (serviceId: string) =>
+  const requestPath = (serviceIdentifier: string) =>
     customerId
-      ? `/officer/customers/${customerId}/services/${serviceId}/request`
-      : `/customer/services/${serviceId}/request`
+      ? `/officer/customers/${customerId}/services/${serviceIdentifier}/request`
+      : `/customer/services/${serviceIdentifier}/request`
 
-  // Airtime & data now has a real, dedicated flow (Monnify Bills Payment,
-  // not the generic single-field form) — route straight there instead of
-  // through the identity_services catalog row, which stays is_active=false
-  // as a placeholder. Bill payments (electricity/cable/education) still
-  // route through the generic flow until their own dedicated pages exist.
-  const openService = (categoryKey: string, serviceId: string) => {
+  const openService = (categoryKey: string, service: IdentityService) => {
     if (categoryKey === 'airtime') {
       navigate(customerId ? `/officer/customers/${customerId}/airtime-data` : '/customer/airtime-data')
       return
     }
     if (categoryKey === 'bills') {
-      // "Bill payments" now covers real electricity/cable via
-      // BillPaymentPage — Education (JAMB/WAEC/NECO) is a genuinely
-      // different flow with no account to validate, so it gets its own
-      // card injected below rather than living under this same tile.
       navigate(customerId ? `/officer/customers/${customerId}/bill-payments` : '/customer/bill-payments')
       return
     }
-    navigate(requestPath(serviceId))
+    // Route to canonical service request path with service ID (or code)
+    navigate(requestPath(service.id || service.code))
   }
 
   const openEducationPayments = () =>
@@ -124,21 +224,18 @@ export default function ServicesPage() {
                 <div className="grid grid-cols-2 gap-3">
                   {group.services.map(s => (
                     <ServiceCard
-                      key={s.id}
+                      key={s.id || s.code}
                       service={s}
                       categoryIcon={CategoryIcon}
-                      // Airtime & data and Bill payments are real now even
-                      // though their catalog rows are still is_active=false
-                      // (legacy placeholders from before the dedicated
-                      // Monnify flow existed) — force them open rather than
-                      // showing "Coming soon" for a service that works.
-                      forceActive={group.category === 'airtime' || group.category === 'bills'}
-                      onOpen={() => openService(group.category, s.id)}
+                      forceActive={
+                        group.category === 'airtime' ||
+                        group.category === 'bills' ||
+                        !!MANUAL_BASE_PRICES[s.code]
+                      }
+                      onOpen={() => openService(group.category, s)}
                     />
                   ))}
-                  {/* Education Payments (JAMB/WAEC/NECO) has no catalog row
-                      of its own — it's a distinct flow injected here rather
-                      than forced into the generic Bill payments tile. */}
+                  {/* Education Payments (JAMB/WAEC/NECO) */}
                   {group.category === 'bills' && (
                     <button
                       onClick={openEducationPayments}
@@ -154,35 +251,6 @@ export default function ServicesPage() {
           })
         )}
       </div>
-
-        {/* ── Manual Identity Services ── */}
-        <div className="mb-6 px-4">
-          <div className="flex items-center gap-2 mb-3 mt-2">
-            <span className="text-base">🛠️</span>
-            <p className="text-green-900 dark:text-white font-bold text-sm">Manual Identity Services</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {Object.entries(MANUAL_SERVICE_META).map(([key, svc]) => (
-              <button
-                key={key}
-                onClick={() =>
-                  customerId
-                    ? navigate(`/officer/customers/${customerId}/manual-services/${key}`)
-                    : navigate(`/customer/manual-services/${key}`)
-                }
-                className="flex flex-col items-start gap-2.5 bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-2xl p-3.5 text-left active:scale-95 transition-transform"
-              >
-                <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-night-600 flex items-center justify-center text-lg">
-                  {svc.emoji}
-                </div>
-                <div>
-                  <p className="text-green-900 dark:text-white text-xs font-bold leading-tight">{svc.title}</p>
-                  <p className="text-green-400 dark:text-night-300 text-[11px] mt-1 leading-tight line-clamp-2">{svc.description}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
 
       {!customerId && <BottomNav />}
     </div>

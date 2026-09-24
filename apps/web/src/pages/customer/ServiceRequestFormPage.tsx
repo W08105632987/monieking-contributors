@@ -8,6 +8,26 @@ import { formatNaira } from '@/lib/utils'
 import type { IdentityService, IdentityServiceRequest } from '@/types'
 import { FallbackError } from '@/components/ui/FallbackError'
 
+import ManualServicePage from '@/pages/customer/ManualServicePage'
+
+const MANUAL_SERVICE_CODES = new Set([
+  'nin_modification',
+  'nin_validation',
+  'nin_delinking',
+  'bvn_modification',
+  'bvn_retrieval',
+  'bvn_retrieval_phone',
+  'bvn_retrieval_crm',
+  'bvn_license',
+  'bvn_license_onboarding',
+  'bvn_self_service_delinking',
+  'tin_registration',
+  'nin_attestation',
+  'attestation',
+  'cac_registration',
+  'self_service_modification',
+])
+
 export default function ServiceRequestFormPage() {
   const navigate = useNavigate()
   // Present at two routes, same pattern as ServiceHistoryPage:
@@ -16,6 +36,12 @@ export default function ServiceRequestFormPage() {
   // submitting on a customer's behalf — backend already supports this via
   // the customer_id query param, see identity_services.py)
   const { serviceId, customerId } = useParams<{ serviceId: string; customerId?: string }>()
+
+  // If serviceId directly matches a manual service code, render the manual form immediately
+  if (serviceId && MANUAL_SERVICE_CODES.has(serviceId)) {
+    return <ManualServicePage serviceKeyProp={serviceId} />
+  }
+
   const [values, setValues] = useState<Record<string, string | boolean>>({})
   const [referralCode, setReferralCode] = useState('')
   const [referralWorker, setReferralWorker] = useState<string | null>(null)
@@ -37,17 +63,20 @@ export default function ServiceRequestFormPage() {
     }
   }
 
-  // There's no GET /identity-services/:id — the catalog is small and
-  // already fetched wherever this is linked from, so pulling the full
-  // active list and finding the one we need avoids a redundant endpoint.
+  // Pull catalog list without active_only filter so all configured services can be found
   const { data: services, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ['identity-services', 'active'],
+    queryKey: ['identity-services', 'all-lookup'],
     queryFn: async () => {
-      const { data } = await api.get<IdentityService[]>('/identity-services', { params: { active_only: true } })
+      const { data } = await api.get<IdentityService[]>('/identity-services')
       return data
     },
   })
-  const service = services?.find(s => s.id === serviceId)
+  const service = services?.find(s => s.id === serviceId || s.code === serviceId)
+
+  // If the loaded service is a manual service, render the comprehensive manual service workflow
+  if (service && MANUAL_SERVICE_CODES.has(service.code)) {
+    return <ManualServicePage serviceKeyProp={service.code} />
+  }
 
   const submitMutation = useMutation({
     mutationFn: async () => {

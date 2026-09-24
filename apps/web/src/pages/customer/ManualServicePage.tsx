@@ -97,11 +97,21 @@ interface FormPayload {
   bulk_count?: number
 }
 
-export default function ManualServicePage() {
-  const navigate = useNavigate()
-  const { serviceKey, customerId } = useParams<{ serviceKey: string; customerId?: string }>()
+const SERVICE_KEY_ALIASES: Record<string, string> = {
+  attestation: 'nin_attestation',
+  bvn_license_onboarding: 'bvn_license',
+  bvn_retrieval_phone: 'bvn_retrieval',
+  bvn_retrieval_crm: 'bvn_retrieval',
+  bvn_self_service_delinking: 'nin_delinking',
+}
 
-  const meta = MANUAL_SERVICE_META[serviceKey ?? '']
+export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?: string }) {
+  const navigate = useNavigate()
+  const { serviceKey: routeKey, customerId } = useParams<{ serviceKey?: string; customerId?: string }>()
+
+  const rawKey = serviceKeyProp || routeKey || ''
+  const effectiveKey = SERVICE_KEY_ALIASES[rawKey] || rawKey
+  const meta = MANUAL_SERVICE_META[effectiveKey]
 
   const [formPayload, setFormPayload] = useState<FormPayload | null>(null)
   const [referralCode, setReferralCode] = useState('')
@@ -147,12 +157,19 @@ export default function ManualServicePage() {
         enrollment_bank: formPayload.enrollment_bank || null,
         bulk_count: formPayload.bulk_count ?? 1,
       }
-      const { data } = await api.post('/manual-services', body)
+      const { data } = await api.post('/manual-services', body, {
+        params: customerId ? { customer_id: customerId } : {},
+      })
       return data
     },
     onSuccess: () => {
       toast.success('Service request submitted successfully!')
-      navigate(-1)
+      navigate(
+        customerId
+          ? `/officer/customers/${customerId}/services/history`
+          : '/customer/services/history',
+        { replace: true }
+      )
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   })
@@ -177,7 +194,7 @@ export default function ManualServicePage() {
   }
 
   const renderForm = () => {
-    switch (serviceKey) {
+    switch (effectiveKey) {
       case 'nin_modification':
         return <NinModificationForm onChange={handleFormChange} />
       case 'nin_validation':
@@ -219,7 +236,7 @@ export default function ManualServicePage() {
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="text-green-900 dark:text-white font-bold text-base leading-tight truncate">
-            {meta.emoji} {meta.title}
+            {meta.title}
           </h1>
           <p className="text-green-500 dark:text-night-300 text-xs truncate">{meta.description}</p>
         </div>
