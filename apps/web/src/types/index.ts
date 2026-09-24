@@ -23,6 +23,7 @@ export interface User {
   role: UserRole
   full_name: string
   phone_number: string
+  email?: string | null
   bank_name: string | null
   account_number: string | null
   account_name: string | null

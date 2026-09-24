@@ -60,7 +60,7 @@ async def update_my_profile(
     just not in `allowed`, so they're silently ignored like any other
     unrecognized key, same as before this endpoint existed.
     """
-    allowed = {"next_of_kin_name", "next_of_kin_phone"}
+    allowed = {"next_of_kin_name", "next_of_kin_phone", "state_of_residence", "email"}
     for key, value in updates.items():
         if key in allowed:
             setattr(current_user, key, value)

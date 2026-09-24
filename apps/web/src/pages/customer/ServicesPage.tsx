@@ -8,6 +8,7 @@ import type { IdentityService, IdentityServiceCategory } from '@/types'
 import { CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_ORDER } from '@/lib/identityServices'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { BottomNav } from '@/components/layout/BottomNav'
+import { MANUAL_SERVICE_META } from '@/pages/customer/ManualServicePage'
 
 function ServiceCard({ service, categoryIcon: CategoryIcon, onOpen, forceActive }: {
   service: IdentityService
@@ -153,6 +154,35 @@ export default function ServicesPage() {
           })
         )}
       </div>
+
+        {/* ── Manual Identity Services ── */}
+        <div className="mb-6 px-4">
+          <div className="flex items-center gap-2 mb-3 mt-2">
+            <span className="text-base">🛠️</span>
+            <p className="text-green-900 dark:text-white font-bold text-sm">Manual Identity Services</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {Object.entries(MANUAL_SERVICE_META).map(([key, svc]) => (
+              <button
+                key={key}
+                onClick={() =>
+                  customerId
+                    ? navigate(`/officer/customers/${customerId}/manual-services/${key}`)
+                    : navigate(`/customer/manual-services/${key}`)
+                }
+                className="flex flex-col items-start gap-2.5 bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-2xl p-3.5 text-left active:scale-95 transition-transform"
+              >
+                <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-night-600 flex items-center justify-center text-lg">
+                  {svc.emoji}
+                </div>
+                <div>
+                  <p className="text-green-900 dark:text-white text-xs font-bold leading-tight">{svc.title}</p>
+                  <p className="text-green-400 dark:text-night-300 text-[11px] mt-1 leading-tight line-clamp-2">{svc.description}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
 
       {!customerId && <BottomNav />}
     </div>

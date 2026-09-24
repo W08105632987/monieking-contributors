@@ -78,6 +78,7 @@ const WorkerOnboardingPage   = lazy(() => import('@/pages/worker/WorkerOnboardin
 const WorkerDashboardPage    = lazy(() => import('@/pages/worker/WorkerDashboardPage'))
 const WorkerEarningsPage     = lazy(() => import('@/pages/worker/WorkerEarningsPage'))
 const WorkerDisputesPage     = lazy(() => import('@/pages/worker/WorkerDisputesPage'))
+const WorkerProfilePage      = lazy(() => import('@/pages/worker/WorkerProfilePage'))
 
 // ── Disputes (shared across customer/officer/director — backend already
 // role-filters the list, and the detail page's actions are role-aware) ──
@@ -94,6 +95,7 @@ const AirtimeDataPage           = lazy(() => import('@/pages/customer/AirtimeDat
 const BillPaymentPage           = lazy(() => import('@/pages/customer/BillPaymentPage'))
 const EducationPaymentsPage     = lazy(() => import('@/pages/customer/EducationPaymentsPage'))
 const ServiceRequestDetailPage  = lazy(() => import('@/pages/services/ServiceRequestDetailPage'))
+const ManualServicePage         = lazy(() => import('@/pages/customer/ManualServicePage'))
 
 const PageLoader = () => (
   <div className="min-h-dvh flex items-center justify-center bg-surface dark:bg-night-800">
@@ -209,6 +211,8 @@ export default function App() {
           <Route path="/customer/airtime-data" element={<AuthGuard allowedRoles={['customer']}><AirtimeDataPage /></AuthGuard>} />
           <Route path="/customer/bill-payments" element={<AuthGuard allowedRoles={['customer']}><BillPaymentPage /></AuthGuard>} />
           <Route path="/customer/education-payments" element={<AuthGuard allowedRoles={['customer']}><EducationPaymentsPage /></AuthGuard>} />
+          <Route path="/customer/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['customer']}><ManualServicePage /></AuthGuard>} />
+
 
           {/* ── Officer ── */}
           <Route path="/officer/dashboard"      element={<AuthGuard allowedRoles={['officer']}><OfficerDashboard /></AuthGuard>} />
@@ -227,6 +231,8 @@ export default function App() {
           <Route path="/officer/customers/:customerId/airtime-data" element={<AuthGuard allowedRoles={['officer']}><AirtimeDataPage /></AuthGuard>} />
           <Route path="/officer/customers/:customerId/bill-payments" element={<AuthGuard allowedRoles={['officer']}><BillPaymentPage /></AuthGuard>} />
           <Route path="/officer/customers/:customerId/education-payments" element={<AuthGuard allowedRoles={['officer']}><EducationPaymentsPage /></AuthGuard>} />
+          <Route path="/officer/customers/:customerId/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['officer']}><ManualServicePage /></AuthGuard>} />
+
 
           {/* ── Director (Admin fused in) ── */}
           <Route path="/director/dashboard"       element={<AuthGuard allowedRoles={['director']}><DirectorDashboard /></AuthGuard>} />
@@ -256,6 +262,7 @@ export default function App() {
           <Route path="/worker/dashboard"  element={<AuthGuard allowedRoles={['service_worker']}><WorkerDashboardPage /></AuthGuard>} />
           <Route path="/worker/earnings"   element={<AuthGuard allowedRoles={['service_worker']}><WorkerEarningsPage /></AuthGuard>} />
           <Route path="/worker/disputes"   element={<AuthGuard allowedRoles={['service_worker']}><WorkerDisputesPage /></AuthGuard>} />
+          <Route path="/worker/profile"    element={<AuthGuard allowedRoles={['service_worker']}><WorkerProfilePage /></AuthGuard>} />
 
           {/* ── Disputes detail — shared route, all roles ── */}
           <Route path="/disputes/:disputeId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director', 'service_worker']}><DisputeDetailPage /></AuthGuard>} />

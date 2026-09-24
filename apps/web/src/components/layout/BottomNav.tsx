@@ -40,6 +40,7 @@ const workerNav: NavItem[] = [
   { label: 'Jobs',      icon: LayoutGrid, href: '/worker/dashboard' },
   { label: 'Earnings',  icon: Wallet,     href: '/worker/earnings' },
   { label: 'Disputes',  icon: Bell,       href: '/worker/disputes' },
+  { label: 'Profile',   icon: User,       href: '/worker/profile' },
 ]
 
 const navByRole: Record<string, NavItem[]> = {
