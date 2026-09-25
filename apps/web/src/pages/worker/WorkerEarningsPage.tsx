@@ -17,7 +17,7 @@ interface PayoutItem {
   account_number: string
   account_name: string
   bank_name: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'paid' | 'rejected'
   rejection_reason?: string | null
   created_at: string
   reviewed_at?: string | null
@@ -63,7 +63,8 @@ export default function WorkerEarningsPage() {
     queryFn: async () => {
       const res = await api.get('/worker/jobs/mine')
       const allJobs = res.data?.data as CompletedJob[]
-      return allJobs.filter((j) => j.status === 'completed')
+      // Backend emits 'successful' (not 'completed') for resolved jobs
+      return allJobs.filter((j) => j.status === 'successful')
     },
   })
 
@@ -139,13 +140,13 @@ export default function WorkerEarningsPage() {
             <div>
               <span className="text-green-300 text-[11px] block">Lifetime Earned</span>
               <span className="font-mono font-bold text-white text-sm">
-                {formatNaira(summary?.total_earned_kobo ?? 0)}
+                {formatNaira(summary?.lifetime_earned_kobo ?? 0)}
               </span>
             </div>
             <div>
               <span className="text-green-300 text-[11px] block">Total Withdrawn</span>
               <span className="font-mono font-bold text-white text-sm">
-                {formatNaira(summary?.total_withdrawn_kobo ?? 0)}
+                {formatNaira(summary?.paid_out_kobo ?? 0)}
               </span>
             </div>
           </div>
@@ -230,14 +231,14 @@ export default function WorkerEarningsPage() {
                       </span>
                       <span
                         className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                          p.status === 'approved'
+                          p.status === 'paid'
                             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
                             : p.status === 'rejected'
                             ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
                             : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
                         }`}
                       >
-                        {p.status}
+                        {p.status === 'paid' ? 'Paid ✓' : p.status}
                       </span>
                     </div>
                     <p className="text-[11px] text-green-700 dark:text-night-400 mt-0.5">

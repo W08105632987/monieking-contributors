@@ -23,6 +23,7 @@ from app.models.food_entitlement import (
 )
 from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus
 from app.models.service_worker_withdrawal import ServiceWorkerWithdrawal, SWWithdrawalStatus
+from app.models.job_pool_event import JobPoolEvent
 
 
 __all__ = [
@@ -47,5 +48,6 @@ __all__ = [
     "FoodEntitlement", "FoodCollectionPoint", "FoodCollectionAudit", "EntitlementStatus",
     "ManualServiceRequest", "ManualServiceStatus",
     "ServiceWorkerWithdrawal", "SWWithdrawalStatus",
+    "JobPoolEvent",
 ]
 

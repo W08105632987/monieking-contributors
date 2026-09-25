@@ -6,7 +6,7 @@ job pool listing, claiming jobs, resolving jobs, commission earnings, and
 payout requests.
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -40,8 +40,8 @@ class CompleteProfileRequest(BaseModel):
 
 
 class ResolveJobRequest(BaseModel):
-    worker_status:          str = Field(..., pattern="^(successful|failed)$")
-    worker_response:        str = Field(..., min_length=1)
+    worker_status:          str = Field(..., pattern="^(successful|failed|completed|rejected)$")
+    worker_response:        str | None = None
     worker_remarks:         str | None = None
     worker_additional_info: str | None = None
     worker_result_file_url: str | None = None
@@ -58,21 +58,82 @@ class CreateWorkerRequest(BaseModel):
     phone_number: str = Field(..., min_length=10, max_length=20)
 
 
-def _serialize_job(job: ManualServiceRequest, include_customer: bool = True) -> dict:
+def mask_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    parts = name.strip().split()
+    masked_parts = []
+    for p in parts:
+        if len(p) <= 2:
+            masked_parts.append(p[0] + "*")
+        else:
+            masked_parts.append(p[:2] + "*" * (len(p) - 2))
+    return " ".join(masked_parts)
+
+
+def mask_phone(phone: str | None) -> str | None:
+    if not phone:
+        return None
+    p = phone.strip()
+    if len(p) <= 4:
+        return "****"
+    return p[:4] + "***" + p[-3:]
+
+
+def mask_form_data(form_data: dict | None) -> dict:
+    if not form_data:
+        return {}
+    masked = {}
+    for k, v in form_data.items():
+        k_lower = k.lower()
+        v_str = str(v)
+        if any(sens in k_lower for sens in ("nin", "bvn", "account_number")):
+            masked[k] = ("*" * max(4, len(v_str) - 4)) + v_str[-4:] if len(v_str) >= 4 else "****"
+        elif any(sens in k_lower for sens in ("phone", "mobile", "tel")):
+            masked[k] = mask_phone(v_str)
+        elif "email" in k_lower and "@" in v_str:
+            parts = v_str.split("@", 1)
+            name_part = parts[0]
+            domain = parts[1] if len(parts) > 1 else ""
+            masked[k] = (name_part[:2] + "***@" + domain) if len(name_part) > 2 else "*@" + domain
+        elif any(sens in k_lower for sens in ("dob", "birth")):
+            masked[k] = "****-**-**"
+        else:
+            masked[k] = v
+    return masked
+
+
+def _serialize_job(
+    job: ManualServiceRequest,
+    include_customer: bool = True,
+    mask_sensitive: bool = False,
+) -> dict:
     customer_name = None
+    customer_phone = None
     if include_customer and hasattr(job, "customer") and job.customer:
         customer_name = job.customer.full_name
+        customer_phone = job.customer.phone_number
+
+    if mask_sensitive:
+        customer_name = mask_name(customer_name)
+        customer_phone = mask_phone(customer_phone)
+        display_form_data = mask_form_data(job.form_data)
+    else:
+        display_form_data = job.form_data or {}
+
     return {
         "id": str(job.id),
         "user_id": str(job.user_id),
         "customer_name": customer_name,
+        "customer_phone": customer_phone,
         "service_category": job.service_category,
         "service_type": job.service_type,
-        "form_data": job.form_data,
-        "uploaded_files": job.uploaded_files,
+        "form_data": display_form_data,
+        "uploaded_files": job.uploaded_files or [],
         "price_kobo": job.price_kobo,
         "status": job.status.value if hasattr(job.status, "value") else job.status,
         "claimed_by_id": str(job.claimed_by_id) if job.claimed_by_id else None,
+        "referred_worker_id": str(job.referred_worker_id) if job.referred_worker_id else None,
         "claimed_at": job.claimed_at.isoformat() if job.claimed_at else None,
         "expires_at": job.expires_at.isoformat() if job.expires_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
@@ -241,19 +302,36 @@ async def get_job_pool(
     page_size: int = 20,
     db: AsyncSession = Depends(get_db),
 ):
-    """List all open (pending) jobs in the pool."""
+    """List all open (pending) jobs in the pool, with customer privacy masking."""
     result = await job_pool_service.list_pool(db, category=category, page=page, page_size=page_size)
     # Load customer relationship
     serialized = []
     for job in result["data"]:
         await db.refresh(job, ["customer"])
-        serialized.append(_serialize_job(job))
+        serialized.append(_serialize_job(job, include_customer=True, mask_sensitive=True))
     return {
         "data": serialized,
         "total": result["total"],
         "page": result["page"],
         "page_size": result["page_size"],
     }
+
+
+@router.get("/jobs/referred")
+async def get_referred_jobs(
+    current_user: ServiceWorkerOnly,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all pending jobs specifically referred to this worker and still inside hold window."""
+    items = await job_pool_service.list_referred_jobs(db, current_user.id)
+    serialized = []
+    for item in items:
+        job = item["job"]
+        await db.refresh(job, ["customer"])
+        d = _serialize_job(job, include_customer=True, mask_sensitive=False)
+        d["referral_expires_at"] = item["referral_expires_at"]
+        serialized.append(d)
+    return {"data": serialized}
 
 
 @router.get("/jobs/mine")
@@ -271,7 +349,7 @@ async def get_my_jobs(
     serialized = []
     for job in result["data"]:
         await db.refresh(job, ["customer"])
-        serialized.append(_serialize_job(job))
+        serialized.append(_serialize_job(job, include_customer=True, mask_sensitive=False))
     return {"data": serialized, "total": result["total"], "page": result["page"], "page_size": result["page_size"]}
 
 
@@ -290,7 +368,7 @@ async def get_active_job(
     if not job:
         return {"job": None}
     await db.refresh(job, ["customer"])
-    return {"job": _serialize_job(job)}
+    return {"job": _serialize_job(job, include_customer=True, mask_sensitive=False)}
 
 
 @router.post("/jobs/{job_id}/claim")
@@ -316,10 +394,15 @@ async def claim_job(
     try:
         job = await job_pool_service.claim_job(db, job_id, current_user.id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        err_msg = str(e)
+        if "reserved for a referred" in err_msg.lower():
+            raise HTTPException(status_code=403, detail=err_msg)
+        if "already claimed" in err_msg.lower():
+            raise HTTPException(status_code=409, detail=err_msg)
+        raise HTTPException(status_code=400, detail=err_msg)
 
     await db.refresh(job, ["customer"])
-    return {"job": _serialize_job(job), "message": "Job claimed successfully. SLA timer started."}
+    return {"job": _serialize_job(job, include_customer=True, mask_sensitive=False), "message": "Job claimed successfully. SLA timer started."}
 
 
 @router.post("/jobs/{job_id}/resolve")
@@ -330,24 +413,25 @@ async def resolve_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a resolution for your active job."""
+    response_text = body.worker_response or body.worker_remarks or "Resolved by service worker"
     try:
         job = await job_pool_service.resolve_job(
             db,
             job_id,
             current_user.id,
             worker_status=body.worker_status,
-            worker_response=body.worker_response,
+            worker_response=response_text,
             worker_remarks=body.worker_remarks,
             worker_additional_info=body.worker_additional_info,
             worker_result_file_url=body.worker_result_file_url,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
     return {
-        "job": _serialize_job(job, include_customer=False),
+        "job": _serialize_job(job, include_customer=False, mask_sensitive=False),
         "commission_earned_kobo": job.worker_commission_kobo,
-        "message": f"Job resolved as {body.worker_status}.",
+        "message": f"Job resolved as {job.status.value}.",
     }
 
 

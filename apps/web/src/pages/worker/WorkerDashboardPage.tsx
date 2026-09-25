@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Clock, CheckCircle2, Copy, Check,
-  ArrowRight, RefreshCw, X, Upload
+  ArrowRight, RefreshCw, X, Upload, Star
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
@@ -24,11 +24,14 @@ interface JobItem {
   price_kobo: number
   status: string
   claimed_by_id?: string | null
+  referred_worker_id?: string | null
   claimed_at?: string | null
   expires_at?: string | null
   completed_at?: string | null
   worker_commission_kobo: number
   created_at: string
+  // only present on referred jobs
+  referral_expires_at?: string
 }
 
 function CountdownTimer({ expiresAt, onExpire }: { expiresAt: string; onExpire?: () => void }) {
@@ -122,6 +125,17 @@ export default function WorkerDashboardPage() {
     refetchInterval: 12000,
   })
 
+  // Fetch jobs specifically referred to this worker (exclusive hold window)
+  const { data: referredJobsData, refetch: refetchReferred } = useQuery({
+    queryKey: ['worker-referred-jobs'],
+    queryFn: async () => {
+      const res = await api.get('/worker/jobs/referred')
+      return res.data?.data as JobItem[]
+    },
+    refetchInterval: 15000,
+  })
+  const referredJobs = referredJobsData ?? []
+
   // Worker earnings summary
   useQuery({
     queryKey: ['worker-earnings-summary'],
@@ -131,7 +145,8 @@ export default function WorkerDashboardPage() {
     },
   })
 
-  const activeJob = myJobsData?.find((j) => j.status === 'in_progress')
+  // Backend emits 'processing' for active jobs (not 'in_progress')
+  const activeJob = myJobsData?.find((j) => j.status === 'processing')
   const hasActiveJob = Boolean(activeJob)
 
   // Claim mutation
@@ -144,6 +159,7 @@ export default function WorkerDashboardPage() {
       toast.success('Job claimed successfully! Please resolve before SLA expires.')
       queryClient.invalidateQueries({ queryKey: ['worker-my-jobs'] })
       queryClient.invalidateQueries({ queryKey: ['worker-pool'] })
+      queryClient.invalidateQueries({ queryKey: ['worker-referred-jobs'] })
     },
     onError: (err) => {
       toast.error(getErrorMessage(err))
@@ -185,6 +201,7 @@ export default function WorkerDashboardPage() {
       setResultFileUrl('')
       queryClient.invalidateQueries({ queryKey: ['worker-my-jobs'] })
       queryClient.invalidateQueries({ queryKey: ['worker-pool'] })
+      queryClient.invalidateQueries({ queryKey: ['worker-referred-jobs'] })
       queryClient.invalidateQueries({ queryKey: ['worker-earnings-summary'] })
     },
     onError: (err) => {
@@ -343,6 +360,98 @@ export default function WorkerDashboardPage() {
           </motion.div>
         )}
 
+        {/* ── Referred Jobs (Exclusive Hold) ── */}
+        {referredJobs.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Star className="w-4 h-4 text-brand-gold fill-brand-gold" />
+              <h2 className="font-black text-sm uppercase tracking-wider text-green-950 dark:text-white">
+                Referred For You
+              </h2>
+              <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200">
+                {referredJobs.length}
+              </span>
+            </div>
+            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+              A customer specifically referred these jobs to you. You have exclusive access during the hold window.
+            </p>
+            <div className="space-y-3">
+              {referredJobs.map((job) => (
+                <motion.div
+                  key={job.id}
+                  layout
+                  className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border-2 border-amber-300 dark:border-amber-700 shadow-sm space-y-3"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800">
+                          {job.service_category}
+                        </span>
+                      </div>
+                      <h3 className="font-bold text-sm text-green-950 dark:text-white">
+                        {job.service_type || 'Manual Verification'}
+                      </h3>
+                      {job.customer_name && (
+                        <p className="text-xs text-green-700 dark:text-night-300">
+                          From: {job.customer_name}
+                          {job.customer_phone && ` · ${job.customer_phone}`}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-bold text-green-600 dark:text-night-400">
+                        Commission
+                      </span>
+                      <div className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                        +{formatNaira(job.worker_commission_kobo)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Referral hold countdown */}
+                  {job.referral_expires_at && (
+                    <div className="flex items-center gap-1.5">
+                      <CountdownTimer
+                        expiresAt={job.referral_expires_at}
+                        onExpire={() => {
+                          refetchReferred()
+                          refetchPool()
+                        }}
+                      />
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                        exclusive hold remaining
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-amber-200 dark:border-amber-800 flex items-center justify-between">
+                    <span className="text-[11px] text-green-600 dark:text-night-400">
+                      Posted {new Date(job.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <button
+                      disabled={hasActiveJob || claimMutation.isPending}
+                      onClick={() => claimMutation.mutate(job.id)}
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
+                      title={hasActiveJob ? 'Resolve your current active job first' : 'Claim this referred job'}
+                    >
+                      {claimMutation.isPending ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <>
+                          <Star className="w-3.5 h-3.5 fill-white" />
+                          <span>Claim Referred</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Open Job Pool ── */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -358,6 +467,7 @@ export default function WorkerDashboardPage() {
               onClick={() => {
                 refetchPool()
                 refetchMyJobs()
+                refetchReferred()
               }}
               disabled={isRefreshingPool}
               className="p-1.5 rounded-lg text-green-700 dark:text-night-300 hover:bg-green-100 dark:hover:bg-night-800"
