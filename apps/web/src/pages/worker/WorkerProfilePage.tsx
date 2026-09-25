@@ -21,7 +21,7 @@ import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
 import { AboutMonieKingModal } from '@/components/settings/AboutMonieKingModal'
 import { formatNaira, maskAccount, formatDate, copyToClipboard, cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
-import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { WorkerHeader } from '@/components/worker/WorkerHeader'
 
 const NIGERIAN_STATES = [
   'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue', 'Borno',
@@ -381,13 +381,7 @@ export default function WorkerProfilePage() {
 
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
-      {/* Top bar */}
-      <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
-        <BrandBlobLogo height={36} />
-        <span className="text-xs font-black uppercase tracking-wider bg-amber-400 text-green-950 px-3 py-1 rounded-full shadow-sm">
-          Service Worker
-        </span>
-      </header>
+      <WorkerHeader title="My Profile" subtitle="Service Worker" />
 
       <div className="flex-1 overflow-y-auto pb-40 px-4">
         {/* Avatar + name hero */}

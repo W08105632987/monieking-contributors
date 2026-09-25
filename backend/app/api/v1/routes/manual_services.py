@@ -7,6 +7,7 @@ that enter the Service Worker job pool.
 """
 import uuid
 from datetime import datetime, timezone
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,11 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.dependencies import CurrentUser, CustomerOrOfficer
+from app.core.dependencies import CurrentUser, CustomerOrOfficer, DirectorOrAdmin
 from app.core.security import generate_reference
 from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus
 from app.models.wallet import TxCategory
 from app.models.user import User, UserRole
+from app.models.settings import SystemConfig
 from app.services.wallet_service import get_or_create_wallet, debit_wallet
 from app.services.withdrawal_auth_service import check_withdrawal_password
 from app.utils.supabase_admin_client import supabase_admin_request
@@ -114,13 +116,32 @@ PRICE_MAP: dict[str, dict[str, int]] = {
 }
 
 
+async def _get_current_price_map(db: AsyncSession) -> dict[str, dict[str, int]]:
+    cfg = await db.get(SystemConfig, "manual_services_pricing")
+    if cfg and cfg.value:
+        try:
+            custom = json.loads(cfg.value)
+            merged = {**PRICE_MAP}
+            for cat, sub in custom.items():
+                if cat in merged:
+                    merged[cat] = {**merged[cat], **sub}
+                else:
+                    merged[cat] = sub
+            return merged
+        except Exception:
+            pass
+    return PRICE_MAP
+
+
 def _get_price(
     category: str,
     service_type: str,
     enrollment_bank: str | None = None,
     bulk_count: int = 1,
+    custom_map: dict | None = None,
 ) -> int:
-    category_map = PRICE_MAP.get(category, {})
+    source_map = custom_map or PRICE_MAP
+    category_map = source_map.get(category, {})
 
     # NIN Validation Bulk mode
     if category == "nin_validation" and bulk_count > 1:
@@ -152,6 +173,7 @@ class SubmitServiceRequest(BaseModel):
     consent_given:      bool = Field(..., description="Explicit user consent required")
     referred_worker_id: str | None = Field(None, description="Optional Service Worker referral code or ID")
     transaction_pin:    str | None = Field(None, description="User transaction PIN")
+    withdrawal_password: str | None = Field(None, description="User withdrawal password")
     enrollment_bank:    str | None = Field(None, description="Bank for BVN modification")
     bulk_count:         int = Field(1, description="Number of items for bulk services")
 
@@ -262,18 +284,24 @@ async def submit_service_request(
     if customer_id and current_user.role == UserRole.OFFICER:
         target_user_id = customer_id
 
-    # Validate Transaction PIN / withdrawal password if set
+    # Validate Withdrawal Password (or legacy PIN) if set
+    pwd = body.withdrawal_password or body.transaction_pin
     user_row = await db.get(User, current_user.id)
-    if user_row and user_row.has_withdrawal_password():
-        if not body.transaction_pin:
-            raise HTTPException(status_code=400, detail="Transaction PIN is required.")
-        await check_withdrawal_password(db, user_row, body.transaction_pin)
+    if user_row and user_row.has_withdrawal_password:
+        if not pwd:
+            raise HTTPException(
+                status_code=400,
+                detail="Your withdrawal password is required to authorise this service request."
+            )
+        await check_withdrawal_password(db, user_row, pwd)
 
+    current_price_map = await _get_current_price_map(db)
     price_kobo = _get_price(
         body.service_category,
         body.service_type,
         enrollment_bank=body.enrollment_bank,
         bulk_count=body.bulk_count,
+        custom_map=current_price_map,
     )
 
     # Wallet balance verification & atomic debit
@@ -297,15 +325,16 @@ async def submit_service_request(
     # Resolve referred worker
     referred_worker_id: uuid.UUID | None = None
     if body.referred_worker_id:
+        raw_val = str(body.referred_worker_id).strip()
         worker = await db.scalar(
             select(User).where(
-                User.referral_code == body.referred_worker_id,
+                (User.referral_code == raw_val.upper()) | (User.phone_number == raw_val),
                 User.role == UserRole.SERVICE_WORKER,
             )
         )
         if not worker:
             try:
-                wid = uuid.UUID(body.referred_worker_id)
+                wid = uuid.UUID(raw_val)
                 worker = await db.scalar(
                     select(User).where(User.id == wid, User.role == UserRole.SERVICE_WORKER)
                 )
@@ -388,13 +417,130 @@ async def validate_referral_code(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Validate a referral code and return the worker's name if valid."""
+    """Validate a referral code or phone number and return the worker's name without throwing 404."""
+    clean_code = code.strip().upper()
+    raw_code = code.strip()
     worker = await db.scalar(
         select(User).where(
-            User.referral_code == code,
+            (User.referral_code == clean_code) | (User.phone_number == raw_code),
             User.role == UserRole.SERVICE_WORKER,
         )
     )
     if not worker:
-        raise HTTPException(status_code=404, detail="Invalid referral code.")
-    return {"valid": True, "worker_name": worker.full_name, "worker_id": str(worker.id)}
+        return {
+            "valid": False,
+            "message": "No verified Service Worker found with this referral code or phone number.",
+        }
+    return {
+        "valid": True,
+        "worker_name": worker.full_name,
+        "worker_id": str(worker.id),
+        "phone_number": worker.phone_number,
+        "referral_code": worker.referral_code,
+    }
+
+
+DEFAULT_COVER_LABELS: dict[str, str] = {
+    "nin_modification": "From ₦5,000",
+    "nin_validation": "From ₦700",
+    "nin_delinking": "From ₦3,500",
+    "bvn_modification": "From ₦6,000",
+    "bvn_retrieval": "From ₦700",
+    "bvn_license_onboarding": "From ₦15,000",
+    "bvn_license": "From ₦15,000",
+    "tin_registration": "From ₦2,000",
+    "attestation": "From ₦3,000",
+    "nin_attestation": "From ₦3,000",
+    "cac_registration": "From ₦15,000",
+    "self_service_modification": "From ₦5,000",
+}
+
+
+async def _get_current_cover_labels(db: AsyncSession) -> dict[str, str]:
+    cfg = await db.get(SystemConfig, "manual_services_cover_labels")
+    labels = dict(DEFAULT_COVER_LABELS)
+    if cfg and cfg.value:
+        try:
+            custom = json.loads(cfg.value)
+            if isinstance(custom, dict):
+                labels.update(custom)
+        except Exception:
+            pass
+    return labels
+
+
+# ─── Director Pricing Oversight ───────────────────────────────────────────────
+
+@router.get("/pricing")
+async def get_manual_services_pricing(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all manual service categories and their child category prices and cover card labels."""
+    price_map = await _get_current_price_map(db)
+    cover_labels = await _get_current_cover_labels(db)
+    return {"pricing": price_map, "cover_labels": cover_labels}
+
+
+@router.patch("/pricing")
+async def update_manual_services_pricing(
+    body: dict[str, Any],
+    current_user: DirectorOrAdmin,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Director updates child category prices and/or cover card alphanumeric labels.
+    Accepts:
+      { "pricing": { "nin_modification": { "update_name": 500000 } },
+        "cover_labels": { "nin_modification": "From ₦7,000" } }
+      or direct { "nin_modification": { ... } }
+    """
+    incoming_pricing = body.get("pricing") if "pricing" in body or "cover_labels" in body else body
+    incoming_labels = body.get("cover_labels")
+
+    current_pricing = await _get_current_price_map(db)
+    if incoming_pricing and isinstance(incoming_pricing, dict):
+        for cat, sub in incoming_pricing.items():
+            if isinstance(sub, dict):
+                if cat in current_pricing:
+                    current_pricing[cat].update(sub)
+                else:
+                    current_pricing[cat] = sub
+
+        cfg = await db.get(SystemConfig, "manual_services_pricing")
+        if not cfg:
+            cfg = SystemConfig(
+                key="manual_services_pricing",
+                value=json.dumps(current_pricing),
+                description="Manual services child pricing tiers",
+                updated_by=current_user.id,
+            )
+            db.add(cfg)
+        else:
+            cfg.value = json.dumps(current_pricing)
+            cfg.updated_at = datetime.now(timezone.utc)
+            cfg.updated_by = current_user.id
+
+    current_labels = await _get_current_cover_labels(db)
+    if incoming_labels and isinstance(incoming_labels, dict):
+        current_labels.update(incoming_labels)
+        label_cfg = await db.get(SystemConfig, "manual_services_cover_labels")
+        if not label_cfg:
+            label_cfg = SystemConfig(
+                key="manual_services_cover_labels",
+                value=json.dumps(current_labels),
+                description="Manual services cover card labels",
+                updated_by=current_user.id,
+            )
+            db.add(label_cfg)
+        else:
+            label_cfg.value = json.dumps(current_labels)
+            label_cfg.updated_at = datetime.now(timezone.utc)
+            label_cfg.updated_by = current_user.id
+
+    await db.commit()
+    return {
+        "pricing": current_pricing,
+        "cover_labels": current_labels,
+        "message": "Pricing tiers and cover card labels updated successfully.",
+    }

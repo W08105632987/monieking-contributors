@@ -74,11 +74,12 @@ const DirectorMore           = lazy(() => import('@/pages/director/MorePage'))
 const DirectorServiceWorkers = lazy(() => import('@/pages/director/ServiceWorkersPage'))
 
 // ── Service Worker portal ──────────────────────────────────────────
-const WorkerOnboardingPage   = lazy(() => import('@/pages/worker/WorkerOnboardingPage'))
-const WorkerDashboardPage    = lazy(() => import('@/pages/worker/WorkerDashboardPage'))
-const WorkerEarningsPage     = lazy(() => import('@/pages/worker/WorkerEarningsPage'))
-const WorkerDisputesPage     = lazy(() => import('@/pages/worker/WorkerDisputesPage'))
-const WorkerProfilePage      = lazy(() => import('@/pages/worker/WorkerProfilePage'))
+const WorkerOnboardingPage        = lazy(() => import('@/pages/worker/WorkerOnboardingPage'))
+const WorkerDashboardPage         = lazy(() => import('@/pages/worker/WorkerDashboardPage'))
+const WorkerEarningsPage          = lazy(() => import('@/pages/worker/WorkerEarningsPage'))
+const WorkerDisputesPage          = lazy(() => import('@/pages/worker/WorkerDisputesPage'))
+const WorkerProfilePage           = lazy(() => import('@/pages/worker/WorkerProfilePage'))
+const WorkerNotificationsPage     = lazy(() => import('@/pages/worker/WorkerNotificationsPage'))
 
 // ── Disputes (shared across customer/officer/director — backend already
 // role-filters the list, and the detail page's actions are role-aware) ──
@@ -258,11 +259,12 @@ export default function App() {
           <Route path="/director/service-workers" element={<AuthGuard allowedRoles={['director']}><DirectorServiceWorkers /></AuthGuard>} />
 
           {/* ── Service Worker ── */}
-          <Route path="/worker/onboarding" element={<AuthGuard allowedRoles={['service_worker']}><WorkerOnboardingPage /></AuthGuard>} />
-          <Route path="/worker/dashboard"  element={<AuthGuard allowedRoles={['service_worker']}><WorkerDashboardPage /></AuthGuard>} />
-          <Route path="/worker/earnings"   element={<AuthGuard allowedRoles={['service_worker']}><WorkerEarningsPage /></AuthGuard>} />
-          <Route path="/worker/disputes"   element={<AuthGuard allowedRoles={['service_worker']}><WorkerDisputesPage /></AuthGuard>} />
-          <Route path="/worker/profile"    element={<AuthGuard allowedRoles={['service_worker']}><WorkerProfilePage /></AuthGuard>} />
+          <Route path="/worker/onboarding"     element={<AuthGuard allowedRoles={['service_worker']}><WorkerOnboardingPage /></AuthGuard>} />
+          <Route path="/worker/dashboard"      element={<AuthGuard allowedRoles={['service_worker']}><WorkerDashboardPage /></AuthGuard>} />
+          <Route path="/worker/earnings"       element={<AuthGuard allowedRoles={['service_worker']}><WorkerEarningsPage /></AuthGuard>} />
+          <Route path="/worker/disputes"       element={<AuthGuard allowedRoles={['service_worker']}><WorkerDisputesPage /></AuthGuard>} />
+          <Route path="/worker/profile"        element={<AuthGuard allowedRoles={['service_worker']}><WorkerProfilePage /></AuthGuard>} />
+          <Route path="/worker/notifications"  element={<AuthGuard allowedRoles={['service_worker']}><WorkerNotificationsPage /></AuthGuard>} />
 
           {/* ── Disputes detail — shared route, all roles ── */}
           <Route path="/disputes/:disputeId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director', 'service_worker']}><DisputeDetailPage /></AuthGuard>} />

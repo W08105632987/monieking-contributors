@@ -3,12 +3,13 @@ import { useQuery } from '@tanstack/react-query'
 import { CheckCircle2, ChevronRight, RefreshCw, ShieldAlert, MessageSquare } from 'lucide-react'
 import { api } from '@/lib/api'
 import { BottomNav } from '@/components/layout/BottomNav'
+import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import type { Dispute } from '@/types'
 
 export default function WorkerDisputesPage() {
   const navigate = useNavigate()
 
-  const { data: disputes, isLoading, refetch, isRefetching } = useQuery({
+  const { data: disputes, isLoading } = useQuery({
     queryKey: ['worker-disputes'],
     queryFn: async () => {
       const res = await api.get('/disputes/worker/mine')
@@ -19,24 +20,7 @@ export default function WorkerDisputesPage() {
 
   return (
     <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 pb-24 text-green-950 dark:text-white">
-      {/* Header */}
-      <header className="sticky top-0 z-30 px-4 py-3 bg-white/80 dark:bg-night-800/80 backdrop-blur-md border-b border-green-100 dark:border-night-700 flex items-center justify-between">
-        <div>
-          <h1 className="font-black text-lg text-green-950 dark:text-white">
-            Customer Disputes
-          </h1>
-          <p className="text-xs text-green-700 dark:text-night-300">
-            Disputes raised on services you handled
-          </p>
-        </div>
-        <button
-          onClick={() => refetch()}
-          disabled={isRefetching}
-          className="p-1.5 rounded-lg text-green-700 dark:text-night-300 hover:bg-green-100 dark:hover:bg-night-800"
-        >
-          <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
-        </button>
-      </header>
+      <WorkerHeader title="Customer Disputes" subtitle="Disputes raised on jobs you handled" />
 
       <main className="flex-1 px-4 py-4 space-y-4 max-w-lg mx-auto w-full">
         {/* Info Banner */}

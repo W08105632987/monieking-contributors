@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
@@ -7,8 +7,6 @@ import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
 import type { IdentityService, IdentityServiceRequest } from '@/types'
 import { FallbackError } from '@/components/ui/FallbackError'
-
-import ManualServicePage from '@/pages/customer/ManualServicePage'
 
 const MANUAL_SERVICE_CODES = new Set([
   'nin_modification',
@@ -36,11 +34,6 @@ export default function ServiceRequestFormPage() {
   // submitting on a customer's behalf — backend already supports this via
   // the customer_id query param, see identity_services.py)
   const { serviceId, customerId } = useParams<{ serviceId: string; customerId?: string }>()
-
-  // If serviceId directly matches a manual service code, render the manual form immediately
-  if (serviceId && MANUAL_SERVICE_CODES.has(serviceId)) {
-    return <ManualServicePage serviceKeyProp={serviceId} />
-  }
 
   const [values, setValues] = useState<Record<string, string | boolean>>({})
   const [referralCode, setReferralCode] = useState('')
@@ -73,10 +66,24 @@ export default function ServiceRequestFormPage() {
   })
   const service = services?.find(s => s.id === serviceId || s.code === serviceId)
 
-  // If the loaded service is a manual service, render the comprehensive manual service workflow
-  if (service && MANUAL_SERVICE_CODES.has(service.code)) {
-    return <ManualServicePage serviceKeyProp={service.code} />
-  }
+  // Clean redirect if this route was reached with a manual service
+  useEffect(() => {
+    const targetCode =
+      serviceId && MANUAL_SERVICE_CODES.has(serviceId)
+        ? serviceId
+        : service && MANUAL_SERVICE_CODES.has(service.code)
+        ? (service.code === 'bvn_retrieval_phone' || service.code === 'bvn_retrieval_crm' ? 'bvn_retrieval' : service.code)
+        : null
+
+    if (targetCode) {
+      navigate(
+        customerId
+          ? `/officer/customers/${customerId}/manual-services/${targetCode}`
+          : `/customer/manual-services/${targetCode}`,
+        { replace: true }
+      )
+    }
+  }, [serviceId, service, customerId, navigate])
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -103,6 +110,18 @@ export default function ServiceRequestFormPage() {
   })
 
   const missingRequired = service?.required_fields.some(f => f.required && !values[f.key])
+
+  const isRedirecting =
+    Boolean(serviceId && MANUAL_SERVICE_CODES.has(serviceId)) ||
+    Boolean(service && MANUAL_SERVICE_CODES.has(service.code))
+
+  if (isRedirecting) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-green-50 dark:bg-night-800">
+        <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">

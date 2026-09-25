@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { BottomNav } from '@/components/layout/BottomNav'
+import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import { formatNaira } from '@/lib/utils'
 
 interface PayoutItem {
@@ -115,23 +116,13 @@ export default function WorkerEarningsPage() {
 
   return (
     <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 pb-24 text-green-950 dark:text-white">
-      {/* Header */}
-      <header className="sticky top-0 z-30 px-4 py-3 bg-white/80 dark:bg-night-800/80 backdrop-blur-md border-b border-green-100 dark:border-night-700 flex items-center justify-between">
-        <div>
-          <h1 className="font-black text-lg text-green-950 dark:text-white">
-            Earnings & Wallet
-          </h1>
-          <p className="text-xs text-green-700 dark:text-night-300">
-            Track your completed commissions & payouts
-          </p>
-        </div>
-      </header>
+      <WorkerHeader title="Earnings & Wallet" subtitle="Commissions, payouts & withdrawals" />
 
       <main className="flex-1 px-4 py-4 space-y-5 max-w-lg mx-auto w-full">
         {/* Big Balance Hero */}
         <div className="p-5 rounded-3xl bg-gradient-to-br from-green-900 via-green-950 to-green-900 text-white shadow-xl border border-green-800 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase font-bold tracking-wider text-brand-gold">
+            <span className="text-xs uppercase font-bold tracking-wider text-amber-400">
               Available Commission Balance
             </span>
             <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-green-200">

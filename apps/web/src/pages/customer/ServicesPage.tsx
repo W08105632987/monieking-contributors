@@ -28,16 +28,21 @@ function ServiceCard({
   categoryIcon: CategoryIcon,
   onOpen,
   forceActive,
+  coverLabel,
 }: {
   service: IdentityService
   categoryIcon: typeof CATEGORY_ICON[IdentityServiceCategory]
   onOpen: () => void
   forceActive?: boolean
+  coverLabel?: string
 }) {
   const active = service.is_active || forceActive
 
-  // Display price: for manual services with dynamic tiers, show starting price
+  // Display price: if director set custom alphanumeric label, show it; else fallback
   const priceDisplay = (() => {
+    if (coverLabel) {
+      return coverLabel
+    }
     if (MANUAL_BASE_PRICES[service.code]) {
       return `From ${formatNaira(MANUAL_BASE_PRICES[service.code])}`
     }
@@ -71,6 +76,17 @@ export default function ServicesPage() {
     queryKey: ['identity-services', 'all'],
     queryFn: async () => {
       const { data } = await api.get<IdentityService[]>('/identity-services')
+      return data
+    },
+  })
+
+  const { data: pricingConfig } = useQuery({
+    queryKey: ['manual-services-pricing'],
+    queryFn: async () => {
+      const { data } = await api.get<{
+        pricing: Record<string, Record<string, number>>
+        cover_labels: Record<string, string>
+      }>('/manual-services/pricing')
       return data
     },
   })
@@ -177,6 +193,24 @@ export default function ServicesPage() {
       navigate(customerId ? `/officer/customers/${customerId}/bill-payments` : '/customer/bill-payments')
       return
     }
+
+    // Direct routing for manual services to avoid intermediate re-renders
+    const code = service.code === 'bvn_retrieval_phone' || service.code === 'bvn_retrieval_crm' ? 'bvn_retrieval' : service.code
+    const MANUAL_KEYS = new Set([
+      'nin_modification', 'nin_validation', 'nin_delinking',
+      'bvn_modification', 'bvn_retrieval', 'bvn_license_onboarding', 'bvn_license',
+      'bvn_self_service_delinking', 'tin_registration', 'attestation', 'nin_attestation',
+      'cac_registration', 'self_service_modification'
+    ])
+    if (MANUAL_KEYS.has(code)) {
+      navigate(
+        customerId
+          ? `/officer/customers/${customerId}/manual-services/${code}`
+          : `/customer/manual-services/${code}`
+      )
+      return
+    }
+
     // Route to canonical service request path with service ID (or code)
     navigate(requestPath(service.id || service.code))
   }
@@ -227,6 +261,7 @@ export default function ServicesPage() {
                       key={s.id || s.code}
                       service={s}
                       categoryIcon={CategoryIcon}
+                      coverLabel={pricingConfig?.cover_labels?.[s.code]}
                       forceActive={
                         group.category === 'airtime' ||
                         group.category === 'bills' ||

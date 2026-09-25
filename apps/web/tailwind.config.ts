@@ -65,6 +65,9 @@ const config: Config = {
           mid:      '#059669',
           soft:     '#D1FAE5',
           surface:  '#ECFDF5',
+          gold:      '#F59E0B',
+          'gold-light': '#FCD34D',
+          'gold-dark':  '#D97706',
         },
         // NOTE — this DEFAULT used to be the hardcoded copper hex
         // (#F59E0B). That was the actual root cause of the onboarding

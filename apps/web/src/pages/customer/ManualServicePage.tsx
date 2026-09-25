@@ -121,11 +121,12 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
   const [showPin, setShowPin] = useState(false)
 
   const handleReferralChange = async (code: string) => {
-    const clean = code.trim().toUpperCase()
-    setReferralCode(clean)
-    if (clean.length >= 6) {
+    const raw = code.trim()
+    setReferralCode(raw)
+    // Validate once user has typed at least 6 chars (referral codes or partial phone numbers)
+    if (raw.length >= 6) {
       try {
-        const { data } = await api.get(`/manual-services/validate-referral/${clean}`)
+        const { data } = await api.get(`/manual-services/validate-referral/${encodeURIComponent(raw)}`)
         if (data.valid) setReferralWorker(data.worker_name || 'Verified Service Worker')
         else setReferralWorker(null)
       } catch {
@@ -153,6 +154,7 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
         uploaded_files: formPayload.uploaded_files,
         consent_given: consentGiven,
         referred_worker_id: referralCode || null,
+        withdrawal_password: txPin || null,
         transaction_pin: txPin || null,
         enrollment_bank: formPayload.enrollment_bank || null,
         bulk_count: formPayload.bulk_count ?? 1,

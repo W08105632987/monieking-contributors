@@ -9,6 +9,7 @@ import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { BottomNav } from '@/components/layout/BottomNav'
+import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import { formatNaira, copyToClipboard } from '@/lib/utils'
 
 interface JobItem {
@@ -122,7 +123,7 @@ export default function WorkerDashboardPage() {
   })
 
   // Worker earnings summary
-  const { data: earningsData } = useQuery({
+  useQuery({
     queryKey: ['worker-earnings-summary'],
     queryFn: async () => {
       const res = await api.get('/worker/earnings/summary')
@@ -234,38 +235,7 @@ export default function WorkerDashboardPage() {
 
   return (
     <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 pb-24 text-green-950 dark:text-white">
-      {/* Top App Bar */}
-      <header className="sticky top-0 z-30 px-4 py-3 bg-white/80 dark:bg-night-800/80 backdrop-blur-md border-b border-green-100 dark:border-night-700 flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="font-black text-lg text-green-950 dark:text-white">
-              Worker Station
-            </h1>
-            <span
-              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                hasActiveJob
-                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-                  : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-              }`}
-            >
-              {hasActiveJob ? 'Busy (1 Job)' : 'Free to Claim'}
-            </span>
-          </div>
-          <p className="text-xs text-green-700 dark:text-night-300">
-            {user?.full_name || 'Service Worker'}
-          </p>
-        </div>
-
-        {/* Quick Commission Balance */}
-        <div className="text-right">
-          <span className="text-[10px] uppercase font-bold tracking-wider text-green-600 dark:text-night-400">
-            Balance
-          </span>
-          <div className="font-mono font-black text-sm text-green-950 dark:text-white">
-            {formatNaira(earningsData?.commission_balance_kobo ?? user?.commission_balance_kobo ?? 0)}
-          </div>
-        </div>
-      </header>
+      <WorkerHeader title="Worker Station" subtitle={hasActiveJob ? 'Busy — 1 active job' : 'Free to claim'} />
 
       <main className="flex-1 px-4 py-4 space-y-5 max-w-lg mx-auto w-full">
         {/* Referral Card */}

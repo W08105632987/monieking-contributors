@@ -614,16 +614,30 @@ async def list_all_jobs(
     """Director: list all manual service requests with optional filters."""
     from sqlalchemy import func as sqlfunc
     q = select(ManualServiceRequest)
-    if job_status:
-        q = q.where(ManualServiceRequest.status == job_status)
-    if category:
+    status_filter = None
+    if job_status and job_status.lower() != "all":
+        status_map = {
+            "pending": ManualServiceStatus.PENDING,
+            "in_progress": ManualServiceStatus.PROCESSING,
+            "processing": ManualServiceStatus.PROCESSING,
+            "completed": ManualServiceStatus.SUCCESSFUL,
+            "successful": ManualServiceStatus.SUCCESSFUL,
+            "failed": ManualServiceStatus.FAILED,
+            "disputed": ManualServiceStatus.FAILED,
+            "rejected": ManualServiceStatus.FAILED,
+        }
+        status_filter = status_map.get(job_status.lower())
+
+    if status_filter:
+        q = q.where(ManualServiceRequest.status == status_filter)
+    if category and category.lower() != "all":
         q = q.where(ManualServiceRequest.service_category == category)
     q = q.order_by(ManualServiceRequest.created_at.desc())
 
     total_q = select(sqlfunc.count()).select_from(ManualServiceRequest)
-    if job_status:
-        total_q = total_q.where(ManualServiceRequest.status == job_status)
-    if category:
+    if status_filter:
+        total_q = total_q.where(ManualServiceRequest.status == status_filter)
+    if category and category.lower() != "all":
         total_q = total_q.where(ManualServiceRequest.service_category == category)
     total = await db.scalar(total_q) or 0
 
