@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
-import { ArrowLeft, ShieldCheck, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, ShieldCheck, AlertCircle, Eye, EyeOff, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
@@ -117,8 +117,8 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
   const [referralCode, setReferralCode] = useState('')
   const [referralWorker, setReferralWorker] = useState<string | null>(null)
   const [consentGiven, setConsentGiven] = useState(false)
-  const [txPin, setTxPin] = useState('')
-  const [showPin, setShowPin] = useState(false)
+  const [withdrawalPassword, setWithdrawalPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   const handleReferralChange = async (code: string) => {
     const raw = code.trim()
@@ -154,8 +154,8 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
         uploaded_files: formPayload.uploaded_files,
         consent_given: consentGiven,
         referred_worker_id: referralCode || null,
-        withdrawal_password: txPin || null,
-        transaction_pin: txPin || null,
+        withdrawal_password: withdrawalPassword || null,
+        transaction_pin: withdrawalPassword || null,
         enrollment_bank: formPayload.enrollment_bank || null,
         bulk_count: formPayload.bulk_count ?? 1,
       }
@@ -177,7 +177,7 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
   })
 
   const priceKobo = formPayload?.price_kobo ?? 0
-  const canSubmit = consentGiven && formPayload && !submitMutation.isPending
+  const canSubmit = consentGiven && formPayload && !submitMutation.isPending && withdrawalPassword.trim().length > 0
 
   if (!meta) {
     return (
@@ -277,27 +277,33 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
             />
           </div>
 
-          {/* Transaction PIN */}
+          {/* Withdrawal Password */}
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-600 p-4 space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-green-700 dark:text-night-200">
-              Transaction PIN (Required to confirm payment)
-            </label>
+            <div className="flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-green-700 dark:text-night-200" />
+              <label className="text-xs font-bold uppercase tracking-wider text-green-700 dark:text-night-200">
+                Withdrawal Password (Required to authorize payment)
+              </label>
+            </div>
             <div className="relative">
               <input
-                type={showPin ? 'text' : 'password'}
-                value={txPin}
-                onChange={e => setTxPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="Enter your 4–6 digit PIN"
-                className="w-full rounded-xl border-2 border-green-100 dark:border-night-600 bg-white dark:bg-night-800 px-4 py-3 pr-12 text-sm font-mono tracking-widest text-green-900 dark:text-white outline-none focus:border-green-500"
+                type={showPassword ? 'text' : 'password'}
+                value={withdrawalPassword}
+                onChange={e => setWithdrawalPassword(e.target.value)}
+                placeholder="Enter your withdrawal password"
+                className="w-full rounded-xl border-2 border-green-100 dark:border-night-600 bg-white dark:bg-night-800 px-4 py-3 pr-12 text-sm text-green-900 dark:text-white outline-none focus:border-green-500"
               />
               <button
                 type="button"
-                onClick={() => setShowPin(p => !p)}
+                onClick={() => setShowPassword(p => !p)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-green-400 dark:text-night-300"
               >
-                {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            <p className="text-[11px] text-green-600 dark:text-night-300">
+              Enter your MonieKing withdrawal password to authorize the wallet debit for this request.
+            </p>
           </div>
         </div>
       </div>
