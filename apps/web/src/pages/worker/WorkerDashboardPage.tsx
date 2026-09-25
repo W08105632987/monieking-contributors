@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import {
   Clock, CheckCircle2, Copy, Check,
-  ArrowRight, RefreshCw, X, Upload, Star
+  ArrowRight, RefreshCw, X, Upload, Star, Eye
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
+import { ViewInfoModal, type JobDetailData } from '@/components/worker/ViewInfoModal'
 import { formatNaira, copyToClipboard } from '@/lib/utils'
 
 interface JobItem {
@@ -83,14 +85,16 @@ function CountdownTimer({ expiresAt, onExpire }: { expiresAt: string; onExpire?:
 }
 
 export default function WorkerDashboardPage() {
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [copiedCode, setCopiedCode] = useState(false)
   const [resolveModalJob, setResolveModalJob] = useState<JobItem | null>(null)
+  const [selectedJob, setSelectedJob] = useState<JobDetailData | null>(null)
 
   // Resolve form state
-  const [resolveStatus, setResolveStatus] = useState<'completed' | 'rejected'>('completed')
+  const [resolveStatus, setResolveStatus] = useState<'successful' | 'failed'>('successful')
   const [remarks, setRemarks] = useState('')
   const [additionalInfo, setAdditionalInfo] = useState('')
   const [resultFileUrl, setResultFileUrl] = useState('')
@@ -156,10 +160,11 @@ export default function WorkerDashboardPage() {
       return res.data
     },
     onSuccess: () => {
-      toast.success('Job claimed successfully! Please resolve before SLA expires.')
+      toast.success('Job claimed successfully! SLA countdown started.')
       queryClient.invalidateQueries({ queryKey: ['worker-my-jobs'] })
       queryClient.invalidateQueries({ queryKey: ['worker-pool'] })
       queryClient.invalidateQueries({ queryKey: ['worker-referred-jobs'] })
+      navigate('/worker/my-jobs')
     },
     onError: (err) => {
       toast.error(getErrorMessage(err))
@@ -191,9 +196,9 @@ export default function WorkerDashboardPage() {
     },
     onSuccess: () => {
       toast.success(
-        resolveStatus === 'completed'
+        resolveStatus === 'successful'
           ? `Job resolved! Commission credited to your balance.`
-          : `Job marked as rejected.`
+          : `Job marked as failed.`
       )
       setResolveModalJob(null)
       setRemarks('')
@@ -430,21 +435,30 @@ export default function WorkerDashboardPage() {
                     <span className="text-[11px] text-green-600 dark:text-night-400">
                       Posted {new Date(job.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                    <button
-                      disabled={hasActiveJob || claimMutation.isPending}
-                      onClick={() => claimMutation.mutate(job.id)}
-                      className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
-                      title={hasActiveJob ? 'Resolve your current active job first' : 'Claim this referred job'}
-                    >
-                      {claimMutation.isPending ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <>
-                          <Star className="w-3.5 h-3.5 fill-white" />
-                          <span>Claim Referred</span>
-                        </>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedJob(job as unknown as JobDetailData)}
+                        className="px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 text-xs font-bold hover:bg-amber-100/50 flex items-center gap-1 transition-colors"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>View Info</span>
+                      </button>
+                      <button
+                        disabled={hasActiveJob || claimMutation.isPending}
+                        onClick={() => claimMutation.mutate(job.id)}
+                        className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
+                        title={hasActiveJob ? 'Resolve your current active job first' : 'Claim this referred job'}
+                      >
+                        {claimMutation.isPending ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <>
+                            <Star className="w-3.5 h-3.5 fill-white" />
+                            <span>Claim Referred</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -547,22 +561,30 @@ export default function WorkerDashboardPage() {
                     <span className="text-[11px] text-green-600 dark:text-night-400">
                       Posted {new Date(job.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
-
-                    <button
-                      disabled={hasActiveJob || claimMutation.isPending}
-                      onClick={() => claimMutation.mutate(job.id)}
-                      className="px-3.5 py-1.5 rounded-xl bg-green-700 hover:bg-green-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
-                      title={hasActiveJob ? 'Resolve your current active job first' : 'Claim this job'}
-                    >
-                      {claimMutation.isPending ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <>
-                          <span>Claim Job</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedJob(job as unknown as JobDetailData)}
+                        className="px-3 py-1.5 rounded-xl border border-green-200 dark:border-night-600 text-green-900 dark:text-night-200 text-xs font-bold hover:bg-green-50 dark:hover:bg-night-700 flex items-center gap-1 transition-colors"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-green-600 dark:text-brand-gold" />
+                        <span>View Info</span>
+                      </button>
+                      <button
+                        disabled={hasActiveJob || claimMutation.isPending}
+                        onClick={() => claimMutation.mutate(job.id)}
+                        className="px-3.5 py-1.5 rounded-xl bg-green-700 hover:bg-green-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
+                        title={hasActiveJob ? 'Resolve your current active job first' : 'Claim this job'}
+                      >
+                        {claimMutation.isPending ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <>
+                            <span>Claim Job</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -603,32 +625,32 @@ export default function WorkerDashboardPage() {
               <div className="grid grid-cols-2 gap-2 p-1 bg-green-50 dark:bg-night-900 rounded-xl">
                 <button
                   type="button"
-                  onClick={() => setResolveStatus('completed')}
+                  onClick={() => setResolveStatus('successful')}
                   className={`py-2 text-xs font-bold rounded-lg transition-all ${
-                    resolveStatus === 'completed'
+                    resolveStatus === 'successful'
                       ? 'bg-emerald-600 text-white shadow'
                       : 'text-green-800 dark:text-night-300'
                   }`}
                 >
-                  ✓ Mark Completed
+                  ✓ Mark Successful
                 </button>
                 <button
                   type="button"
-                  onClick={() => setResolveStatus('rejected')}
+                  onClick={() => setResolveStatus('failed')}
                   className={`py-2 text-xs font-bold rounded-lg transition-all ${
-                    resolveStatus === 'rejected'
+                    resolveStatus === 'failed'
                       ? 'bg-rose-600 text-white shadow'
                       : 'text-green-800 dark:text-night-300'
                   }`}
                 >
-                  ✗ Reject Request
+                  ✗ Mark Failed
                 </button>
               </div>
 
               {/* Resolution Remarks */}
               <div>
                 <label className="block text-xs font-bold text-green-900 dark:text-night-200 mb-1">
-                  {resolveStatus === 'completed' ? 'Resolution Remarks' : 'Reason for Rejection'} *
+                  {resolveStatus === 'successful' ? 'Resolution Remarks' : 'Reason for Failure'} *
                 </label>
                 <textarea
                   rows={3}
@@ -636,7 +658,7 @@ export default function WorkerDashboardPage() {
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   placeholder={
-                    resolveStatus === 'completed'
+                    resolveStatus === 'successful'
                       ? 'e.g. Verified and NIN slip generated successfully.'
                       : 'e.g. Details provided do not match national registry records.'
                   }
@@ -659,7 +681,7 @@ export default function WorkerDashboardPage() {
               </div>
 
               {/* Result Slip / Document Attachment */}
-              {resolveStatus === 'completed' && (
+              {resolveStatus === 'successful' && (
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-green-900 dark:text-night-200">
                     Attach Result Slip / Certificate (Optional)
@@ -713,7 +735,7 @@ export default function WorkerDashboardPage() {
                     })
                   }
                   className={`flex-1 py-3 rounded-xl text-white font-bold text-xs shadow-md transition-all active:scale-[0.99] flex items-center justify-center gap-2 ${
-                    resolveStatus === 'completed'
+                    resolveStatus === 'successful'
                       ? 'bg-emerald-600 hover:bg-emerald-700'
                       : 'bg-rose-600 hover:bg-rose-700'
                   }`}
@@ -729,6 +751,18 @@ export default function WorkerDashboardPage() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Pre-claim View Info Modal */}
+      <ViewInfoModal
+        isOpen={selectedJob !== null}
+        onClose={() => setSelectedJob(null)}
+        job={selectedJob}
+        isPreClaim={true}
+        onClaim={(jobId) => claimMutation.mutate(jobId)}
+        isClaiming={claimMutation.isPending}
+        canClaim={!hasActiveJob}
+        cannotClaimReason="Resolve your current active job first before claiming a new one."
+      />
 
       <BottomNav />
     </div>

@@ -587,6 +587,10 @@ async def list_all_workers(
         select(sqlfunc.count()).select_from(User).where(User.role == UserRole.SERVICE_WORKER)
     ) or 0
 
+    hold_mins = await job_pool_service._get_referral_hold_minutes(db)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=hold_mins)
+
     result = []
     for w in workers:
         # Check if this worker has an active job
@@ -602,6 +606,13 @@ async def list_all_workers(
                 ManualServiceRequest.status == ManualServiceStatus.SUCCESSFUL,
             )
         ) or 0
+        pending_referred = await db.scalar(
+            select(sqlfunc.count()).select_from(ManualServiceRequest).where(
+                ManualServiceRequest.referred_worker_id == w.id,
+                ManualServiceRequest.status == ManualServiceStatus.PENDING,
+                ManualServiceRequest.created_at > cutoff,
+            )
+        ) or 0
         result.append({
             "id": str(w.id),
             "full_name": w.full_name,
@@ -615,6 +626,7 @@ async def list_all_workers(
             "active_job_id": str(active_job.id) if active_job else None,
             "active_job_expires_at": active_job.expires_at.isoformat() if active_job and active_job.expires_at else None,
             "jobs_completed": completed,
+            "pending_referred_count": pending_referred,
             "created_at": w.created_at.isoformat(),
         })
     return {"data": result, "total": total, "page": page, "page_size": page_size}
@@ -691,6 +703,7 @@ async def list_all_jobs(
     current_user: DirectorOrAdmin,
     job_status: str | None = None,
     category: str | None = None,
+    pool_type: str | None = None,
     page: int = 1,
     page_size: int = 20,
     db: AsyncSession = Depends(get_db),
@@ -716,6 +729,11 @@ async def list_all_jobs(
         q = q.where(ManualServiceRequest.status == status_filter)
     if category and category.lower() != "all":
         q = q.where(ManualServiceRequest.service_category == category)
+    if pool_type == "referred":
+        q = q.where(ManualServiceRequest.referred_worker_id.isnot(None))
+    elif pool_type == "open":
+        q = q.where(ManualServiceRequest.referred_worker_id.is_(None))
+
     q = q.order_by(ManualServiceRequest.created_at.desc())
 
     total_q = select(sqlfunc.count()).select_from(ManualServiceRequest)
@@ -723,15 +741,21 @@ async def list_all_jobs(
         total_q = total_q.where(ManualServiceRequest.status == status_filter)
     if category and category.lower() != "all":
         total_q = total_q.where(ManualServiceRequest.service_category == category)
+    if pool_type == "referred":
+        total_q = total_q.where(ManualServiceRequest.referred_worker_id.isnot(None))
+    elif pool_type == "open":
+        total_q = total_q.where(ManualServiceRequest.referred_worker_id.is_(None))
+
     total = await db.scalar(total_q) or 0
 
     offset = (page - 1) * page_size
     rows = (await db.scalars(q.offset(offset).limit(page_size))).all()
     serialized = []
     for job in rows:
-        await db.refresh(job, ["customer", "claimed_by"])
+        await db.refresh(job, ["customer", "claimed_by", "referred_worker"])
         d = _serialize_job(job)
         d["worker_name"] = job.claimed_by.full_name if job.claimed_by else None
+        d["referred_worker_name"] = job.referred_worker.full_name if job.referred_worker else None
         serialized.append(d)
     return {"data": serialized, "total": total, "page": page, "page_size": page_size}
 

@@ -1,8 +1,10 @@
 import { motion } from 'framer-motion'
 import { Avatar } from '@/components/ui/Avatar'
-import { Plus, ArrowUpRight, ArrowDownLeft, TrendingUp, Copy, Eye, EyeOff, CheckCircle2, Bell } from 'lucide-react'
+import { Plus, ArrowUpRight, ArrowDownLeft, TrendingUp, Copy, Eye, EyeOff, CheckCircle2, Bell, FileText, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { useBalanceVisibility } from '@/hooks/useBalanceVisibility'
@@ -31,6 +33,15 @@ export default function DashboardPage() {
   const { visible: showBalance, toggle: toggleBalance } = useBalanceVisibility(user?.id)
   const { wallet, isLoading: walletLoading } = useWallet()
   const { cards, isLoading: cardsLoading } = useCards()
+
+  const { data: manualRequests = [] } = useQuery<any[]>({
+    queryKey: ['customer-recent-manual-requests'],
+    queryFn: async () => {
+      const res = await api.get('/manual-services/my-requests?page_size=2')
+      return res.data?.data || []
+    },
+    staleTime: 30000,
+  })
 
   const activeCards    = cards.filter((c) => c.status === 'active')
   const completedCards = cards.filter((c) => c.status === 'completed')
@@ -227,6 +238,61 @@ export default function DashboardPage() {
                       : card.completion_status === 'partially_paid' ? 'Partially paid'
                       : 'Unpaid'}
                   </Badge>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Identity Service Requests Widget (Shown only if customer has requests) ── */}
+        {manualRequests.length > 0 && (
+          <motion.div custom={6} variants={fadeUp} initial="hidden" animate="show" className="mt-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-green-700 dark:text-brand-gold" />
+                <h2 className="text-green-900 dark:text-white font-bold text-base">Your Identity Service Requests</h2>
+              </div>
+              <button
+                onClick={() => navigate('/customer/manual-services/history')}
+                className="text-xs text-green-600 dark:text-night-200 font-semibold hover:underline flex items-center gap-0.5"
+              >
+                <span>View more</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {manualRequests.slice(0, 2).map((req) => (
+                <div
+                  key={req.id}
+                  onClick={() => navigate(`/customer/manual-services/requests/${req.id}`)}
+                  className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-3.5 flex items-center justify-between cursor-pointer hover:shadow transition-shadow"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-night-600 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-4.5 h-4.5 text-green-700 dark:text-night-100" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-green-900 dark:text-white text-sm font-semibold truncate">
+                        {req.service_type || req.service_category.toUpperCase()}
+                      </p>
+                      <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">
+                        {formatDate(req.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full ${
+                      req.status === 'successful'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : req.status === 'failed'
+                        ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                        : req.status === 'processing'
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                    }`}
+                  >
+                    {req.status === 'processing' ? 'In Progress' : req.status}
+                  </span>
                 </div>
               ))}
             </div>

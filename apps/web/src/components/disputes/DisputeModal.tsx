@@ -9,6 +9,7 @@ import { DISPUTE_REASON_LABEL, type DisputeEntityType, type DisputeReason } from
 const REASONS_BY_ENTITY: Record<DisputeEntityType, DisputeReason[]> = {
   wallet_transaction: ['not_mine', 'amount_wrong', 'duplicate', 'other'],
   withdrawal:          ['rejected_in_error', 'money_not_received', 'amount_wrong', 'other'],
+  manual_service:      ['customer_info_incorrect', 'portal_unavailable', 'commission_dispute', 'other'],
 }
 
 export function DisputeModal({

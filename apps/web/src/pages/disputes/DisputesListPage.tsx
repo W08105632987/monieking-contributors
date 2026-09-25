@@ -59,15 +59,29 @@ export default function DisputesListPage() {
                 className="w-full text-left bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4"
               >
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className={cn('px-2.5 py-1 rounded-full text-xs font-bold', STATUS_STYLE[d.status])}>
-                    {STATUS_LABEL[d.status]}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={cn('px-2.5 py-1 rounded-full text-xs font-bold', STATUS_STYLE[d.status])}>
+                      {STATUS_LABEL[d.status]}
+                    </span>
+                    {d.is_worker_raised && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                        Worker Dispute
+                      </span>
+                    )}
+                  </div>
                   <span className="text-green-300 dark:text-night-400 text-xs">{timeAgo(d.created_at)}</span>
                 </div>
                 <p className="text-green-900 dark:text-white font-semibold text-sm">
-                  {d.entity_type === 'wallet_transaction' ? 'Wallet transaction' : 'Withdrawal'} · {d.customer_name}
+                  {d.entity_type === 'manual_service'
+                    ? 'Manual Identity Service'
+                    : d.entity_type === 'wallet_transaction'
+                    ? 'Wallet transaction'
+                    : 'Withdrawal'}{' '}
+                  · {d.customer_name}
                 </p>
-                <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{DISPUTE_REASON_LABEL[d.reason]}</p>
+                <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">
+                  {DISPUTE_REASON_LABEL[d.reason] || (d.reason ? d.reason.replace(/_/g, ' ') : 'Dispute')}
+                </p>
               </button>
             ))}
           </div>

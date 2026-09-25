@@ -23,6 +23,8 @@ from app.models.manual_service_request import ManualServiceRequest, ManualServic
 from app.models.wallet import TxCategory
 from app.models.user import User, UserRole
 from app.models.settings import SystemConfig
+from app.models.notification import NotificationType
+from app.services.notification_service import send_notification
 from app.services.wallet_service import get_or_create_wallet, debit_wallet
 from app.services.withdrawal_auth_service import check_withdrawal_password
 from app.utils.supabase_admin_client import supabase_admin_request
@@ -343,11 +345,15 @@ async def submit_service_request(
         if worker:
             referred_worker_id = worker.id
 
+    req_form_data = dict(body.form_data or {})
+    if customer_id and current_user.role == UserRole.OFFICER:
+        req_form_data["submitted_by_officer_id"] = str(current_user.id)
+
     req = ManualServiceRequest(
         user_id=target_user_id,
         service_category=body.service_category,
         service_type=body.service_type,
-        form_data=body.form_data,
+        form_data=req_form_data,
         uploaded_files=body.uploaded_files,
         price_kobo=price_kobo,
         consent_given=body.consent_given,
@@ -357,6 +363,22 @@ async def submit_service_request(
     db.add(req)
     await db.commit()
     await db.refresh(req)
+
+    # Immediately notify referred worker if referral code was used
+    if referred_worker_id:
+        category_title = req.service_category.replace("_", " ").title()
+        try:
+            await send_notification(
+                db,
+                user_id=referred_worker_id,
+                title="New Referred Job Waiting",
+                body=f"A customer submitted a {category_title} request using your referral code. Claim it before the hold expires!",
+                type=NotificationType.INFO,
+                related_entity_id=req.id,
+            )
+            await db.commit()
+        except Exception:
+            pass
 
     return {
         "request": _serialize(req),
@@ -402,13 +424,53 @@ async def get_my_request(
     """Get detailed view of a single service request."""
     req = await db.scalar(
         select(ManualServiceRequest).where(
-            ManualServiceRequest.id == request_id,
-            ManualServiceRequest.user_id == current_user.id,
+            ManualServiceRequest.id == request_id
         )
     )
     if not req:
         raise HTTPException(status_code=404, detail="Service request not found.")
+
+    is_owner = req.user_id == current_user.id
+    is_submitter_officer = (req.form_data or {}).get("submitted_by_officer_id") == str(current_user.id)
+    is_director = current_user.role in (UserRole.DIRECTOR, UserRole.ADMIN)
+
+    if not (is_owner or is_submitter_officer or is_director):
+        raise HTTPException(status_code=403, detail="Access denied.")
+
     return _serialize(req)
+
+
+@router.get("/officer-requests")
+async def list_officer_requests(
+    current_user: CurrentUser,
+    service_status: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+    db: AsyncSession = Depends(get_db),
+):
+    """Officer sees requests they submitted on customers' behalf."""
+    if current_user.role not in (UserRole.OFFICER, UserRole.DIRECTOR, UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Officers and Directors only")
+
+    from sqlalchemy import cast, String
+    officer_str = str(current_user.id)
+    # Search in JSONB form_data
+    q = select(ManualServiceRequest).where(
+        cast(ManualServiceRequest.form_data["submitted_by_officer_id"], String) == f'"{officer_str}"'
+    )
+    if service_status:
+        q = q.where(ManualServiceRequest.status == service_status)
+    q = q.order_by(ManualServiceRequest.created_at.desc())
+
+    total = await db.scalar(
+        select(func.count()).select_from(ManualServiceRequest).where(
+            cast(ManualServiceRequest.form_data["submitted_by_officer_id"], String) == f'"{officer_str}"'
+        )
+    ) or 0
+
+    offset = (page - 1) * page_size
+    rows = (await db.scalars(q.offset(offset).limit(page_size))).all()
+    return {"data": [_serialize(r) for r in rows], "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/validate-referral/{code}")

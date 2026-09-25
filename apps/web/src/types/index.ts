@@ -403,19 +403,23 @@ export interface InactiveCustomersPage {
   page_size: number
 }
 
-export type DisputeEntityType = 'wallet_transaction' | 'withdrawal'
+export type DisputeEntityType = 'wallet_transaction' | 'withdrawal' | 'manual_service'
 export type DisputeStatus = 'open' | 'under_review' | 'escalated' | 'resolved'
 export type DisputeReason =
   | 'not_mine' | 'amount_wrong' | 'duplicate'
   | 'money_not_received' | 'rejected_in_error' | 'other'
+  | 'customer_info_incorrect' | 'portal_unavailable' | 'commission_dispute'
 
-export const DISPUTE_REASON_LABEL: Record<DisputeReason, string> = {
-  not_mine:           "I didn't make/request this",
-  amount_wrong:       'Amount is wrong',
-  duplicate:          'This looks like a duplicate',
-  money_not_received: "Money wasn't received",
-  rejected_in_error:  'I believe this was rejected in error',
-  other:              'Something else',
+export const DISPUTE_REASON_LABEL: Record<string, string> = {
+  not_mine:                 "I didn't make/request this",
+  amount_wrong:             'Amount is wrong',
+  duplicate:                'This looks like a duplicate',
+  money_not_received:       "Money wasn't received",
+  rejected_in_error:        'I believe this was rejected in error',
+  customer_info_incorrect:  'Customer information is incorrect / invalid',
+  portal_unavailable:       'Government / Bank portal unavailable',
+  commission_dispute:       'Commission payout discrepancy',
+  other:                    'Something else',
 }
 
 export interface DisputeMessage {
@@ -447,6 +451,8 @@ export interface Dispute {
   is_escalated?: boolean
   escalated_at?: string | null
   escalation_reason?: string | null
+  raised_by_role?: 'customer' | 'service_worker' | string
+  is_worker_raised?: boolean
   created_at: string
   updated_at: string
   resolved_at: string | null

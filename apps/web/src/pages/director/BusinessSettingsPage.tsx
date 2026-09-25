@@ -11,6 +11,7 @@ import type { SystemConfigItem, PendingRateChange, RateChangePreview, Zone } fro
 const DEFERRED_KEYS = new Set(['food_card_rate_kobo'])
 const MONTHLY_KEYS  = new Set(['monthly_sms_fee_kobo'])
 const DATE_KEYS     = new Set(['food_card_open_from', 'food_card_open_until'])
+const SW_KEYS       = new Set(['service_worker_job_timeout_minutes', 'service_worker_referral_hold_minutes', 'service_worker_default_commission_percent'])
 
 const KEY_LABELS: Record<string, string> = {
   food_card_rate_kobo:                 'Food Card daily rate',
@@ -475,6 +476,109 @@ function FoodCardDateWindowSection({ settings }: { settings: SystemConfigItem[] 
   )
 }
 
+// ── Service Worker Pool Timers Window ─────────────────────────────
+function ServiceWorkerSettingsSection({ settings }: { settings: SystemConfigItem[] }) {
+  const qc = useQueryClient()
+  const timeoutSetting = settings.find(s => s.key === 'service_worker_job_timeout_minutes')
+  const referralHoldSetting = settings.find(s => s.key === 'service_worker_referral_hold_minutes')
+
+  const [timeoutMins, setTimeoutMins] = useState(timeoutSetting?.value || '30')
+  const [referralHoldMins, setReferralHoldMins] = useState(referralHoldSetting?.value || '30')
+  const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    if (timeoutSetting?.value) setTimeoutMins(timeoutSetting.value)
+    if (referralHoldSetting?.value) setReferralHoldMins(referralHoldSetting.value)
+  }, [timeoutSetting?.value, referralHoldSetting?.value])
+
+  const hasChanges =
+    timeoutMins !== (timeoutSetting?.value || '30') ||
+    referralHoldMins !== (referralHoldSetting?.value || '30')
+
+  const handleSave = async () => {
+    const t = parseInt(timeoutMins, 10)
+    const r = parseInt(referralHoldMins, 10)
+    if (isNaN(t) || t < 5 || t > 1440) {
+      toast.error('SLA processing timeout must be between 5 and 1440 minutes')
+      return
+    }
+    if (isNaN(r) || r < 1 || r > 1440) {
+      toast.error('Referral hold window must be between 1 and 1440 minutes')
+      return
+    }
+    setIsSaving(true)
+    try {
+      await Promise.all([
+        api.patch('/settings/service_worker_job_timeout_minutes', { value: String(t) }),
+        api.patch('/settings/service_worker_referral_hold_minutes', { value: String(r) }),
+      ])
+      toast.success('Service Worker timers updated')
+      qc.invalidateQueries({ queryKey: ['settings'] })
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-green-600 dark:text-night-200" />
+          <p className="text-green-900 dark:text-white font-bold text-sm">Service Worker Pool Timers</p>
+        </div>
+      </div>
+      <p className="text-green-500 dark:text-night-300 text-xs mb-4">
+        Configure how long workers have to complete claimed jobs before SLA reclamation, and how long referred jobs are held exclusively before falling back to the open pool.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className="block text-green-700 dark:text-night-200 text-xs font-semibold mb-1">
+            SLA Processing Timeout (Minutes)
+          </label>
+          <input
+            type="number"
+            min={5}
+            max={1440}
+            value={timeoutMins}
+            onChange={e => setTimeoutMins(e.target.value)}
+            className="w-full border border-green-200 dark:border-night-500 rounded-xl px-3 py-2 text-sm text-green-900 dark:text-white bg-green-50 dark:bg-night-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+          <p className="text-[10px] text-green-400 dark:text-night-400 mt-1">
+            Timeout before job is returned to open pool (default: 30)
+          </p>
+        </div>
+        <div>
+          <label className="block text-green-700 dark:text-night-200 text-xs font-semibold mb-1">
+            Referral Hold Window (Minutes)
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={1440}
+            value={referralHoldMins}
+            onChange={e => setReferralHoldMins(e.target.value)}
+            className="w-full border border-green-200 dark:border-night-500 rounded-xl px-3 py-2 text-sm text-green-900 dark:text-white bg-green-50 dark:bg-night-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+          <p className="text-[10px] text-green-400 dark:text-night-400 mt-1">
+            Exclusive pre-claim period for referred worker (default: 30)
+          </p>
+        </div>
+      </div>
+
+      <button
+        onClick={handleSave}
+        disabled={!hasChanges || isSaving}
+        className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-2.5 disabled:opacity-40 transition-opacity"
+      >
+        {isSaving ? 'Saving Timers…' : 'Save Worker Timers'}
+      </button>
+    </div>
+  )
+}
+
 export default function BusinessSettingsPage() {
   const navigate = useNavigate()
 
@@ -510,13 +614,15 @@ export default function BusinessSettingsPage() {
 
         <FoodCardDateWindowSection settings={settings} />
 
+        <ServiceWorkerSettingsSection settings={settings} />
+
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2].map(i => <div key={i} className="h-32 bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 animate-pulse" />)}
           </div>
         ) : (
           settings
-            .filter(setting => !DATE_KEYS.has(setting.key))
+            .filter(setting => !DATE_KEYS.has(setting.key) && !SW_KEYS.has(setting.key))
             .map(setting => (
               <SettingRow key={setting.key} setting={setting} pendingChange={pendingByKey.get(setting.key)} />
             ))

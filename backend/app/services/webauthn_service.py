@@ -14,22 +14,47 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from webauthn import (
-    generate_registration_options,
-    verify_registration_response,
-    generate_authentication_options,
-    verify_authentication_response,
-    options_to_json,
-)
-from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
-from webauthn.helpers.structs import (
-    AuthenticatorSelectionCriteria,
-    UserVerificationRequirement,
-    ResidentKeyRequirement,
-    PublicKeyCredentialDescriptor,
-    AttestationConveyancePreference,
-)
-from webauthn.helpers.exceptions import InvalidRegistrationResponse, InvalidAuthenticationResponse
+try:
+    from webauthn import (
+        generate_registration_options,
+        verify_registration_response,
+        generate_authentication_options,
+        verify_authentication_response,
+        options_to_json,
+    )
+    from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
+    from webauthn.helpers.structs import (
+        AuthenticatorSelectionCriteria,
+        UserVerificationRequirement,
+        ResidentKeyRequirement,
+        PublicKeyCredentialDescriptor,
+        AttestationConveyancePreference,
+    )
+    from webauthn.helpers.exceptions import InvalidRegistrationResponse, InvalidAuthenticationResponse
+    WEBAUTHN_AVAILABLE = True
+except ImportError:
+    WEBAUTHN_AVAILABLE = False
+    generate_registration_options = None
+    verify_registration_response = None
+    generate_authentication_options = None
+    verify_authentication_response = None
+    options_to_json = None
+    def base64url_to_bytes(s: str) -> bytes: return b""
+    def bytes_to_base64url(b: bytes) -> str: return ""
+    class InvalidRegistrationResponse(Exception): pass
+    class InvalidAuthenticationResponse(Exception): pass
+    class UserVerificationRequirement:
+        PREFERRED = "preferred"
+        REQUIRED = "required"
+        DISCOURAGED = "discouraged"
+    class ResidentKeyRequirement:
+        PREFERRED = "preferred"
+    class AttestationConveyancePreference:
+        NONE = "none"
+    class AuthenticatorSelectionCriteria:
+        def __init__(self, **kw): pass
+    class PublicKeyCredentialDescriptor:
+        def __init__(self, **kw): pass
 
 from app.core.config import get_settings
 from app.models.user import User

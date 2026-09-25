@@ -76,6 +76,7 @@ const DirectorServiceWorkers = lazy(() => import('@/pages/director/ServiceWorker
 // ── Service Worker portal ──────────────────────────────────────────
 const WorkerOnboardingPage        = lazy(() => import('@/pages/worker/WorkerOnboardingPage'))
 const WorkerDashboardPage         = lazy(() => import('@/pages/worker/WorkerDashboardPage'))
+const WorkerMyJobsPage            = lazy(() => import('@/pages/worker/WorkerMyJobsPage'))
 const WorkerEarningsPage          = lazy(() => import('@/pages/worker/WorkerEarningsPage'))
 const WorkerDisputesPage          = lazy(() => import('@/pages/worker/WorkerDisputesPage'))
 const WorkerProfilePage           = lazy(() => import('@/pages/worker/WorkerProfilePage'))
@@ -97,6 +98,8 @@ const BillPaymentPage           = lazy(() => import('@/pages/customer/BillPaymen
 const EducationPaymentsPage     = lazy(() => import('@/pages/customer/EducationPaymentsPage'))
 const ServiceRequestDetailPage  = lazy(() => import('@/pages/services/ServiceRequestDetailPage'))
 const ManualServicePage         = lazy(() => import('@/pages/customer/ManualServicePage'))
+const ManualServiceHistoryPage  = lazy(() => import('@/pages/customer/ManualServiceHistoryPage'))
+const ManualServiceDetailPage   = lazy(() => import('@/pages/customer/ManualServiceDetailPage'))
 
 const PageLoader = () => (
   <div className="min-h-dvh flex items-center justify-center bg-surface dark:bg-night-800">
@@ -212,6 +215,8 @@ export default function App() {
           <Route path="/customer/airtime-data" element={<AuthGuard allowedRoles={['customer']}><AirtimeDataPage /></AuthGuard>} />
           <Route path="/customer/bill-payments" element={<AuthGuard allowedRoles={['customer']}><BillPaymentPage /></AuthGuard>} />
           <Route path="/customer/education-payments" element={<AuthGuard allowedRoles={['customer']}><EducationPaymentsPage /></AuthGuard>} />
+          <Route path="/customer/manual-services/history" element={<AuthGuard allowedRoles={['customer']}><ManualServiceHistoryPage /></AuthGuard>} />
+          <Route path="/customer/manual-services/requests/:requestId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director']}><ManualServiceDetailPage /></AuthGuard>} />
           <Route path="/customer/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['customer']}><ManualServicePage /></AuthGuard>} />
 
 
@@ -232,6 +237,7 @@ export default function App() {
           <Route path="/officer/customers/:customerId/airtime-data" element={<AuthGuard allowedRoles={['officer']}><AirtimeDataPage /></AuthGuard>} />
           <Route path="/officer/customers/:customerId/bill-payments" element={<AuthGuard allowedRoles={['officer']}><BillPaymentPage /></AuthGuard>} />
           <Route path="/officer/customers/:customerId/education-payments" element={<AuthGuard allowedRoles={['officer']}><EducationPaymentsPage /></AuthGuard>} />
+          <Route path="/officer/manual-services/history" element={<AuthGuard allowedRoles={['officer']}><ManualServiceHistoryPage /></AuthGuard>} />
           <Route path="/officer/customers/:customerId/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['officer']}><ManualServicePage /></AuthGuard>} />
 
 
@@ -261,6 +267,8 @@ export default function App() {
           {/* ── Service Worker ── */}
           <Route path="/worker/onboarding"     element={<AuthGuard allowedRoles={['service_worker']}><WorkerOnboardingPage /></AuthGuard>} />
           <Route path="/worker/dashboard"      element={<AuthGuard allowedRoles={['service_worker']}><WorkerDashboardPage /></AuthGuard>} />
+          <Route path="/worker/my-jobs"        element={<AuthGuard allowedRoles={['service_worker']}><WorkerMyJobsPage /></AuthGuard>} />
+          <Route path="/worker/jobs"           element={<AuthGuard allowedRoles={['service_worker']}><WorkerMyJobsPage /></AuthGuard>} />
           <Route path="/worker/earnings"       element={<AuthGuard allowedRoles={['service_worker']}><WorkerEarningsPage /></AuthGuard>} />
           <Route path="/worker/disputes"       element={<AuthGuard allowedRoles={['service_worker']}><WorkerDisputesPage /></AuthGuard>} />
           <Route path="/worker/profile"        element={<AuthGuard allowedRoles={['service_worker']}><WorkerProfilePage /></AuthGuard>} />

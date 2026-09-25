@@ -23,6 +23,7 @@ interface WorkerListItem {
   active_job_id?: string | null
   active_job_expires_at?: string | null
   jobs_completed: number
+  pending_referred_count?: number
   created_at: string
 }
 
@@ -32,6 +33,8 @@ interface WorkerStats {
   unattended_jobs: number
   completed_today: number
   total_workers: number
+  sla_breaches_today?: number
+  referral_expiries_today?: number
 }
 
 interface JobOverview {
@@ -44,6 +47,8 @@ interface JobOverview {
   status: string
   claimed_by_id?: string | null
   worker_name?: string | null
+  referred_worker_id?: string | null
+  referred_worker_name?: string | null
   claimed_at?: string | null
   expires_at?: string | null
   completed_at?: string | null
@@ -74,6 +79,7 @@ export default function ServiceWorkersPage() {
   const [workerFilter, setWorkerFilter] = useState<'all' | 'free' | 'busy'>('all')
   const [jobStatusFilter, setJobStatusFilter] = useState<string>('all')
   const [jobCategoryFilter, setJobCategoryFilter] = useState<string>('all')
+  const [poolTypeFilter, setPoolTypeFilter] = useState<'all' | 'referred' | 'open'>('all')
 
   // Create Worker Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -117,11 +123,12 @@ export default function ServiceWorkersPage() {
     data: JobOverview[]
     total: number
   }>({
-    queryKey: ['director-jobs-all', jobStatusFilter, jobCategoryFilter],
+    queryKey: ['director-jobs-all', jobStatusFilter, jobCategoryFilter, poolTypeFilter],
     queryFn: async () => {
       const params: Record<string, string> = {}
       if (jobStatusFilter !== 'all') params.job_status = jobStatusFilter
       if (jobCategoryFilter !== 'all') params.category = jobCategoryFilter
+      if (poolTypeFilter !== 'all') params.pool_type = poolTypeFilter
       const res = await api.get('/worker/jobs/all', { params })
       return res.data
     },
@@ -251,76 +258,108 @@ export default function ServiceWorkersPage() {
 
       <main className="flex-1 px-4 py-4 space-y-5 max-w-4xl mx-auto w-full">
         {/* ── Live Statistics Metric Strip ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
           {/* Free Workers */}
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-night-800 border border-emerald-200 dark:border-emerald-800/60 shadow-sm relative overflow-hidden">
+          <div className="p-3 rounded-2xl bg-white dark:bg-night-800 border border-emerald-200 dark:border-emerald-800/60 shadow-sm relative overflow-hidden">
             <div className="flex items-center justify-between">
               <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-700 dark:text-emerald-400">
                 Free Workers
               </span>
-              <span className="relative flex h-2.5 w-2.5">
+              <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
             </div>
             <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+              <span className="text-xl font-black font-mono text-emerald-600 dark:text-emerald-400">
                 {stats?.free_workers ?? 0}
               </span>
-              <span className="text-xs text-green-600 dark:text-night-400">
-                / {stats?.total_workers ?? 0} total
+              <span className="text-[10px] text-green-600 dark:text-night-400">
+                / {stats?.total_workers ?? 0}
               </span>
             </div>
-            <p className="text-[10px] text-green-600 dark:text-night-400 mt-0.5">
-              Ready to claim requests
+            <p className="text-[9px] text-green-600 dark:text-night-400 mt-0.5">
+              Ready to claim
             </p>
           </div>
 
           {/* Busy Workers */}
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-night-800 border border-amber-200 dark:border-amber-800/60 shadow-sm">
+          <div className="p-3 rounded-2xl bg-white dark:bg-night-800 border border-amber-200 dark:border-amber-800/60 shadow-sm">
             <span className="text-[10px] uppercase font-bold tracking-wider text-amber-700 dark:text-amber-400">
               Busy Workers
             </span>
             <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-2xl font-black font-mono text-amber-600 dark:text-amber-400">
+              <span className="text-xl font-black font-mono text-amber-600 dark:text-amber-400">
                 {stats?.busy_workers ?? 0}
               </span>
-              <span className="text-xs text-green-600 dark:text-night-400">active jobs</span>
+              <span className="text-[10px] text-green-600 dark:text-night-400">active</span>
             </div>
-            <p className="text-[10px] text-green-600 dark:text-night-400 mt-0.5">
-              Handling claims now
+            <p className="text-[9px] text-green-600 dark:text-night-400 mt-0.5">
+              Handling claims
             </p>
           </div>
 
           {/* Unattended Job Pool */}
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-night-800 border border-purple-200 dark:border-purple-800/60 shadow-sm">
+          <div className="p-3 rounded-2xl bg-white dark:bg-night-800 border border-purple-200 dark:border-purple-800/60 shadow-sm">
             <span className="text-[10px] uppercase font-bold tracking-wider text-purple-700 dark:text-purple-400">
-              Unattended Pool
+              Unattended
             </span>
             <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-2xl font-black font-mono text-purple-600 dark:text-purple-400">
+              <span className="text-xl font-black font-mono text-purple-600 dark:text-purple-400">
                 {stats?.unattended_jobs ?? 0}
               </span>
-              <span className="text-xs text-green-600 dark:text-night-400">unclaimed</span>
+              <span className="text-[10px] text-green-600 dark:text-night-400">in pool</span>
             </div>
-            <p className="text-[10px] text-green-600 dark:text-night-400 mt-0.5">
-              Awaiting worker claim
+            <p className="text-[9px] text-green-600 dark:text-night-400 mt-0.5">
+              Awaiting claim
             </p>
           </div>
 
           {/* Completed Today */}
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-night-800 border border-green-200 dark:border-night-700 shadow-sm">
+          <div className="p-3 rounded-2xl bg-white dark:bg-night-800 border border-green-200 dark:border-night-700 shadow-sm">
             <span className="text-[10px] uppercase font-bold tracking-wider text-green-700 dark:text-night-300">
-              Completed Today
+              Completed
             </span>
             <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-2xl font-black font-mono text-green-800 dark:text-brand-gold">
+              <span className="text-xl font-black font-mono text-green-800 dark:text-brand-gold">
                 {stats?.completed_today ?? 0}
               </span>
-              <span className="text-xs text-green-600 dark:text-night-400">requests</span>
+              <span className="text-[10px] text-green-600 dark:text-night-400">today</span>
             </div>
-            <p className="text-[10px] text-green-600 dark:text-night-400 mt-0.5">
-              Successful resolutions
+            <p className="text-[9px] text-green-600 dark:text-night-400 mt-0.5">
+              Resolved
+            </p>
+          </div>
+
+          {/* SLA Breaches Today */}
+          <div className="p-3 rounded-2xl bg-white dark:bg-night-800 border border-rose-200 dark:border-rose-900/60 shadow-sm">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-rose-700 dark:text-rose-400">
+              SLA Breaches
+            </span>
+            <div className="mt-2 flex items-baseline gap-1">
+              <span className="text-xl font-black font-mono text-rose-600 dark:text-rose-400">
+                {stats?.sla_breaches_today ?? 0}
+              </span>
+              <span className="text-[10px] text-rose-500 dark:text-rose-400">reclaimed</span>
+            </div>
+            <p className="text-[9px] text-rose-600 dark:text-rose-400 mt-0.5">
+              Returned to pool
+            </p>
+          </div>
+
+          {/* Referral Expiries Today */}
+          <div className="p-3 rounded-2xl bg-white dark:bg-night-800 border border-indigo-200 dark:border-indigo-900/60 shadow-sm">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-700 dark:text-indigo-400">
+              Hold Expiries
+            </span>
+            <div className="mt-2 flex items-baseline gap-1">
+              <span className="text-xl font-black font-mono text-indigo-600 dark:text-indigo-400">
+                {stats?.referral_expiries_today ?? 0}
+              </span>
+              <span className="text-[10px] text-indigo-500 dark:text-indigo-400">expired</span>
+            </div>
+            <p className="text-[9px] text-indigo-600 dark:text-indigo-400 mt-0.5">
+              Fell back to pool
             </p>
           </div>
         </div>
@@ -429,6 +468,11 @@ export default function ServiceWorkersPage() {
                           >
                             {w.is_busy ? 'Busy (Handling Job)' : 'Free'}
                           </span>
+                          {Boolean(w.pending_referred_count && w.pending_referred_count > 0) && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
+                              {w.pending_referred_count} in referral hold
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-green-700 dark:text-night-300 mt-0.5 flex items-center gap-1.5">
                           <Phone className="w-3 h-3" />
@@ -481,6 +525,27 @@ export default function ServiceWorkersPage() {
         {/* ── Tab 2: Job Oversight & All Requests ── */}
         {activeTab === 'jobs' && (
           <div className="space-y-4">
+            {/* Pool Type Filter pills */}
+            <div className="flex items-center gap-2">
+              {[
+                { id: 'all', label: 'All Pools' },
+                { id: 'referred', label: 'Referred to Worker' },
+                { id: 'open', label: 'Open Pool' },
+              ].map((pt) => (
+                <button
+                  key={pt.id}
+                  onClick={() => setPoolTypeFilter(pt.id as any)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                    poolTypeFilter === pt.id
+                      ? 'bg-purple-800 text-white shadow-sm'
+                      : 'bg-white dark:bg-night-800 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-night-700'
+                  }`}
+                >
+                  {pt.label}
+                </button>
+              ))}
+            </div>
+
             {/* Status Filter pills */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
               {['all', 'pending', 'in_progress', 'completed', 'disputed', 'rejected'].map((st) => (
@@ -558,6 +623,11 @@ export default function ServiceWorkersPage() {
                           >
                             {job.status.replace('_', ' ')}
                           </span>
+                          {job.referred_worker_name && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
+                              Referred: {job.referred_worker_name}
+                            </span>
+                          )}
                         </div>
                         <h4 className="font-bold text-sm text-green-950 dark:text-white mt-1">
                           {job.service_type}

@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Home, CreditCard, Wallet, Bell, User, UserCog, Grid2x2, LayoutGrid } from 'lucide-react'
+import { Home, CreditCard, Wallet, Bell, User, UserCog, Grid2x2, LayoutGrid, Briefcase, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { useAuthStore } from '@/store/auth.store'
@@ -37,10 +37,11 @@ const directorNav: NavItem[] = [
 ]
 
 const workerNav: NavItem[] = [
-  { label: 'Jobs',      icon: LayoutGrid, href: '/worker/dashboard' },
-  { label: 'Earnings',  icon: Wallet,     href: '/worker/earnings' },
-  { label: 'Disputes',  icon: Bell,       href: '/worker/disputes' },
-  { label: 'Profile',   icon: User,       href: '/worker/profile' },
+  { label: 'Pool',      icon: LayoutGrid,  href: '/worker/dashboard' },
+  { label: 'My Jobs',   icon: Briefcase,   href: '/worker/my-jobs' },
+  { label: 'Earnings',  icon: Wallet,      href: '/worker/earnings' },
+  { label: 'Disputes',  icon: ShieldAlert, href: '/worker/disputes' },
+  { label: 'Profile',   icon: User,        href: '/worker/profile' },
 ]
 
 const navByRole: Record<string, NavItem[]> = {
