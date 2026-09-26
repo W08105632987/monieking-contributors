@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import ServiceWorkerOnly, DirectorOnly, DirectorOrAdmin
+from app.core.dependencies import ServiceWorkerOnly, DirectorOnly, DirectorOrAdmin, get_current_user
 from app.core.security import hash_password
 from app.models.user import User, UserRole, UserStatus
 from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus
@@ -303,6 +303,7 @@ async def get_job_pool(
     db: AsyncSession = Depends(get_db),
 ):
     """List all open (pending) jobs in the pool, with customer privacy masking."""
+    await job_pool_service.reclaim_expired_jobs(db)
     result = await job_pool_service.list_pool(db, category=category, page=page, page_size=page_size)
     # Load customer relationship
     serialized = []
@@ -323,6 +324,7 @@ async def get_referred_jobs(
     db: AsyncSession = Depends(get_db),
 ):
     """List all pending jobs specifically referred to this worker and still inside hold window."""
+    await job_pool_service.reclaim_expired_jobs(db)
     items = await job_pool_service.list_referred_jobs(db, current_user.id)
     serialized = []
     for item in items:
@@ -343,6 +345,7 @@ async def get_my_jobs(
     db: AsyncSession = Depends(get_db),
 ):
     """List all jobs this worker has ever claimed."""
+    await job_pool_service.reclaim_expired_jobs(db)
     result = await job_pool_service.list_worker_jobs(
         db, current_user.id, status=job_status, page=page, page_size=page_size
     )
@@ -359,6 +362,7 @@ async def get_active_job(
     db: AsyncSession = Depends(get_db),
 ):
     """Return the current active (processing) job for this worker, if any."""
+    await job_pool_service.reclaim_expired_jobs(db)
     job = await db.scalar(
         select(ManualServiceRequest).where(
             ManualServiceRequest.claimed_by_id == current_user.id,
@@ -764,9 +768,9 @@ async def list_all_jobs(
 
 @router.post("/jobs/reclaim-expired", include_in_schema=False)
 async def reclaim_expired(
-    current_user: DirectorOrAdmin,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Manually trigger SLA reclamation (Director only). Also runs in background."""
+    """Trigger SLA reclamation (Worker, Director, Admin). Also runs in background."""
     reclaimed = await job_pool_service.reclaim_expired_jobs(db)
     return {"reclaimed": reclaimed}

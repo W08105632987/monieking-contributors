@@ -9,10 +9,11 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
-import { formatNaira } from '@/lib/utils'
+import { formatNaira, formatServiceCategory, formatServiceType } from '@/lib/utils'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import { ViewInfoModal, type JobDetailData } from '@/components/worker/ViewInfoModal'
+import { useJobPoolRealtime } from '@/hooks/useJobPoolRealtime'
 
 interface JobItem {
   id: string
@@ -78,6 +79,10 @@ function CountdownTimer({ expiresAt, onExpire }: { expiresAt: string; onExpire?:
 export default function WorkerMyJobsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+
+  // Realtime subscription for automatic instant updates
+  useJobPoolRealtime()
+
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active')
 
   // Selected job for ViewInfoModal
@@ -98,8 +103,18 @@ export default function WorkerMyJobsPage() {
   const [disputeAttachmentUrl, setDisputeAttachmentUrl] = useState('')
   const [isDisputeUploading, setIsDisputeUploading] = useState(false)
 
+  // Dedicated active job query so claimed job appears immediately without waiting
+  const { data: activeJobRes } = useQuery<{ job: JobItem | null }>({
+    queryKey: ['worker-active-job'],
+    queryFn: async () => {
+      const res = await api.get('/worker/jobs/active')
+      return res.data
+    },
+    refetchInterval: 8000,
+  })
+
   // Fetch claimed jobs for this worker
-  const { data: myJobsData, isLoading, refetch: refetchMyJobs } = useQuery<{
+  const { data: myJobsData, isLoading } = useQuery<{
     data: JobItem[]
     total: number
   }>({
@@ -108,12 +123,24 @@ export default function WorkerMyJobsPage() {
       const res = await api.get('/worker/jobs/mine')
       return res.data
     },
-    refetchInterval: 12000,
+    refetchInterval: 10000,
   })
 
   const jobsList = myJobsData?.data || []
-  const activeJob = jobsList.find((j) => j.status === 'processing')
+  const activeJob = activeJobRes?.job ?? jobsList.find((j) => j.status === 'processing')
   const completedJobs = jobsList.filter((j) => j.status === 'successful' || j.status === 'failed')
+
+  // Immediate SLA expiration action: triggers backend reclaim and refreshes state
+  const handleExpire = async () => {
+    try {
+      await api.post('/worker/jobs/reclaim-expired')
+    } catch (_) {}
+    queryClient.invalidateQueries({ queryKey: ['worker-active-job'] })
+    queryClient.invalidateQueries({ queryKey: ['worker-my-jobs'] })
+    queryClient.invalidateQueries({ queryKey: ['worker-pool'] })
+    queryClient.invalidateQueries({ queryKey: ['worker-referred-jobs'] })
+    toast.error('SLA expired! The job has returned to the open pool.')
+  }
 
   // Resolve Job Mutation
   const resolveMutation = useMutation({
@@ -148,6 +175,7 @@ export default function WorkerMyJobsPage() {
       setRemarks('')
       setAdditionalInfo('')
       setResultFileUrl('')
+      queryClient.invalidateQueries({ queryKey: ['worker-active-job'] })
       queryClient.invalidateQueries({ queryKey: ['worker-my-jobs'] })
       queryClient.invalidateQueries({ queryKey: ['worker-pool'] })
       queryClient.invalidateQueries({ queryKey: ['worker-referred-jobs'] })
@@ -282,7 +310,7 @@ export default function WorkerMyJobsPage() {
                   {activeJob.expires_at && (
                     <CountdownTimer
                       expiresAt={activeJob.expires_at}
-                      onExpire={() => refetchMyJobs()}
+                      onExpire={handleExpire}
                     />
                   )}
                 </div>
@@ -291,10 +319,10 @@ export default function WorkerMyJobsPage() {
                   <div className="flex justify-between items-start">
                     <div>
                       <h3 className="font-bold text-sm text-green-950 dark:text-white">
-                        {activeJob.service_type || activeJob.service_category.toUpperCase()}
+                        {formatServiceType(activeJob.service_type || activeJob.service_category)}
                       </h3>
                       <p className="text-xs text-green-700 dark:text-night-300">
-                        Category: {activeJob.service_category.replace(/_/g, ' ')}
+                        Category: {formatServiceCategory(activeJob.service_category)}
                       </p>
                     </div>
                     <div className="text-right">
@@ -419,7 +447,7 @@ export default function WorkerMyJobsPage() {
                         </span>
                       </div>
                       <h4 className="font-bold text-sm text-green-950 dark:text-white mt-1">
-                        {job.service_type || job.service_category.toUpperCase()}
+                        {formatServiceType(job.service_type || job.service_category)}
                       </h4>
                       <p className="text-xs text-green-600 dark:text-night-400">
                         {job.customer_name || 'Customer'}

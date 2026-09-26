@@ -12,12 +12,19 @@ const DEFERRED_KEYS = new Set(['food_card_rate_kobo'])
 const MONTHLY_KEYS  = new Set(['monthly_sms_fee_kobo'])
 const DATE_KEYS     = new Set(['food_card_open_from', 'food_card_open_until'])
 const SW_KEYS       = new Set(['service_worker_job_timeout_minutes', 'service_worker_referral_hold_minutes', 'service_worker_default_commission_percent'])
+const HOURS_KEYS    = new Set(['withdrawal_sla_hours'])
+const COUNT_KEYS    = new Set(['max_food_cards_per_customer'])
+const PERCENT_KEYS  = new Set(['service_worker_default_commission_percent'])
 
 const KEY_LABELS: Record<string, string> = {
   food_card_rate_kobo:                 'Food Card daily rate',
   wallet_instant_withdrawal_fee_kobo:  'Wallet instant withdrawal fee',
   max_instant_withdrawal_kobo:         'Max instant withdrawal per day',
   monthly_sms_fee_kobo:                'Monthly SMS Alert Fee',
+  withdrawal_sla_hours:                'Withdrawal processing SLA',
+  max_food_cards_per_customer:         'Maximum Food Cards per customer',
+  min_regular_card_rate_kobo:          'Minimum Regular Card daily rate',
+  large_contribution_threshold_kobo:   'Large contribution dual-approval threshold',
 }
 
 function humanizeKey(key: string): string {
@@ -169,14 +176,28 @@ function PendingChangeCard({ change }: { change: PendingRateChange }) {
 function SettingRow({ setting, pendingChange }: { setting: SystemConfigItem; pendingChange?: PendingRateChange }) {
   const qc = useQueryClient()
   const isDeferred = DEFERRED_KEYS.has(setting.key)
-  const [editValue, setEditValue] = useState(String(koboToNaira(Number(setting.value))))
+  const isHours = HOURS_KEYS.has(setting.key)
+  const isCount = COUNT_KEYS.has(setting.key)
+  const isPercent = PERCENT_KEYS.has(setting.key)
+  const isCurrency = !isHours && !isCount && !isPercent
+
+  const initialValue = isCurrency
+    ? String(koboToNaira(Number(setting.value)))
+    : setting.value
+
+  const [editValue, setEditValue] = useState(initialValue)
+
+  useEffect(() => {
+    setEditValue(isCurrency ? String(koboToNaira(Number(setting.value))) : setting.value)
+  }, [setting.value, isCurrency])
+
   const [preview, setPreview] = useState<RateChangePreview | null>(null)
 
   const previewMutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.post<RateChangePreview>('/settings/rate-changes/preview', {
         setting_key: setting.key,
-        new_value_kobo: nairaToKobo(editValue),
+        new_value_kobo: isCurrency ? nairaToKobo(editValue) : Number(editValue),
       })
       return data
     },
@@ -187,7 +208,7 @@ function SettingRow({ setting, pendingChange }: { setting: SystemConfigItem; pen
   const createChangeMutation = useMutation({
     mutationFn: () => api.post('/settings/rate-changes', {
       setting_key: setting.key,
-      new_value_kobo: nairaToKobo(editValue),
+      new_value_kobo: isCurrency ? nairaToKobo(editValue) : Number(editValue),
     }),
     onSuccess: () => {
       toast.success('Rate change scheduled')
@@ -198,12 +219,24 @@ function SettingRow({ setting, pendingChange }: { setting: SystemConfigItem; pen
   })
 
   const immediateMutation = useMutation({
-    mutationFn: () => api.patch(`/settings/${setting.key}`, { value: String(nairaToKobo(editValue)) }),
+    mutationFn: () => {
+      const valToSend = isCurrency
+        ? String(nairaToKobo(editValue))
+        : String(parseInt(editValue, 10))
+      return api.patch(`/settings/${setting.key}`, { value: valToSend })
+    },
     onSuccess: () => { toast.success('Setting updated'); qc.invalidateQueries({ queryKey: ['settings'] }) },
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
-  const hasChanges = editValue !== String(koboToNaira(Number(setting.value)))
+  const hasChanges = editValue !== initialValue
+
+  let unitSuffix = ''
+  if (isHours) unitSuffix = 'hours'
+  else if (isCount) unitSuffix = 'cards'
+  else if (isPercent) unitSuffix = '%'
+  else if (MONTHLY_KEYS.has(setting.key)) unitSuffix = '/month'
+  else if (setting.key.includes('daily') || setting.key === 'food_card_rate_kobo') unitSuffix = '/day'
 
   return (
     <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-3">
@@ -215,14 +248,14 @@ function SettingRow({ setting, pendingChange }: { setting: SystemConfigItem; pen
       {!pendingChange && (
         <>
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-green-600 dark:text-night-200 text-sm">₦</span>
+            {isCurrency && <span className="text-green-600 dark:text-night-200 text-sm">₦</span>}
             <input
               value={editValue}
               onChange={e => setEditValue(e.target.value)}
               type="number"
               className="flex-1 border border-green-200 dark:border-night-500 rounded-xl px-3 py-2.5 text-sm text-green-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
             />
-            <span className="text-green-400 dark:text-night-300 text-xs">{MONTHLY_KEYS.has(setting.key) ? '/month' : '/day'}</span>
+            {unitSuffix && <span className="text-green-400 dark:text-night-300 text-xs">{unitSuffix}</span>}
           </div>
 
           {isDeferred ? (

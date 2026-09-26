@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
-import { formatNaira, formatDateTime, cn } from '@/lib/utils'
+import { formatNaira, formatDateTime, cn, formatServiceCategory, formatServiceType } from '@/lib/utils'
 import { fieldLabel } from '@/components/worker/ViewInfoModal'
 import { BottomNav } from '@/components/layout/BottomNav'
 
@@ -139,7 +139,13 @@ export default function ManualServiceDetailPage() {
   }
 
   const formData = request.form_data || {}
-  const formEntries = Object.entries(formData).filter(([k]) => k !== 'submitted_by_officer_id')
+  const formEntries = Object.entries(formData).filter(([k, v]) => {
+    if (['submitted_by_officer_id', 'selected_modification'].includes(k)) return false
+    if (v === null || v === undefined) return false
+    if (typeof v === 'string' && v.trim() === '') return false
+    if (Array.isArray(v) && v.length === 0) return false
+    return true
+  })
   const isCompleted = request.status === 'successful' || request.status === 'failed'
 
   return (
@@ -184,14 +190,14 @@ export default function ManualServiceDetailPage() {
                 ? 'Awaiting Worker Claim'
                 : request.status.toUpperCase()}
             </span>
-            <span className="text-xs text-green-500 dark:text-night-400">
-              {request.service_category.replace(/_/g, ' ').toUpperCase()}
+            <span className="text-xs font-semibold text-green-600 dark:text-night-300">
+              {formatServiceCategory(request.service_category)}
             </span>
           </div>
 
           <div>
             <h2 className="text-lg font-black text-green-950 dark:text-white">
-              {request.service_type || request.service_category.toUpperCase()}
+              {formatServiceType(request.service_type || request.service_category)}
             </h2>
             <p className="font-mono text-xl font-bold text-green-800 dark:text-brand-gold mt-0.5">
               {formatNaira(request.price_kobo)}

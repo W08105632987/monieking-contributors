@@ -51,11 +51,14 @@ export function BvnModificationForm({ onChange }: Props) {
   const priceKobo = selectedMod.isCombo ? 900000 : selectedBankObj.priceKobo
 
   useEffect(() => {
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
+    )
     onChange({
       service_type: modType,
       enrollment_bank: enrollmentBank,
       form_data: {
-        ...data,
+        ...cleanData,
         selected_modification: modType,
         enrollment_bank: selectedBankObj.label,
       },

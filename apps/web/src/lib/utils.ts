@@ -196,6 +196,68 @@ export function idempotencyKey(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
+// ─── Service title helpers ──────────────────────────────────────────────────
+
+const SERVICE_CATEGORY_LABELS: Record<string, string> = {
+  nin_modification:        'NIN Modification',
+  nin_validation:          'NIN Validation',
+  bvn_modification:        'BVN Modification',
+  bvn_retrieval:           'BVN Retrieval',
+  bvn_license:             'BVN License',
+  nin_delinking:           'NIN Delinking',
+  self_service_modification: 'Self-Service Modification',
+  tin_registration:        'TIN Registration',
+  cac_registration:        'CAC Registration',
+  nin_attestation:         'NIN Attestation',
+}
+
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  // NIN modification types
+  update_name:             'Update Name',
+  update_phone:            'Update Phone Number',
+  update_dob:              'Update Date of Birth',
+  update_address:          'Update Address',
+  update_name_dob:         'Update Name & DOB',
+  update_name_phone:       'Update Name & Phone',
+  // BVN modification types
+  update_name_dob_bvn:     'Update Name & DOB (BVN)',
+  update_name_address:     'Update Name & Address',
+  update_dob_phone:        'Update DOB & Phone',
+  update_name_phone_bvn:   'Update Name & Phone (BVN)',
+  // NIN validation types
+  single:                  'Single Validation',
+  bulk:                    'Bulk Validation',
+  // BVN retrieval
+  bvn_retrieval:           'BVN Retrieval',
+  // BVN license
+  individual:              'Individual License',
+  corporate:               'Corporate License',
+  // NIN delinking
+  nin_delinking:           'NIN Delinking',
+  // Self service
+  nin_self_service:        'NIN Self-Service',
+  // TIN
+  individual_tin:          'Individual TIN',
+  corporate_tin:           'Corporate TIN',
+  // CAC
+  business_name:           'Business Name Registration',
+  company:                 'Company Registration',
+  // Attestation
+  nin_attestation:         'NIN Attestation',
+}
+
+/** Convert a snake_case service category to a human-readable label */
+export function formatServiceCategory(category: string): string {
+  return SERVICE_CATEGORY_LABELS[category] ??
+    category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+/** Convert a snake_case service type to a human-readable label */
+export function formatServiceType(type: string): string {
+  return SERVICE_TYPE_LABELS[type] ??
+    type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 /** Month names for card grid display */
 export const MONTH_NAMES = [
   'Jan','Feb','Mar','Apr','May','Jun',

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
-import { formatNaira, copyToClipboard } from '@/lib/utils'
+import { formatNaira, copyToClipboard, formatServiceCategory, formatServiceType } from '@/lib/utils'
 import { BottomNav } from '@/components/layout/BottomNav'
 
 interface WorkerListItem {
@@ -608,7 +608,7 @@ export default function ServiceWorkersPage() {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-green-50 dark:bg-night-900 border border-green-200 dark:border-night-700 text-green-700 dark:text-night-300">
-                            {job.service_category}
+                            {formatServiceCategory(job.service_category)}
                           </span>
                           <span
                             className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
@@ -630,7 +630,7 @@ export default function ServiceWorkersPage() {
                           )}
                         </div>
                         <h4 className="font-bold text-sm text-green-950 dark:text-white mt-1">
-                          {job.service_type}
+                          {formatServiceType(job.service_type || job.service_category)}
                         </h4>
                         {job.customer_name && (
                           <p className="text-xs text-green-700 dark:text-night-300">

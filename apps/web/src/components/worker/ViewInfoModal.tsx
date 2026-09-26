@@ -4,7 +4,7 @@ import {
   X, Copy, Check, FileText, ExternalLink, ArrowRight
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { copyToClipboard, formatNaira } from '@/lib/utils'
+import { copyToClipboard, formatNaira, formatServiceCategory, formatServiceType } from '@/lib/utils'
 
 export interface JobDetailData {
   id: string
@@ -64,9 +64,13 @@ export function ViewInfoModal({
   if (!isOpen || !job) return null
 
   const formData = job.form_data || {}
-  const formEntries = Object.entries(formData).filter(
-    ([k]) => !['submitted_by_officer_id'].includes(k)
-  )
+  const formEntries = Object.entries(formData).filter(([k, v]) => {
+    if (['submitted_by_officer_id', 'selected_modification'].includes(k)) return false
+    if (v === null || v === undefined) return false
+    if (typeof v === 'string' && v.trim() === '') return false
+    if (Array.isArray(v) && v.length === 0) return false
+    return true
+  })
 
   const handleCopySingle = async (key: string, val: any) => {
     const text = typeof val === 'object' ? JSON.stringify(val) : String(val)
@@ -80,7 +84,7 @@ export function ViewInfoModal({
     const lines = formEntries.map(([k, v]) => `${fieldLabel(k)}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
     if (job.customer_name) lines.unshift(`Customer Name: ${job.customer_name}`)
     if (job.customer_phone) lines.unshift(`Customer Phone: ${job.customer_phone}`)
-    lines.unshift(`Service: ${job.service_category.replace(/_/g, ' ').toUpperCase()} - ${job.service_type.replace(/_/g, ' ')}`)
+    lines.unshift(`Service: ${formatServiceCategory(job.service_category)} - ${formatServiceType(job.service_type || job.service_category)}`)
     
     await copyToClipboard(lines.join('\n'))
     setCopiedAll(true)
@@ -113,14 +117,14 @@ export function ViewInfoModal({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-green-100 dark:bg-night-700 text-green-800 dark:text-night-200">
-                  {job.service_category.replace(/_/g, ' ')}
+                  {formatServiceCategory(job.service_category)}
                 </span>
                 <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">
                   {formatNaira(job.price_kobo)}
                 </span>
               </div>
               <h2 className="text-base font-black text-green-950 dark:text-white mt-1">
-                {job.service_type.replace(/_/g, ' ')}
+                {formatServiceType(job.service_type || job.service_category)}
               </h2>
             </div>
 

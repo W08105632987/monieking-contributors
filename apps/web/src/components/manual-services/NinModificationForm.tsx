@@ -67,9 +67,12 @@ export function NinModificationForm({ onChange }: Props) {
   }
 
   useEffect(() => {
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
+    )
     onChange({
       service_type: modType,
-      form_data: { ...data, selected_modification: modType },
+      form_data: { ...cleanData, selected_modification: modType },
       uploaded_files: data.supporting_document ? [data.supporting_document] : [],
       price_kobo: 500000, // ₦5,000.00
     })

@@ -12,7 +12,8 @@ import { useAuthStore } from '@/store/auth.store'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import { ViewInfoModal, type JobDetailData } from '@/components/worker/ViewInfoModal'
-import { formatNaira, copyToClipboard } from '@/lib/utils'
+import { formatNaira, copyToClipboard, formatServiceCategory, formatServiceType } from '@/lib/utils'
+import { useJobPoolRealtime } from '@/hooks/useJobPoolRealtime'
 
 interface JobItem {
   id: string
@@ -88,6 +89,10 @@ export default function WorkerDashboardPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
+
+  // Realtime subscription for automatic instant updates
+  useJobPoolRealtime()
+
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [copiedCode, setCopiedCode] = useState(false)
   const [resolveModalJob, setResolveModalJob] = useState<JobItem | null>(null)
@@ -100,18 +105,32 @@ export default function WorkerDashboardPage() {
   const [resultFileUrl, setResultFileUrl] = useState('')
   const [isUploading, setIsUploading] = useState(false)
 
-  // Fetch Worker's own jobs (to find any currently claimed/active job)
+  // Dedicated query for the worker's current active job (instant claim display)
+  const { data: activeJobRes } = useQuery<{ job: JobItem | null }>({
+    queryKey: ['worker-active-job'],
+    queryFn: async () => {
+      const res = await api.get('/worker/jobs/active')
+      return res.data
+    },
+    refetchInterval: 8000,
+  })
+
+  // Fetch Worker's own jobs (safe normalization: handles both array and { data: [...], total })
   const {
-    data: myJobsData,
+    data: myJobsRaw,
     refetch: refetchMyJobs,
-  } = useQuery({
+  } = useQuery<{ data: JobItem[]; total?: number } | JobItem[]>({
     queryKey: ['worker-my-jobs'],
     queryFn: async () => {
       const res = await api.get('/worker/jobs/mine')
-      return res.data?.data as JobItem[]
+      return res.data
     },
     refetchInterval: 10000,
   })
+
+  const myJobsList: JobItem[] = Array.isArray(myJobsRaw)
+    ? myJobsRaw
+    : (myJobsRaw?.data ?? [])
 
   // Fetch open pool jobs
   const {
@@ -126,7 +145,7 @@ export default function WorkerDashboardPage() {
       const res = await api.get('/worker/jobs/pool', { params })
       return res.data?.data as JobItem[]
     },
-    refetchInterval: 12000,
+    refetchInterval: 10000,
   })
 
   // Fetch jobs specifically referred to this worker (exclusive hold window)
@@ -136,7 +155,7 @@ export default function WorkerDashboardPage() {
       const res = await api.get('/worker/jobs/referred')
       return res.data?.data as JobItem[]
     },
-    refetchInterval: 15000,
+    refetchInterval: 10000,
   })
   const referredJobs = referredJobsData ?? []
 
@@ -149,9 +168,21 @@ export default function WorkerDashboardPage() {
     },
   })
 
-  // Backend emits 'processing' for active jobs (not 'in_progress')
-  const activeJob = myJobsData?.find((j) => j.status === 'processing')
+  // Active job is drawn from dedicated active endpoint or safely found in myJobsList
+  const activeJob = activeJobRes?.job ?? myJobsList.find((j) => j.status === 'processing')
   const hasActiveJob = Boolean(activeJob)
+
+  // Immediate SLA expiration action: triggers backend reclaim and refreshes state
+  const handleExpire = async () => {
+    try {
+      await api.post('/worker/jobs/reclaim-expired')
+    } catch (_) {}
+    queryClient.invalidateQueries({ queryKey: ['worker-active-job'] })
+    queryClient.invalidateQueries({ queryKey: ['worker-my-jobs'] })
+    queryClient.invalidateQueries({ queryKey: ['worker-pool'] })
+    queryClient.invalidateQueries({ queryKey: ['worker-referred-jobs'] })
+    toast.error('SLA expired! The job has returned to the open pool.')
+  }
 
   // Claim mutation
   const claimMutation = useMutation({
@@ -159,8 +190,12 @@ export default function WorkerDashboardPage() {
       const res = await api.post(`/worker/jobs/${jobId}/claim`)
       return res.data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success('Job claimed successfully! SLA countdown started.')
+      if (data?.job) {
+        queryClient.setQueryData(['worker-active-job'], { job: data.job })
+      }
+      queryClient.invalidateQueries({ queryKey: ['worker-active-job'] })
       queryClient.invalidateQueries({ queryKey: ['worker-my-jobs'] })
       queryClient.invalidateQueries({ queryKey: ['worker-pool'] })
       queryClient.invalidateQueries({ queryKey: ['worker-referred-jobs'] })
@@ -204,6 +239,7 @@ export default function WorkerDashboardPage() {
       setRemarks('')
       setAdditionalInfo('')
       setResultFileUrl('')
+      queryClient.invalidateQueries({ queryKey: ['worker-active-job'] })
       queryClient.invalidateQueries({ queryKey: ['worker-my-jobs'] })
       queryClient.invalidateQueries({ queryKey: ['worker-pool'] })
       queryClient.invalidateQueries({ queryKey: ['worker-referred-jobs'] })
@@ -301,10 +337,7 @@ export default function WorkerDashboardPage() {
               {activeJob.expires_at && (
                 <CountdownTimer
                   expiresAt={activeJob.expires_at}
-                  onExpire={() => {
-                    refetchMyJobs()
-                    refetchPool()
-                  }}
+                  onExpire={handleExpire}
                 />
               )}
             </div>
@@ -313,10 +346,10 @@ export default function WorkerDashboardPage() {
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="font-bold text-sm text-green-950 dark:text-white">
-                    {activeJob.service_type || activeJob.service_category.toUpperCase()}
+                    {formatServiceType(activeJob.service_type || activeJob.service_category)}
                   </h3>
                   <p className="text-xs text-green-700 dark:text-night-300">
-                    Category: {activeJob.service_category}
+                    Category: {formatServiceCategory(activeJob.service_category)}
                   </p>
                 </div>
                 <div className="text-right">
@@ -336,21 +369,33 @@ export default function WorkerDashboardPage() {
                 </div>
               )}
 
-              {/* Form Data Snapshot */}
-              {activeJob.form_data && Object.keys(activeJob.form_data).length > 0 && (
-                <div className="pt-2 border-t border-green-100 dark:border-night-700">
-                  <span className="text-[11px] font-bold text-green-900 dark:text-night-200">
-                    Submitted Request Details:
-                  </span>
-                  <div className="mt-1 max-h-36 overflow-y-auto space-y-1 bg-white/70 dark:bg-night-800/70 p-2 rounded-lg text-xs font-mono">
-                    {Object.entries(activeJob.form_data).map(([k, v]) => (
-                      <div key={k} className="flex justify-between gap-2 border-b border-black/5 dark:border-white/5 pb-0.5">
-                        <span className="text-green-700 dark:text-night-400">{k}:</span>
-                        <span className="text-green-950 dark:text-white font-medium break-all">{String(v)}</span>
+              {/* Form Data Snapshot (filters empty/unrequested fields) */}
+              {activeJob.form_data && (
+                (() => {
+                  const filtered = Object.entries(activeJob.form_data).filter(([k, v]) => {
+                    if (['submitted_by_officer_id', 'selected_modification'].includes(k)) return false
+                    if (v === null || v === undefined) return false
+                    if (typeof v === 'string' && v.trim() === '') return false
+                    if (Array.isArray(v) && v.length === 0) return false
+                    return true
+                  })
+                  if (filtered.length === 0) return null
+                  return (
+                    <div className="pt-2 border-t border-green-100 dark:border-night-700">
+                      <span className="text-[11px] font-bold text-green-900 dark:text-night-200">
+                        Submitted Request Details:
+                      </span>
+                      <div className="mt-1 max-h-36 overflow-y-auto space-y-1 bg-white/70 dark:bg-night-800/70 p-2 rounded-lg text-xs font-mono">
+                        {filtered.map(([k, v]) => (
+                          <div key={k} className="flex justify-between gap-2 border-b border-black/5 dark:border-white/5 pb-0.5">
+                            <span className="text-green-700 dark:text-night-400 capitalize">{k.replace(/_/g, ' ')}:</span>
+                            <span className="text-green-950 dark:text-white font-medium break-all">{String(v)}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                  )
+                })()
               )}
             </div>
 
@@ -392,11 +437,11 @@ export default function WorkerDashboardPage() {
                       <div className="flex items-center gap-1.5">
                         <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
                         <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800">
-                          {job.service_category}
+                          {formatServiceCategory(job.service_category)}
                         </span>
                       </div>
                       <h3 className="font-bold text-sm text-green-950 dark:text-white">
-                        {job.service_type || 'Manual Verification'}
+                        {formatServiceType(job.service_type || job.service_category)}
                       </h3>
                       {job.customer_name && (
                         <p className="text-xs text-green-700 dark:text-night-300">
@@ -535,10 +580,10 @@ export default function WorkerDashboardPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <span className="text-[10px] font-black uppercase tracking-wider text-green-600 dark:text-brand-gold bg-green-50 dark:bg-night-900 px-2 py-0.5 rounded-md border border-green-200 dark:border-night-700">
-                        {job.service_category}
+                        {formatServiceCategory(job.service_category)}
                       </span>
                       <h3 className="font-bold text-sm text-green-950 dark:text-white mt-1">
-                        {job.service_type || 'Manual Verification'}
+                        {formatServiceType(job.service_type || job.service_category)}
                       </h3>
                       {job.customer_name && (
                         <p className="text-xs text-green-700 dark:text-night-300">

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ChevronRight, FileText } from 'lucide-react'
 import { api } from '@/lib/api'
-import { formatNaira, cn } from '@/lib/utils'
+import { formatNaira, cn, formatServiceCategory, formatServiceType } from '@/lib/utils'
 import { BottomNav } from '@/components/layout/BottomNav'
 
 interface ManualServiceRequestItem {
@@ -126,10 +126,10 @@ export default function ManualServiceHistoryPage() {
                       {STATUS_LABEL[req.status]}
                     </span>
                     <h3 className="font-bold text-sm text-green-950 dark:text-white mt-1">
-                      {req.service_type || req.service_category.toUpperCase()}
+                      {formatServiceType(req.service_type || req.service_category)}
                     </h3>
                     <p className="text-xs text-green-700 dark:text-night-400">
-                      Category: {req.service_category.replace(/_/g, ' ')}
+                      Category: {formatServiceCategory(req.service_category)}
                     </p>
                   </div>
 
