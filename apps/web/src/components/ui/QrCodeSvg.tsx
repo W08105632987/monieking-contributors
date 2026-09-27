@@ -1,66 +1,5 @@
 import React from 'react'
-
-/**
- * Lightweight, zero-dependency QR Matrix generator for standard URL/Tokens.
- * Generates an SVG with finder patterns, timing patterns, alignment, and data bits.
- */
-function generateQrMatrix(text: string): boolean[][] {
-  const size = 25
-  const matrix: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false))
-
-  // Draw 7x7 finder pattern
-  const drawFinder = (startX: number, startY: number) => {
-    for (let r = 0; r < 7; r++) {
-      for (let c = 0; c < 7; c++) {
-        if (
-          r === 0 || r === 6 || c === 0 || c === 6 ||
-          (r >= 2 && r <= 4 && c >= 2 && c <= 4)
-        ) {
-          matrix[startY + r][startX + c] = true
-        }
-      }
-    }
-  }
-
-  drawFinder(0, 0)
-  drawFinder(size - 7, 0)
-  drawFinder(0, size - 7)
-
-  // Timing patterns
-  for (let i = 8; i < size - 8; i++) {
-    matrix[6][i] = i % 2 === 0
-    matrix[i][6] = i % 2 === 0
-  }
-
-  // Pseudo-hash the text into pseudo-random bit sequence for scannable demonstration
-  let hash = 0
-  for (let i = 0; i < text.length; i++) {
-    hash = ((hash << 5) - hash) + text.charCodeAt(i)
-    hash |= 0
-  }
-
-  let seed = Math.abs(hash)
-  const lcg = () => {
-    seed = (seed * 1664525 + 1013904223) % 4294967296
-    return seed / 4294967296
-  }
-
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      // Don't overwrite finders or timing patterns
-      const inFinder1 = r <= 7 && c <= 7
-      const inFinder2 = r <= 7 && c >= size - 8
-      const inFinder3 = r >= size - 8 && c <= 7
-      const inTiming = r === 6 || c === 6
-
-      if (!inFinder1 && !inFinder2 && !inFinder3 && !inTiming) {
-        matrix[r][c] = lcg() > 0.48
-      }
-    }
-  }
-
-  return matrix
-}
+import QRCode from 'qrcode'
 
 interface QrCodeSvgProps {
   value: string
@@ -68,34 +7,69 @@ interface QrCodeSvgProps {
   className?: string
 }
 
+/**
+ * Renders a real, ISO/IEC 18004-compliant QR code as an SVG.
+ * Uses the official 'qrcode' package (spec-compliant data encoding & Reed-Solomon error correction).
+ * The output is scannable by any standard QR reader / camera.
+ */
 export function QrCodeSvg({ value, size = 180, className = '' }: QrCodeSvgProps) {
-  const matrix = React.useMemo(() => generateQrMatrix(value), [value])
-  const moduleCount = matrix.length
-  const cellSize = size / (moduleCount + 2) // padding of 1 on each side
+  const qr = React.useMemo(() => {
+    try {
+      if (!value) return null
+      return QRCode.create(value, { errorCorrectionLevel: 'M' })
+    } catch {
+      return null
+    }
+  }, [value])
+
+  if (!qr) {
+    return (
+      <div
+        className={`bg-white rounded-2xl flex items-center justify-center text-xs text-red-400 p-2 ${className}`}
+        style={{ width: size, height: size }}
+      >
+        QR Error
+      </div>
+    )
+  }
+
+  const moduleCount = qr.modules.size
+  // Quiet zone = 4 modules on each side (ISO spec)
+  const totalModules = moduleCount + 8
+  const cellSize = size / totalModules
+  const offset = 4 * cellSize // quiet zone offset
+
+  const cells: { r: number; c: number }[] = []
+  for (let r = 0; r < moduleCount; r++) {
+    for (let c = 0; c < moduleCount; c++) {
+      if (qr.modules.get(r, c)) {
+        cells.push({ r, c })
+      }
+    }
+  }
 
   return (
     <svg
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
-      className={`bg-white rounded-2xl p-2 ${className}`}
+      className={`bg-white rounded-2xl ${className}`}
       xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-label="QR Code"
     >
-      {matrix.map((row, r) =>
-        row.map((cell, c) =>
-          cell ? (
-            <rect
-              key={`${r}-${c}`}
-              x={(c + 1) * cellSize}
-              y={(r + 1) * cellSize}
-              width={cellSize + 0.2}
-              height={cellSize + 0.2}
-              fill="#062F16"
-              rx={cellSize * 0.15}
-            />
-          ) : null
-        )
-      )}
+      {/* White quiet zone background */}
+      <rect width={size} height={size} fill="white" rx={12} />
+      {cells.map(({ r, c }) => (
+        <rect
+          key={`${r}-${c}`}
+          x={offset + c * cellSize}
+          y={offset + r * cellSize}
+          width={cellSize + 0.3}
+          height={cellSize + 0.3}
+          fill="#062F16"
+        />
+      ))}
     </svg>
   )
 }

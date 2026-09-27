@@ -156,6 +156,9 @@ class User(Base):
     state_of_residence:    Mapped[str | None]   = mapped_column(String(50), nullable=True)
     referral_code:         Mapped[str | None]   = mapped_column(String(20), unique=True, nullable=True)
     commission_balance_kobo: Mapped[int]        = mapped_column(default=0, server_default="0")
+    commission_held_kobo:    Mapped[int]         = mapped_column(default=0, server_default="0")  # held pending dispute
+    commission_debt_kobo:    Mapped[int]         = mapped_column(default=0, server_default="0")  # owed from reversed commission
+
 
     @property
     def has_withdrawal_password(self) -> bool:

@@ -18,7 +18,8 @@ from app.core.database import get_db
 from app.core.dependencies import ServiceWorkerOnly, DirectorOnly, DirectorOrAdmin, get_current_user
 from app.core.security import hash_password
 from app.models.user import User, UserRole, UserStatus
-from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus
+from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus, CommissionStatus
+from app.models.dispute import Dispute
 from app.models.service_worker_withdrawal import ServiceWorkerWithdrawal, SWWithdrawalStatus
 from app.services import job_pool_service
 from app.utils.audit import log_action
@@ -143,6 +144,8 @@ def _serialize_job(
         "worker_additional_info": job.worker_additional_info,
         "worker_result_file_url": job.worker_result_file_url,
         "worker_commission_kobo": job.worker_commission_kobo,
+        "commission_status": job.commission_status.value if hasattr(getattr(job, "commission_status", None), "value") else str(getattr(job, "commission_status", "cleared")),
+        "dispute_id": str(job.dispute_id) if getattr(job, "dispute_id", None) else None,
         "created_at": job.created_at.isoformat(),
         "updated_at": job.updated_at.isoformat() if job.updated_at else None,
     }
@@ -478,6 +481,8 @@ async def get_earnings_summary(
 
     return {
         "commission_balance_kobo": worker.commission_balance_kobo if worker else 0,
+        "commission_held_kobo": worker.commission_held_kobo if worker else 0,
+        "commission_debt_kobo": worker.commission_debt_kobo if worker else 0,
         "lifetime_earned_kobo": lifetime,
         "paid_out_kobo": paid_out,
         "jobs_completed": completed_count,
@@ -715,8 +720,11 @@ async def list_all_jobs(
     """Director: list all manual service requests with optional filters."""
     from sqlalchemy import func as sqlfunc
     q = select(ManualServiceRequest)
+    is_disputed = bool(job_status and job_status.lower() == "disputed")
     status_filter = None
-    if job_status and job_status.lower() != "all":
+    if is_disputed:
+        q = q.where(ManualServiceRequest.dispute_id.isnot(None))
+    elif job_status and job_status.lower() != "all":
         status_map = {
             "pending": ManualServiceStatus.PENDING,
             "in_progress": ManualServiceStatus.PROCESSING,
@@ -724,13 +732,12 @@ async def list_all_jobs(
             "completed": ManualServiceStatus.SUCCESSFUL,
             "successful": ManualServiceStatus.SUCCESSFUL,
             "failed": ManualServiceStatus.FAILED,
-            "disputed": ManualServiceStatus.FAILED,
             "rejected": ManualServiceStatus.FAILED,
         }
         status_filter = status_map.get(job_status.lower())
+        if status_filter:
+            q = q.where(ManualServiceRequest.status == status_filter)
 
-    if status_filter:
-        q = q.where(ManualServiceRequest.status == status_filter)
     if category and category.lower() != "all":
         q = q.where(ManualServiceRequest.service_category == category)
     if pool_type == "referred":
@@ -741,7 +748,9 @@ async def list_all_jobs(
     q = q.order_by(ManualServiceRequest.created_at.desc())
 
     total_q = select(sqlfunc.count()).select_from(ManualServiceRequest)
-    if status_filter:
+    if is_disputed:
+        total_q = total_q.where(ManualServiceRequest.dispute_id.isnot(None))
+    elif status_filter:
         total_q = total_q.where(ManualServiceRequest.status == status_filter)
     if category and category.lower() != "all":
         total_q = total_q.where(ManualServiceRequest.service_category == category)
@@ -754,12 +763,28 @@ async def list_all_jobs(
 
     offset = (page - 1) * page_size
     rows = (await db.scalars(q.offset(offset).limit(page_size))).all()
+
+    # Pre-load dispute details for any jobs that have dispute_id
+    dispute_ids = [job.dispute_id for job in rows if getattr(job, "dispute_id", None)]
+    disputes_map = {}
+    if dispute_ids:
+        d_rows = (await db.scalars(select(Dispute).where(Dispute.id.in_(dispute_ids)))).all()
+        disputes_map = {d.id: d for d in d_rows}
+
     serialized = []
     for job in rows:
         await db.refresh(job, ["customer", "claimed_by", "referred_worker"])
         d = _serialize_job(job)
         d["worker_name"] = job.claimed_by.full_name if job.claimed_by else None
         d["referred_worker_name"] = job.referred_worker.full_name if job.referred_worker else None
+
+        disp = disputes_map.get(job.dispute_id) if job.dispute_id else None
+        if disp:
+            d["dispute_id"] = str(disp.id)
+            d["dispute_status"] = disp.status.value if hasattr(disp.status, "value") else str(disp.status)
+            d["dispute_created_at"] = disp.created_at.isoformat() if disp.created_at else None
+        d["commission_held_kobo"] = job.worker_commission_kobo if (getattr(job, "commission_status", None) == CommissionStatus.HELD) else 0
+
         serialized.append(d)
     return {"data": serialized, "total": total, "page": page, "page_size": page_size}
 

@@ -14,6 +14,12 @@ class ManualServiceStatus(str, enum.Enum):
     FAILED     = "failed"
 
 
+class CommissionStatus(str, enum.Enum):
+    CLEARED  = "cleared"   # commission credited normally, no active hold
+    HELD     = "held"      # dispute active, commission moved to held balance
+    REVERSED = "reversed"  # dispute resolved against worker, commission forfeited
+
+
 class ManualServiceRequest(Base):
     """
     A customer/officer-submitted manual service request that enters the open
@@ -68,6 +74,10 @@ class ManualServiceRequest(Base):
 
     # Commission awarded upon successful completion
     worker_commission_kobo: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    commission_status: Mapped[CommissionStatus] = mapped_column(
+        Enum(CommissionStatus, name="commission_status", values_callable=lambda x: [e.value for e in x]),
+        nullable=False, default=CommissionStatus.CLEARED, server_default="cleared",
+    )
 
     # Linked dispute (nullable FK — set when customer disputes this service)
     dispute_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)

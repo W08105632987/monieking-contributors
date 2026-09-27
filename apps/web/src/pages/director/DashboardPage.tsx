@@ -187,7 +187,9 @@ export default function DirectorDashboardPage() {
         </motion.div>
 
         {/* Promo banners */}
-        <PromoBannerCarousel />
+        <motion.div custom={0} variants={fadeUp} initial="hidden" animate="show">
+          <PromoBannerCarousel />
+        </motion.div>
 
         {/* Urgent alert */}
         {urgent.length > 0 && (

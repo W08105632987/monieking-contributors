@@ -37,3 +37,5 @@ class PromoBanner(Base):
     target_roles:  Mapped[str]       = mapped_column(String(200), default="all")
     created_by:    Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at:    Mapped[datetime]  = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    impressions:   Mapped[int]       = mapped_column(Integer, default=0, server_default="0")
+    clicks:        Mapped[int]       = mapped_column(Integer, default=0, server_default="0")

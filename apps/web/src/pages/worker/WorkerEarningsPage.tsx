@@ -135,6 +135,23 @@ export default function WorkerEarningsPage() {
             {formatNaira(commissionBalanceKobo)}
           </div>
 
+          {((summary?.commission_held_kobo ?? 0) > 0 || (summary?.commission_debt_kobo ?? 0) > 0) && (
+            <div className="bg-black/25 rounded-2xl p-2.5 space-y-1 text-xs border border-white/10">
+              {(summary?.commission_held_kobo ?? 0) > 0 && (
+                <div className="flex items-center justify-between text-amber-300">
+                  <span>Held pending dispute:</span>
+                  <span className="font-mono font-bold">{formatNaira(summary?.commission_held_kobo ?? 0)}</span>
+                </div>
+              )}
+              {(summary?.commission_debt_kobo ?? 0) > 0 && (
+                <div className="flex items-center justify-between text-red-300">
+                  <span>Owed from reversed job:</span>
+                  <span className="font-mono font-bold">- {formatNaira(summary?.commission_debt_kobo ?? 0)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quick Metrics */}
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/10 text-xs">
             <div>

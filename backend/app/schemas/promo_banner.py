@@ -45,6 +45,8 @@ class PromoBannerResponse(BaseModel):
     target_roles: str
     created_by: uuid.UUID
     created_at: datetime
+    impressions: int = 0
+    clicks: int = 0
 
     class Config:
         from_attributes = True

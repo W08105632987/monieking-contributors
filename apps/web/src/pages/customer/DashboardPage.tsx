@@ -13,6 +13,7 @@ import { useCards } from '@/hooks/useCards'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { QuickActionsGrid } from '@/components/dashboard/QuickActionsGrid'
 import { CardCarousel } from '@/components/dashboard/CardCarousel'
+import { PromoBannerCarousel } from '@/components/dashboard/PromoBannerCarousel'
 import { Badge } from '@/components/ui/Badge'
 import { SkeletonCard, Skeleton } from '@/components/ui/Skeleton'
 import { formatNaira, formatDate, copyToClipboard } from '@/lib/utils'
@@ -160,7 +161,10 @@ export default function DashboardPage() {
           </div>
         </motion.div>
 
-        {/* ── Quick actions — replaces the old stat cards + promo carousel ── */}
+        {/* ── Promo banners ── */}
+        <PromoBannerCarousel />
+
+        {/* ── Quick actions ── */}
         <QuickActionsGrid />
 
         {/* ── My cards ── */}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -54,6 +55,11 @@ interface JobOverview {
   completed_at?: string | null
   worker_commission_kobo: number
   worker_result_file_url?: string | null
+  dispute_id?: string | null
+  dispute_status?: string | null
+  dispute_created_at?: string | null
+  commission_status?: string | null
+  commission_held_kobo?: number | null
   created_at: string
 }
 
@@ -71,6 +77,7 @@ interface PayoutRequest {
 }
 
 export default function ServiceWorkersPage() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'workers' | 'jobs' | 'payouts'>('workers')
 
@@ -612,16 +619,16 @@ export default function ServiceWorkersPage() {
                           </span>
                           <span
                             className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                              job.status === 'completed'
+                              job.dispute_id
+                                ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
+                                : job.status === 'completed'
                                 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                                 : job.status === 'in_progress'
                                 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                : job.status === 'disputed'
-                                ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
                                 : 'bg-slate-100 text-slate-800 dark:bg-night-700 dark:text-night-300'
                             }`}
                           >
-                            {job.status.replace('_', ' ')}
+                            {job.dispute_id ? `Disputed: ${job.dispute_status || 'active'}` : job.status.replace('_', ' ')}
                           </span>
                           {job.referred_worker_name && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
@@ -648,6 +655,28 @@ export default function ServiceWorkersPage() {
                         </span>
                       </div>
                     </div>
+
+                    {job.dispute_id && (
+                      <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                        <div>
+                          <span className="font-bold text-purple-900 dark:text-purple-200 block">
+                            Dispute #{job.dispute_id.slice(0, 8)} · Status: <span className="uppercase">{job.dispute_status || 'Open'}</span>
+                          </span>
+                          {job.commission_held_kobo ? (
+                            <span className="text-[11px] text-purple-700 dark:text-purple-300">
+                              Commission held: {formatNaira(job.commission_held_kobo)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <button
+                          onClick={() => navigate(`/disputes/${job.dispute_id}`)}
+                          className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs px-3 py-1.5 rounded-lg active:scale-95 transition-all shadow-sm flex items-center gap-1"
+                        >
+                          <span>Open Dispute</span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
 
                     <div className="pt-2 border-t border-green-100 dark:border-night-700 flex items-center justify-between text-xs text-green-700 dark:text-night-400">
                       <div>

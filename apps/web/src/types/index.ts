@@ -296,6 +296,8 @@ export interface PromoBanner {
   target_roles: string
   created_by: string
   created_at: string
+  impressions: number
+  clicks: number
 }
 
 // ─── Director portal: customer overview ──────────────────────────
@@ -424,14 +426,28 @@ export const DISPUTE_REASON_LABEL: Record<string, string> = {
 
 export interface DisputeMessage {
   id: string
-  sender_id: string
-  sender_name: string
+  sender_id?: string | null
+  sender_name?: string
+  sender_role?: string
   message: string
+  is_internal?: boolean
   attachment_url?: string | null
   attachment_name?: string | null
   attachment_size?: number | null
   read_at: string | null
   created_at: string
+}
+
+export interface DisputeJobContext {
+  customer_name: string
+  service_category: string
+  service_type: string
+  worker_name?: string | null
+  ongoing_since: string
+  job_status: string
+  worker_remarks?: string | null
+  commission_kobo: number
+  commission_status: string
 }
 
 export interface Dispute {
@@ -459,6 +475,7 @@ export interface Dispute {
 }
 
 export interface DisputeDetail extends Dispute {
+  job_context?: DisputeJobContext | null
   messages: DisputeMessage[]
 }
 

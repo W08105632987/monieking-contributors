@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -82,6 +82,58 @@ async def update_banner(
         entity_type="promo_banner", entity_id=str(banner.id),
     )
     return banner
+
+
+@router.post("/{banner_id}/archive", status_code=200)
+async def archive_banner(
+    banner_id: uuid.UUID,
+    director: DirectorOnly,
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-delete: marks is_active=False instead of hard-deleting, preserving analytics history."""
+    result = await db.execute(select(PromoBanner).where(PromoBanner.id == banner_id))
+    banner = result.scalar_one_or_none()
+    if not banner:
+        raise HTTPException(status_code=404, detail="Promo banner not found")
+
+    banner.is_active = False
+    await db.flush()
+
+    await log_action(
+        db, actor_id=director.id, action="promo_banner.archived",
+        entity_type="promo_banner", entity_id=str(banner_id),
+    )
+    return {"message": "Promo banner archived"}
+
+
+@router.post("/{banner_id}/impression", status_code=204)
+async def track_banner_impression(
+    banner_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Records an impression (carousel render) on a promo banner."""
+    await db.execute(
+        update(PromoBanner)
+        .where(PromoBanner.id == banner_id)
+        .values(impressions=PromoBanner.impressions + 1)
+    )
+    await db.flush()
+
+
+@router.post("/{banner_id}/click", status_code=204)
+async def track_banner_click(
+    banner_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Records a click/tap event on a banner."""
+    await db.execute(
+        update(PromoBanner)
+        .where(PromoBanner.id == banner_id)
+        .values(clicks=PromoBanner.clicks + 1)
+    )
+    await db.flush()
 
 
 @router.delete("/{banner_id}", status_code=200)

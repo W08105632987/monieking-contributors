@@ -6,6 +6,19 @@ import { ChevronRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { PromoBanner } from '@/types'
 
+/** Skeleton shown while banners are loading — reserves exactly the same height
+ *  so downstream content doesn't jump when the real banner appears. */
+function BannerSkeleton() {
+  return (
+    <div className="mb-4">
+      <div
+        className="w-full rounded-2xl animate-pulse bg-green-100 dark:bg-night-600"
+        style={{ minHeight: 108 }}
+      />
+    </div>
+  )
+}
+
 const AUTO_ADVANCE_MS = 10_000
 const SWIPE_THRESHOLD_PX = 40
 
@@ -22,7 +35,7 @@ export function PromoBannerCarousel() {
   const touchDeltaX = useRef(0)
   const [isDragging, setIsDragging] = useState(false)
 
-  const { data: banners = [] } = useQuery({
+  const { data: banners = [], isLoading } = useQuery({
     queryKey: ['promo-banners-active'],
     queryFn: async () => {
       const { data } = await api.get<PromoBanner[]>('/promo-banners/active')
@@ -44,20 +57,35 @@ export function PromoBannerCarousel() {
     }, AUTO_ADVANCE_MS)
   }
 
+  const viewedBannersRef = useRef<Set<string>>(new Set())
+
   useEffect(() => {
     restartTimer()
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [banners.length])
 
-  if (banners.length === 0) return null
-
   const banner = banners[index]
+
+  // Fire impression event when the displayed banner changes (deduped per session)
+  useEffect(() => {
+    if (!banner?.id) return
+    if (viewedBannersRef.current.has(banner.id)) return
+    viewedBannersRef.current.add(banner.id)
+    api.post(`/promo-banners/${banner.id}/impression`).catch(() => {})
+  }, [banner?.id])
+
+  // While the query is pending show a skeleton so nothing jumps
+  if (isLoading) return <BannerSkeleton />
+  // If the query resolved with zero banners, render nothing
+  if (banners.length === 0 || !banner) return null
 
   const handleTap = () => {
     if (isDragging) return
     if (banner.link_type === 'internal_route' && banner.link_target) {
+      api.post(`/promo-banners/${banner.id}/click`).catch(() => {})
       navigate(banner.link_target)
     } else if (banner.link_type === 'external_url' && banner.link_target) {
+      api.post(`/promo-banners/${banner.id}/click`).catch(() => {})
       window.open(banner.link_target, '_blank')
     }
   }
@@ -87,7 +115,12 @@ export function PromoBannerCarousel() {
   }
 
   return (
-    <div className="mb-4">
+    <motion.div
+      className="mb-4"
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+    >
       <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         <AnimatePresence mode="wait">
           <motion.button
@@ -153,6 +186,6 @@ export function PromoBannerCarousel() {
           100% { background-position: -50% -50%; }
         }
       `}</style>
-    </div>
+    </motion.div>
   )
 }

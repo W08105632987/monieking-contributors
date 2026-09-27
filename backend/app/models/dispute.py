@@ -8,24 +8,32 @@ from app.core.database import Base
 
 
 class DisputeEntityType(str, enum.Enum):
-    WALLET_TRANSACTION = "wallet_transaction"
-    WITHDRAWAL         = "withdrawal"
+    WALLET_TRANSACTION      = "wallet_transaction"
+    WITHDRAWAL              = "withdrawal"
+    MANUAL_SERVICE_REQUEST  = "manual_service_request"   # ← 4.1.3 fix
 
 
 class DisputeStatus(str, enum.Enum):
-    OPEN          = "open"           # sitting with an officer, or unclaimed in the director queue
-    UNDER_REVIEW  = "under_review"    # officer/director has posted at least one reply
-    ESCALATED     = "escalated"       # customer disagreed with an officer's resolution — back in the director queue
-    RESOLVED      = "resolved"        # final — director resolutions are final, officer resolutions can still be escalated
+    OPEN          = "open"           # sitting with an officer/worker, or unclaimed in the director queue
+    UNDER_REVIEW  = "under_review"   # officer/director has posted at least one reply
+    ESCALATED     = "escalated"      # customer disagreed with resolution — back in the director queue
+    RESOLVED      = "resolved"       # final — director resolutions are final, officer/worker resolutions can still be escalated
 
 
 class DisputeReason(str, enum.Enum):
-    NOT_MINE          = "not_mine"           # "I didn't make/request this"
-    AMOUNT_WRONG      = "amount_wrong"
-    DUPLICATE         = "duplicate"
+    # Existing (wallet/withdrawal disputes)
+    NOT_MINE           = "not_mine"
+    AMOUNT_WRONG       = "amount_wrong"
+    DUPLICATE          = "duplicate"
     MONEY_NOT_RECEIVED = "money_not_received"
-    REJECTED_IN_ERROR = "rejected_in_error"
-    OTHER             = "other"
+    REJECTED_IN_ERROR  = "rejected_in_error"
+    OTHER              = "other"
+    # Manual service dispute reasons (4.1.7)
+    SERVICE_NOT_COMPLETED_CORRECTLY = "service_not_completed_correctly"
+    CUSTOMER_INFO_INCORRECT         = "customer_info_incorrect"
+    PORTAL_UNAVAILABLE              = "portal_unavailable"
+    COMMISSION_DISPUTE              = "commission_dispute"
+    COMMUNICATION_ISSUE             = "communication_issue"
 
 
 class Dispute(Base):
@@ -40,8 +48,8 @@ class Dispute(Base):
         nullable=False,
     )
     # Not a real FK on purpose — entity_type decides which table entity_id
-    # points into (wallet_transactions.id or withdrawals.id), and we never
-    # want a dispute to disappear if the underlying row is ever deleted.
+    # points into, and we never want a dispute to disappear if the underlying
+    # row is deleted.
     entity_id:   Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
     reason:      Mapped[DisputeReason] = mapped_column(
@@ -54,14 +62,9 @@ class Dispute(Base):
         default=DisputeStatus.OPEN, nullable=False,
     )
 
-    # NULL means "sitting in the open director queue" — either the
-    # customer was self-registered with no zone officer, or the dispute
-    # was escalated and dropped back into the queue for any director to
-    # claim. Mirrors Withdrawal.claimed_by_director_id's claim pattern.
+    # NULL means "sitting in the open director queue"
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
-    # Snapshot of the customer's zone at the time the dispute was raised —
-    # kept even if they're later reassigned, purely for record-keeping.
     zone_id:     Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("zones.id", ondelete="SET NULL"), nullable=True)
 
     resolution_summary: Mapped[str | None] = mapped_column(Text)
@@ -104,10 +107,13 @@ class DisputeMessage(Base):
     message:    Mapped[str] = mapped_column(Text, nullable=False)
     read_at:    Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # File attachment — see migration 036
+    # File attachment
     attachment_url:  Mapped[str | None] = mapped_column(Text, nullable=True)
     attachment_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     attachment_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Internal notes (4.1.10) — hidden from customers
+    is_internal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

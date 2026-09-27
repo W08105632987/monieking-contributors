@@ -6,7 +6,7 @@ import {
   X, FileText, ExternalLink, AlertTriangle
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { cn, formatDateTime } from '@/lib/utils'
+import { cn, formatDateTime, formatNaira } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { Spinner } from '@/components/ui/Spinner'
 import toast from 'react-hot-toast'
@@ -30,6 +30,8 @@ export default function DisputeDetailPage() {
 
   const [message, setMessage] = useState('')
   const [resolutionNote, setResolutionNote] = useState('')
+  const [inWorkerFavor, setInWorkerFavor] = useState(true)
+  const [isInternalNote, setIsInternalNote] = useState(false)
   const [showResolveBox, setShowResolveBox] = useState(false)
   const [showEscalateBox, setShowEscalateBox] = useState(false)
   const [escalateReason, setEscalateReason] = useState('')
@@ -130,10 +132,14 @@ export default function DisputeDetailPage() {
         payload.attachment_name = currentAttachment.name
         payload.attachment_size = currentAttachment.size
       }
+      if (isInternalNote && !isOwner) {
+        payload.is_internal = true
+      }
 
       const { data } = await api.post<DisputeDetail>(`/disputes/${disputeId}/messages`, payload)
       qc.setQueryData(['dispute', disputeId], data)
       setPending(p => p.filter(m => m.localId !== localId))
+      setIsInternalNote(false)
       qc.invalidateQueries({ queryKey: ['my-disputes'] })
       qc.invalidateQueries({ queryKey: ['worker-disputes'] })
     } catch (err: any) {
@@ -159,7 +165,10 @@ export default function DisputeDetailPage() {
     if (!resolutionNote.trim()) { toast.error('Add a resolution summary'); return }
     setBusy(true)
     try {
-      await api.post(`/disputes/${disputeId}/resolve`, { resolution_summary: resolutionNote })
+      await api.post(`/disputes/${disputeId}/resolve`, {
+        resolution_summary: resolutionNote,
+        in_worker_favor: inWorkerFavor,
+      })
       toast.success('Dispute resolved')
       setShowResolveBox(false)
       setResolutionNote('')
@@ -238,6 +247,64 @@ export default function DisputeDetailPage() {
 
       {/* Chat scroll area */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+        {/* 4.2 Director Context Card */}
+        {dispute.job_context && (
+          <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-200 dark:border-night-600 p-4 shadow-sm mb-3 space-y-2.5">
+            <div className="flex items-center justify-between pb-2 border-b border-green-100 dark:border-night-600">
+              <span className="text-xs font-bold uppercase tracking-wider text-green-700 dark:text-night-200">
+                Service Request Context
+              </span>
+              <span className="text-[11px] text-green-600 dark:text-night-400">
+                Ongoing: <strong className="text-green-900 dark:text-white font-semibold">{dispute.job_context.ongoing_since}</strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-green-500 dark:text-night-400 block text-[10px] uppercase font-bold">Customer</span>
+                <span className="font-semibold text-green-900 dark:text-white">{dispute.job_context.customer_name}</span>
+              </div>
+              <div>
+                <span className="text-green-500 dark:text-night-400 block text-[10px] uppercase font-bold">Service Disputed</span>
+                <span className="font-semibold text-green-900 dark:text-white capitalize">
+                  {dispute.job_context.service_category.replace(/_/g, ' ')} · {dispute.job_context.service_type}
+                </span>
+              </div>
+              <div>
+                <span className="text-green-500 dark:text-night-400 block text-[10px] uppercase font-bold">Assigned Worker</span>
+                <span className="font-semibold text-green-900 dark:text-white">
+                  {dispute.job_context.worker_name || 'Unassigned / in pool'}
+                </span>
+              </div>
+              <div>
+                <span className="text-green-500 dark:text-night-400 block text-[10px] uppercase font-bold">Outcome & Commission</span>
+                <span className="font-semibold text-green-900 dark:text-white">
+                  {formatNaira(dispute.job_context.commission_kobo)}
+                  <span className={cn(
+                    'ml-1.5 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold',
+                    dispute.job_context.commission_status === 'held' ? 'bg-amber-100 text-amber-800' :
+                    dispute.job_context.commission_status === 'reversed' ? 'bg-red-100 text-red-800' :
+                    'bg-emerald-100 text-emerald-800'
+                  )}>
+                    {dispute.job_context.commission_status}
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            {dispute.job_context.worker_remarks && (
+              <div className="pt-2 border-t border-green-50 dark:border-night-600 text-xs">
+                <span className="text-green-500 dark:text-night-400 text-[10px] uppercase font-bold block">
+                  Worker's Completion Remarks
+                </span>
+                <p className="text-green-800 dark:text-night-200 mt-0.5 italic bg-green-50/50 dark:bg-night-800 p-2 rounded-xl">
+                  "{dispute.job_context.worker_remarks}"
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {dispute.is_escalated && (
           <div className="bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-200 text-xs font-semibold rounded-2xl p-3 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-purple-600" />
@@ -346,6 +413,31 @@ export default function DisputeDetailPage() {
             rows={3}
             className="w-full rounded-xl border-2 border-green-100 dark:border-night-500 bg-white dark:bg-night-700 px-4 py-3 text-sm text-green-900 dark:text-white"
           />
+          {dispute.service_request_id && (isDirector || user?.role === 'officer') && (
+            <div className="bg-green-50 dark:bg-night-600 p-2.5 rounded-xl space-y-1 text-xs">
+              <span className="font-bold text-green-900 dark:text-white block">Commission Resolution:</span>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-1.5 cursor-pointer font-medium text-green-800 dark:text-night-100">
+                  <input
+                    type="radio"
+                    name="favor"
+                    checked={inWorkerFavor}
+                    onChange={() => setInWorkerFavor(true)}
+                  />
+                  <span>Worker's favor (release hold)</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer font-medium text-red-700 dark:text-red-400">
+                  <input
+                    type="radio"
+                    name="favor"
+                    checked={!inWorkerFavor}
+                    onChange={() => setInWorkerFavor(false)}
+                  />
+                  <span>Against worker (forfeit hold)</span>
+                </label>
+              </div>
+            </div>
+          )}
           <button onClick={resolve} disabled={busy} className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full py-3.5 disabled:opacity-60">
             {busy ? 'Resolving…' : 'Confirm resolution'}
           </button>
@@ -355,6 +447,21 @@ export default function DisputeDetailPage() {
       {/* Reply input with file attachment button */}
       {canReply && (
         <div className="px-4 pb-6 space-y-2 shrink-0">
+          {/* Internal note toggle for staff/workers */}
+          {!isOwner && (isDirector || isWorker || user?.role === 'officer') && (
+            <div className="flex items-center justify-between px-1">
+              <label className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400 font-semibold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isInternalNote}
+                  onChange={e => setIsInternalNote(e.target.checked)}
+                  className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                />
+                <span>Internal note (hidden from customer)</span>
+              </label>
+            </div>
+          )}
+
           {/* Attachment Preview Chip */}
           {attachment && (
             <div className="flex items-center justify-between p-2 rounded-xl bg-green-100 dark:bg-night-700 text-xs text-green-900 dark:text-white border border-green-200 dark:border-night-600">
@@ -393,14 +500,20 @@ export default function DisputeDetailPage() {
               value={message}
               onChange={e => setMessage(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
-              placeholder={attachment ? 'Add message (optional)...' : 'Type a reply...'}
-              className="flex-1 rounded-full border-2 border-green-100 dark:border-night-500 bg-white dark:bg-night-700 px-4 py-3 text-sm text-green-900 dark:text-white outline-none focus:border-green-600"
+              placeholder={attachment ? 'Add message (optional)...' : isInternalNote ? 'Type an internal note...' : 'Type a reply...'}
+              className={cn(
+                'flex-1 rounded-full border-2 bg-white dark:bg-night-700 px-4 py-3 text-sm text-green-900 dark:text-white outline-none',
+                isInternalNote ? 'border-amber-400 focus:border-amber-600' : 'border-green-100 dark:border-night-500 focus:border-green-600'
+              )}
             />
 
             <button
               onClick={() => sendMessage()}
               disabled={busy || (!message.trim() && !attachment)}
-              className="w-11 h-11 bg-green-900 dark:bg-night-100 text-white dark:text-night-900 rounded-full flex items-center justify-center shrink-0 disabled:opacity-40 transition-all active:scale-95"
+              className={cn(
+                'w-11 h-11 rounded-full flex items-center justify-center shrink-0 disabled:opacity-40 transition-all active:scale-95 text-white',
+                isInternalNote ? 'bg-amber-600 hover:bg-amber-700' : 'bg-green-900 dark:bg-night-100 dark:text-night-900'
+              )}
             >
               <Send className="w-4 h-4" />
             </button>
@@ -418,12 +531,21 @@ function MessageBubble({ m, isMine }: { m: DisputeMessage; isMine: boolean }) {
     <div
       className={cn(
         'max-w-[85%] rounded-2xl px-4 py-3 space-y-1.5',
-        isMine
+        m.is_internal
+          ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100 border-2 border-amber-300 dark:border-amber-700 ml-auto'
+          : isMine
           ? 'ml-auto bg-green-900 dark:bg-night-100 text-white dark:text-night-900'
           : 'bg-white dark:bg-night-700 text-green-900 dark:text-white border border-green-100 dark:border-night-500'
       )}
     >
-      <p className="text-xs font-bold opacity-70">{m.sender_name}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-bold opacity-70">{m.sender_name}</p>
+        {m.is_internal && (
+          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100">
+            Internal Note
+          </span>
+        )}
+      </div>
       {m.message && <p className="text-sm leading-relaxed">{m.message}</p>}
 
       {/* Attachment rendering */}

@@ -18,7 +18,7 @@ from typing import Any
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus
+from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus, CommissionStatus
 from app.models.service_worker_withdrawal import ServiceWorkerWithdrawal, SWWithdrawalStatus
 from app.models.job_pool_event import JobPoolEvent
 from app.models.notification import NotificationType
@@ -307,13 +307,21 @@ async def resolve_job(
     job.worker_additional_info = worker_additional_info
     job.worker_result_file_url = worker_result_file_url
     job.worker_commission_kobo = commission_kobo
+    job.commission_status     = CommissionStatus.CLEARED if commission_kobo > 0 else CommissionStatus.CLEARED
     job.completed_at          = now
 
-    # Credit commission to worker balance
+    # Credit commission to worker balance (offsetting active debt first per 4.4.5)
     if commission_kobo > 0:
         worker = await db.get(User, worker_id)
         if worker:
-            worker.commission_balance_kobo = (worker.commission_balance_kobo or 0) + commission_kobo
+            debt = worker.commission_debt_kobo or 0
+            if debt > 0:
+                repay = min(debt, commission_kobo)
+                worker.commission_debt_kobo = debt - repay
+                commission_kobo_surplus = commission_kobo - repay
+            else:
+                commission_kobo_surplus = commission_kobo
+            worker.commission_balance_kobo = (worker.commission_balance_kobo or 0) + commission_kobo_surplus
 
     # Record audit event
     event = JobPoolEvent(

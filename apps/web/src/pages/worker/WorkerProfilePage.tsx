@@ -470,6 +470,13 @@ export default function WorkerProfilePage() {
               <p className="text-2xl font-black mt-0.5 text-white">
                 {formatNaira(commissionBalanceKobo)}
               </p>
+              {((summary?.commission_held_kobo ?? 0) > 0 || (summary?.commission_debt_kobo ?? 0) > 0) && (
+                <p className="text-[11px] text-amber-300 mt-1">
+                  {(summary?.commission_held_kobo ?? 0) > 0 && `${formatNaira(summary?.commission_held_kobo ?? 0)} held`}
+                  {(summary?.commission_held_kobo ?? 0) > 0 && (summary?.commission_debt_kobo ?? 0) > 0 && ' · '}
+                  {(summary?.commission_debt_kobo ?? 0) > 0 && `${formatNaira(summary?.commission_debt_kobo ?? 0)} owed`}
+                </p>
+              )}
             </div>
             <button
               onClick={() => navigate('/worker/earnings')}
