@@ -10,7 +10,6 @@ import { useNotificationsStore } from '@/store/notifications.store'
 import { useBalanceVisibility } from '@/hooks/useBalanceVisibility'
 import { useWallet } from '@/hooks/useWallet'
 import { useCards } from '@/hooks/useCards'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { QuickActionsGrid } from '@/components/dashboard/QuickActionsGrid'
 import { CardCarousel } from '@/components/dashboard/CardCarousel'
 import { PromoBannerCarousel } from '@/components/dashboard/PromoBannerCarousel'
@@ -29,8 +28,8 @@ const fadeUp = {
 
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const { user } = useAuthStore()
-  const { unreadCount } = useNotificationsStore()
+  const user = useAuthStore((s) => s.user)
+  const unreadCount = useNotificationsStore((s) => s.unreadCount)
   const { visible: showBalance, toggle: toggleBalance } = useBalanceVisibility(user?.id)
   const { wallet, isLoading: walletLoading } = useWallet()
   const { cards, isLoading: cardsLoading } = useCards()
@@ -303,8 +302,6 @@ export default function DashboardPage() {
           </motion.div>
         )}
       </div>
-
-      <BottomNav />
     </div>
   )
 }

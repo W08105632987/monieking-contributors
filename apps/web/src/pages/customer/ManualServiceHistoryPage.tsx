@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ChevronRight, FileText } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatNaira, cn, formatServiceCategory, formatServiceType } from '@/lib/utils'
-import { BottomNav } from '@/components/layout/BottomNav'
 
 interface ManualServiceRequestItem {
   id: string
@@ -155,7 +154,6 @@ export default function ManualServiceHistoryPage() {
         )}
       </main>
 
-      <BottomNav />
     </div>
   )
 }

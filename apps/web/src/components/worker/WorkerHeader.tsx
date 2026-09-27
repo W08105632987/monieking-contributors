@@ -12,8 +12,8 @@ interface WorkerHeaderProps {
 
 export function WorkerHeader({ title, subtitle }: WorkerHeaderProps) {
   const navigate = useNavigate()
-  const { user } = useAuthStore()
-  const { unreadCount } = useNotificationsStore()
+  const user = useAuthStore((s) => s.user)
+  const unreadCount = useNotificationsStore((s) => s.unreadCount)
 
   return (
     <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800 border-b border-green-100/60 dark:border-night-700/60 sticky top-0 z-30">

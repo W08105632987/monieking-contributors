@@ -10,7 +10,6 @@ import {
 import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'
 import { api } from '@/lib/api'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
 import { KycSection } from '@/components/settings/KycSection'
@@ -377,8 +376,6 @@ export default function OfficerProfilePage() {
           MonieKing Contributors · Officer Portal
         </p>
       </div>
-
-      <BottomNav />
 
       <AnimatePresence>
         {showWithdrawSheet && <ChangeWithdrawPasswordSheet onClose={() => setShowWithdrawSheet(false)} />}

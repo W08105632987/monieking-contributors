@@ -4,11 +4,17 @@ import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { useNotificationsStore } from '@/store/notifications.store'
+import { preloadRoleRoutes } from '@/lib/preloadRoutes'
 import type { AuthUser, AppNotification } from '@/types'
 
 export function useAuth() {
-  const { user, isLoading, isAuthenticated, setUser, setLoading, logout } = useAuthStore()
-  const { setNotifications } = useNotificationsStore()
+  const user = useAuthStore((s) => s.user)
+  const isLoading = useAuthStore((s) => s.isLoading)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const setUser = useAuthStore((s) => s.setUser)
+  const setLoading = useAuthStore((s) => s.setLoading)
+  const logout = useAuthStore((s) => s.logout)
+  const setNotifications = useNotificationsStore((s) => s.setNotifications)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -18,14 +24,6 @@ export function useAuth() {
     // withCredentials in api.ts); if it's missing, expired, or invalid,
     // this 401s and fetchProfile's catch handles it below.
     fetchProfile()
-
-    // Keep the bell badge fresh while the app is open, not just when the
-    // Notifications page happens to be mounted
-    const pollId = setInterval(() => {
-      if (useAuthStore.getState().isAuthenticated) fetchNotifications()
-    }, 30_000)
-
-    return () => clearInterval(pollId)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchProfile(retriesLeft = 2) {
@@ -35,6 +33,7 @@ export function useAuth() {
         ? (data.role as any).value ?? 'customer'
         : data.role
       setUser({ ...data, role })
+      preloadRoleRoutes(role)
       fetchNotifications()
     } catch (err: any) {
       const status = err?.response?.status

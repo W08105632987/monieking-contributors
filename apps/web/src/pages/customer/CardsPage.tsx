@@ -5,7 +5,6 @@ import { Plus, CreditCard, ChevronRight, RotateCcw, Lock, CheckCircle, Clock } f
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useCards } from '@/hooks/useCards'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { useAuthStore } from '@/store/auth.store'
 import { formatNaira, formatDate, MONTH_NAMES } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
@@ -425,7 +424,7 @@ type Tab = 'active' | 'completed'
 // ── Main page ─────────────────────────────────────────────────────
 export default function CardsPage() {
   const navigate = useNavigate()
-  const { user } = useAuthStore()
+  const user = useAuthStore((s) => s.user)
   const { cards, isLoading } = useCards()
   const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'completed' ? 'completed' : 'active')
@@ -584,8 +583,6 @@ export default function CardsPage() {
 
         </AnimatePresence>
       </div>
-
-      <BottomNav />
 
       <AnimatePresence>
         {showCreateModal && <CreateCardModal onClose={() => setShowCreateModal(false)} />}

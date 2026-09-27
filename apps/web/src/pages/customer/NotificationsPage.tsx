@@ -11,7 +11,6 @@ import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { useNotificationsStore } from '@/store/notifications.store'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { DisputeModal } from '@/components/disputes/DisputeModal'
 import { timeAgo, formatDateTime, groupByDateBucket } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -397,8 +396,6 @@ export default function NotificationsPage() {
           </>
         )}
       </div>
-
-      <BottomNav />
 
       <AnimatePresence>
         {selectedNotif && <NotifDetailSheet notif={selectedNotif} onClose={() => setSelectedNotif(null)} />}

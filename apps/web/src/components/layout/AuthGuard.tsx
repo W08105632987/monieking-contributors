@@ -19,7 +19,9 @@ export const roleDashboard: Record<UserRole, string> = {
 }
 
 export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
-  const { user, isLoading, isAuthenticated } = useAuthStore()
+  const user = useAuthStore((s) => s.user)
+  const isLoading = useAuthStore((s) => s.isLoading)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const location = useLocation()
 
   // All portals (customer, officer, director, worker) support dark mode

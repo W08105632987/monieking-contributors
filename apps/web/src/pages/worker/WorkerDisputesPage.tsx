@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { CheckCircle2, ChevronRight, RefreshCw, ShieldAlert, MessageSquare } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import type { Dispute } from '@/types'
 
@@ -111,8 +110,6 @@ export default function WorkerDisputesPage() {
           </div>
         )}
       </main>
-
-      <BottomNav />
     </div>
   )
 }

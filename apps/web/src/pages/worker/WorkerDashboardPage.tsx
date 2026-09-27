@@ -9,7 +9,6 @@ import {
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import { ViewInfoModal, type JobDetailData } from '@/components/worker/ViewInfoModal'
 import { formatNaira, copyToClipboard, formatServiceCategory, formatServiceType } from '@/lib/utils'
@@ -808,8 +807,6 @@ export default function WorkerDashboardPage() {
         canClaim={!hasActiveJob}
         cannotClaimReason="Resolve your current active job first before claiming a new one."
       />
-
-      <BottomNav />
     </div>
   )
 }

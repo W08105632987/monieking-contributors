@@ -10,7 +10,6 @@ import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatDateTime, cn, formatServiceCategory, formatServiceType } from '@/lib/utils'
 import { fieldLabel } from '@/components/worker/ViewInfoModal'
-import { BottomNav } from '@/components/layout/BottomNav'
 
 interface ServiceRequestDetail {
   id: string
@@ -456,8 +455,6 @@ export default function ManualServiceDetailPage() {
           </div>
         )}
       </AnimatePresence>
-
-      <BottomNav />
     </div>
   )
 }

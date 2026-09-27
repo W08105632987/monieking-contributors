@@ -9,7 +9,6 @@ import {
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, copyToClipboard, formatServiceCategory, formatServiceType } from '@/lib/utils'
-import { BottomNav } from '@/components/layout/BottomNav'
 
 interface WorkerListItem {
   id: string
@@ -961,8 +960,6 @@ export default function ServiceWorkersPage() {
           </div>
         )}
       </AnimatePresence>
-
-      <BottomNav />
     </div>
   )
 }

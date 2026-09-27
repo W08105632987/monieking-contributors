@@ -9,7 +9,6 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { PromoBannerCarousel } from '@/components/dashboard/PromoBannerCarousel'
 import { CustomerStatsPanel } from '@/components/dashboard/CustomerStatsPanel'
 import { useWithdrawalRealtime } from '@/hooks/useWithdrawalRealtime'
@@ -382,8 +381,6 @@ export default function DirectorDashboardPage() {
           )}
         </motion.div>
       </div>
-
-      <BottomNav />
     </div>
   )
 }

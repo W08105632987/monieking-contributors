@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthGuard, roleDashboard } from '@/components/layout/AuthGuard'
 import { InactivityMonitor } from '@/components/layout/InactivityMonitor'
@@ -13,6 +13,9 @@ import { useAuthStore } from '@/store/auth.store'
 import { LogoLoader } from '@/components/ui/LogoLoader'
 import { SplashScreen } from '@/components/ui/SplashScreen'
 import { OnboardingCarousel } from '@/components/onboarding/OnboardingCarousel'
+import { AppLayout } from '@/components/layout/AppLayout'
+import { preloadRoleRoutes } from '@/lib/preloadRoutes'
+import { PageContentSkeleton } from '@/components/ui/PageContentSkeleton'
 
 // ── Public / marketing ──────────────────────────────────────────────
 // LandingPage.tsx still exists on disk (kept for any future standalone
@@ -101,18 +104,22 @@ const ManualServicePage         = lazy(() => import('@/pages/customer/ManualServ
 const ManualServiceHistoryPage  = lazy(() => import('@/pages/customer/ManualServiceHistoryPage'))
 const ManualServiceDetailPage   = lazy(() => import('@/pages/customer/ManualServiceDetailPage'))
 
-const PageLoader = () => (
-  <div className="min-h-dvh flex items-center justify-center bg-surface dark:bg-night-800">
-    <LogoLoader />
-  </div>
-)
-
 export default function App() {
   const { signOut } = useAuth()
   useNotificationsPoll()
-  const { isAuthenticated, isLoading: authLoading, user } = useAuthStore()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const authLoading = useAuthStore((s) => s.isLoading)
+  const user = useAuthStore((s) => s.user)
   const { isDown } = useServerHealthStore()
   const location = useLocation()
+
+  // Preload tab destinations for the authenticated role in background
+  useEffect(() => {
+    if (user?.role) {
+      preloadRoleRoutes(user.role)
+    }
+  }, [user?.role])
+
   // The full branded splash (logo reveal animation) plays once per
   // browser tab session — tracked in sessionStorage, which survives a
   // page refresh but clears when the tab/installed-PWA instance is
@@ -178,7 +185,7 @@ export default function App() {
           component's own docstring for why pre-auth pages matter here
           too. */}
       <AnalyticsTracker />
-      <Suspense fallback={<PageLoader />}>
+      <Suspense fallback={<PageContentSkeleton />}>
         <Routes>
           {/* ── Public ──
               "/" used to render LandingPage — detached (see the note
@@ -197,88 +204,89 @@ export default function App() {
           <Route path="/auth/register" element={<RegisterPage />} />
           <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/auth/location-consent" element={<AuthGuard allowedRoles={['customer']}><LocationConsentPage /></AuthGuard>} />
-
-          {/* ── Customer ── */}
-          <Route path="/customer/dashboard"     element={<AuthGuard allowedRoles={['customer']}><CustomerDashboard /></AuthGuard>} />
-          <Route path="/customer/cards"         element={<AuthGuard allowedRoles={['customer']}><CustomerCards /></AuthGuard>} />
-          <Route path="/customer/wallet"        element={<AuthGuard allowedRoles={['customer']}><CustomerWallet /></AuthGuard>} />
-          <Route path="/customer/wallet/transactions" element={<AuthGuard allowedRoles={['customer']}><CustomerTransactions /></AuthGuard>} />
-          <Route path="/customer/notifications" element={<AuthGuard allowedRoles={['customer']}><CustomerNotifications /></AuthGuard>} />
-          <Route path="/customer/profile"       element={<AuthGuard allowedRoles={['customer']}><CustomerProfile /></AuthGuard>} />
-          <Route path="/customer/cards/:cardId/contribute" element={<AuthGuard allowedRoles={['customer']}><ContributePage /></AuthGuard>} />
-          <Route path="/customer/cards/:cardId" element={<AuthGuard allowedRoles={['customer']}><CardDetailPage /></AuthGuard>} />
-          <Route path="/customer/withdrawals/new"          element={<AuthGuard allowedRoles={['customer']}><WithdrawalPage /></AuthGuard>} />
-          <Route path="/customer/disputes"      element={<AuthGuard allowedRoles={['customer']}><DisputesListPage /></AuthGuard>} />
-          <Route path="/customer/services/history" element={<AuthGuard allowedRoles={['customer']}><ServiceHistoryPage /></AuthGuard>} />
-          <Route path="/customer/services" element={<AuthGuard allowedRoles={['customer']}><ServicesPage /></AuthGuard>} />
-          <Route path="/customer/services/:serviceId/request" element={<AuthGuard allowedRoles={['customer']}><ServiceRequestFormPage /></AuthGuard>} />
-          <Route path="/customer/airtime-data" element={<AuthGuard allowedRoles={['customer']}><AirtimeDataPage /></AuthGuard>} />
-          <Route path="/customer/bill-payments" element={<AuthGuard allowedRoles={['customer']}><BillPaymentPage /></AuthGuard>} />
-          <Route path="/customer/education-payments" element={<AuthGuard allowedRoles={['customer']}><EducationPaymentsPage /></AuthGuard>} />
-          <Route path="/customer/manual-services/history" element={<AuthGuard allowedRoles={['customer']}><ManualServiceHistoryPage /></AuthGuard>} />
-          <Route path="/customer/manual-services/requests/:requestId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director']}><ManualServiceDetailPage /></AuthGuard>} />
-          <Route path="/customer/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['customer']}><ManualServicePage /></AuthGuard>} />
-
-
-          {/* ── Officer ── */}
-          <Route path="/officer/dashboard"      element={<AuthGuard allowedRoles={['officer']}><OfficerDashboard /></AuthGuard>} />
-          <Route path="/officer/customers"      element={<AuthGuard allowedRoles={['officer']}><OfficerCustomers /></AuthGuard>} />
-          <Route path="/officer/customers/:customerId" element={<AuthGuard allowedRoles={['officer']}><OfficerCustomerDetail /></AuthGuard>} />
-          <Route path="/officer/customers/:customerId/cards/:cardId" element={<AuthGuard allowedRoles={['officer']}><OfficerCardDetail /></AuthGuard>} />
-          <Route path="/officer/wallet"         element={<AuthGuard allowedRoles={['officer']}><OfficerWallet /></AuthGuard>} />
-          <Route path="/officer/wallet/transactions" element={<AuthGuard allowedRoles={['officer']}><OfficerTransactions /></AuthGuard>} />
-          <Route path="/officer/notifications"  element={<AuthGuard allowedRoles={['officer']}><OfficerNotifications /></AuthGuard>} />
-          <Route path="/officer/customer-stats" element={<AuthGuard allowedRoles={['officer']}><OfficerCustomerStats /></AuthGuard>} />
-          <Route path="/officer/profile"        element={<AuthGuard allowedRoles={['officer']}><OfficerProfile /></AuthGuard>} />
-          <Route path="/officer/disputes"       element={<AuthGuard allowedRoles={['officer']}><DisputesListPage /></AuthGuard>} />
-          <Route path="/officer/customers/:customerId/services" element={<AuthGuard allowedRoles={['officer']}><ServiceHistoryPage /></AuthGuard>} />
-          <Route path="/officer/customers/:customerId/services/all" element={<AuthGuard allowedRoles={['officer']}><ServicesPage /></AuthGuard>} />
-          <Route path="/officer/customers/:customerId/services/:serviceId/request" element={<AuthGuard allowedRoles={['officer']}><ServiceRequestFormPage /></AuthGuard>} />
-          <Route path="/officer/customers/:customerId/airtime-data" element={<AuthGuard allowedRoles={['officer']}><AirtimeDataPage /></AuthGuard>} />
-          <Route path="/officer/customers/:customerId/bill-payments" element={<AuthGuard allowedRoles={['officer']}><BillPaymentPage /></AuthGuard>} />
-          <Route path="/officer/customers/:customerId/education-payments" element={<AuthGuard allowedRoles={['officer']}><EducationPaymentsPage /></AuthGuard>} />
-          <Route path="/officer/manual-services/history" element={<AuthGuard allowedRoles={['officer']}><ManualServiceHistoryPage /></AuthGuard>} />
-          <Route path="/officer/customers/:customerId/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['officer']}><ManualServicePage /></AuthGuard>} />
-
-
-          {/* ── Director (Admin fused in) ── */}
-          <Route path="/director/dashboard"       element={<AuthGuard allowedRoles={['director']}><DirectorDashboard /></AuthGuard>} />
-          <Route path="/director/withdrawals"     element={<AuthGuard allowedRoles={['director']}><DirectorWithdrawals /></AuthGuard>} />
-          <Route path="/director/staff"           element={<AuthGuard allowedRoles={['director']}><DirectorStaff /></AuthGuard>} />
-          <Route path="/director/officers/:officerId" element={<AuthGuard allowedRoles={['director']}><DirectorOfficerDetail /></AuthGuard>} />
-          <Route path="/director/customers"       element={<AuthGuard allowedRoles={['director']}><DirectorAllCustomers /></AuthGuard>} />
-          <Route path="/director/customers/:customerId" element={<AuthGuard allowedRoles={['director']}><DirectorCustomerDetail /></AuthGuard>} />
-          <Route path="/director/settings"        element={<AuthGuard allowedRoles={['director']}><DirectorSettings /></AuthGuard>} />
-          <Route path="/director/identity-services" element={<AuthGuard allowedRoles={['director']}><DirectorIdentityServices /></AuthGuard>} />
-          <Route path="/director/instant-message" element={<AuthGuard allowedRoles={['director']}><DirectorInstantMessage /></AuthGuard>} />
-          <Route path="/director/promo-banners"   element={<AuthGuard allowedRoles={['director']}><DirectorPromoBanners /></AuthGuard>} />
-          <Route path="/director/analytics"       element={<AuthGuard allowedRoles={['director']}><DirectorAnalytics /></AuthGuard>} />
-          <Route path="/director/live-metrics"    element={<AuthGuard allowedRoles={['director']}><DirectorLiveMetrics /></AuthGuard>} />
-          <Route path="/director/system-health"   element={<AuthGuard allowedRoles={['director']}><DirectorSystemHealth /></AuthGuard>} />
-          <Route path="/director/report"          element={<AuthGuard allowedRoles={['director']}><DirectorReport /></AuthGuard>} />
-          <Route path="/director/audit-log"       element={<AuthGuard allowedRoles={['director']}><DirectorAuditLog /></AuthGuard>} />
-          <Route path="/director/broadcast"       element={<AuthGuard allowedRoles={['director']}><DirectorBroadcast /></AuthGuard>} />
-          <Route path="/director/notifications"   element={<AuthGuard allowedRoles={['director']}><DirectorNotifications /></AuthGuard>} />
-          <Route path="/director/profile"         element={<AuthGuard allowedRoles={['director']}><DirectorProfile /></AuthGuard>} />
-          <Route path="/director/more"            element={<AuthGuard allowedRoles={['director']}><DirectorMore /></AuthGuard>} />
-          <Route path="/director/disputes"        element={<AuthGuard allowedRoles={['director']}><DisputesListPage /></AuthGuard>} />
-          <Route path="/director/service-workers" element={<AuthGuard allowedRoles={['director']}><DirectorServiceWorkers /></AuthGuard>} />
-
-          {/* ── Service Worker ── */}
           <Route path="/worker/onboarding"     element={<AuthGuard allowedRoles={['service_worker']}><WorkerOnboardingPage /></AuthGuard>} />
-          <Route path="/worker/dashboard"      element={<AuthGuard allowedRoles={['service_worker']}><WorkerDashboardPage /></AuthGuard>} />
-          <Route path="/worker/my-jobs"        element={<AuthGuard allowedRoles={['service_worker']}><WorkerMyJobsPage /></AuthGuard>} />
-          <Route path="/worker/jobs"           element={<AuthGuard allowedRoles={['service_worker']}><WorkerMyJobsPage /></AuthGuard>} />
-          <Route path="/worker/earnings"       element={<AuthGuard allowedRoles={['service_worker']}><WorkerEarningsPage /></AuthGuard>} />
-          <Route path="/worker/disputes"       element={<AuthGuard allowedRoles={['service_worker']}><WorkerDisputesPage /></AuthGuard>} />
-          <Route path="/worker/profile"        element={<AuthGuard allowedRoles={['service_worker']}><WorkerProfilePage /></AuthGuard>} />
-          <Route path="/worker/notifications"  element={<AuthGuard allowedRoles={['service_worker']}><WorkerNotificationsPage /></AuthGuard>} />
 
-          {/* ── Disputes detail — shared route, all roles ── */}
-          <Route path="/disputes/:disputeId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director', 'service_worker']}><DisputeDetailPage /></AuthGuard>} />
+          {/* ── Authenticated App Layout (Persistently renders BottomNav) ── */}
+          <Route element={<AppLayout />}>
+            {/* ── Customer ── */}
+            <Route path="/customer/dashboard"     element={<AuthGuard allowedRoles={['customer']}><CustomerDashboard /></AuthGuard>} />
+            <Route path="/customer/cards"         element={<AuthGuard allowedRoles={['customer']}><CustomerCards /></AuthGuard>} />
+            <Route path="/customer/wallet"        element={<AuthGuard allowedRoles={['customer']}><CustomerWallet /></AuthGuard>} />
+            <Route path="/customer/wallet/transactions" element={<AuthGuard allowedRoles={['customer']}><CustomerTransactions /></AuthGuard>} />
+            <Route path="/customer/notifications" element={<AuthGuard allowedRoles={['customer']}><CustomerNotifications /></AuthGuard>} />
+            <Route path="/customer/profile"       element={<AuthGuard allowedRoles={['customer']}><CustomerProfile /></AuthGuard>} />
+            <Route path="/customer/cards/:cardId/contribute" element={<AuthGuard allowedRoles={['customer']}><ContributePage /></AuthGuard>} />
+            <Route path="/customer/cards/:cardId" element={<AuthGuard allowedRoles={['customer']}><CardDetailPage /></AuthGuard>} />
+            <Route path="/customer/withdrawals/new"          element={<AuthGuard allowedRoles={['customer']}><WithdrawalPage /></AuthGuard>} />
+            <Route path="/customer/disputes"      element={<AuthGuard allowedRoles={['customer']}><DisputesListPage /></AuthGuard>} />
+            <Route path="/customer/services/history" element={<AuthGuard allowedRoles={['customer']}><ServiceHistoryPage /></AuthGuard>} />
+            <Route path="/customer/services" element={<AuthGuard allowedRoles={['customer']}><ServicesPage /></AuthGuard>} />
+            <Route path="/customer/services/:serviceId/request" element={<AuthGuard allowedRoles={['customer']}><ServiceRequestFormPage /></AuthGuard>} />
+            <Route path="/customer/airtime-data" element={<AuthGuard allowedRoles={['customer']}><AirtimeDataPage /></AuthGuard>} />
+            <Route path="/customer/bill-payments" element={<AuthGuard allowedRoles={['customer']}><BillPaymentPage /></AuthGuard>} />
+            <Route path="/customer/education-payments" element={<AuthGuard allowedRoles={['customer']}><EducationPaymentsPage /></AuthGuard>} />
+            <Route path="/customer/manual-services/history" element={<AuthGuard allowedRoles={['customer']}><ManualServiceHistoryPage /></AuthGuard>} />
+            <Route path="/customer/manual-services/requests/:requestId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director']}><ManualServiceDetailPage /></AuthGuard>} />
+            <Route path="/customer/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['customer']}><ManualServicePage /></AuthGuard>} />
 
-          {/* ── Service request detail — one shared route, all three roles ── */}
-          <Route path="/services/requests/:requestId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director']}><ServiceRequestDetailPage /></AuthGuard>} />
+            {/* ── Officer ── */}
+            <Route path="/officer/dashboard"      element={<AuthGuard allowedRoles={['officer']}><OfficerDashboard /></AuthGuard>} />
+            <Route path="/officer/customers"      element={<AuthGuard allowedRoles={['officer']}><OfficerCustomers /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId" element={<AuthGuard allowedRoles={['officer']}><OfficerCustomerDetail /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/cards/:cardId" element={<AuthGuard allowedRoles={['officer']}><OfficerCardDetail /></AuthGuard>} />
+            <Route path="/officer/wallet"         element={<AuthGuard allowedRoles={['officer']}><OfficerWallet /></AuthGuard>} />
+            <Route path="/officer/wallet/transactions" element={<AuthGuard allowedRoles={['officer']}><OfficerTransactions /></AuthGuard>} />
+            <Route path="/officer/notifications"  element={<AuthGuard allowedRoles={['officer']}><OfficerNotifications /></AuthGuard>} />
+            <Route path="/officer/customer-stats" element={<AuthGuard allowedRoles={['officer']}><OfficerCustomerStats /></AuthGuard>} />
+            <Route path="/officer/profile"        element={<AuthGuard allowedRoles={['officer']}><OfficerProfile /></AuthGuard>} />
+            <Route path="/officer/disputes"       element={<AuthGuard allowedRoles={['officer']}><DisputesListPage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/services" element={<AuthGuard allowedRoles={['officer']}><ServiceHistoryPage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/services/all" element={<AuthGuard allowedRoles={['officer']}><ServicesPage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/services/:serviceId/request" element={<AuthGuard allowedRoles={['officer']}><ServiceRequestFormPage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/airtime-data" element={<AuthGuard allowedRoles={['officer']}><AirtimeDataPage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/bill-payments" element={<AuthGuard allowedRoles={['officer']}><BillPaymentPage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/education-payments" element={<AuthGuard allowedRoles={['officer']}><EducationPaymentsPage /></AuthGuard>} />
+            <Route path="/officer/manual-services/history" element={<AuthGuard allowedRoles={['officer']}><ManualServiceHistoryPage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['officer']}><ManualServicePage /></AuthGuard>} />
+
+            {/* ── Director (Admin fused in) ── */}
+            <Route path="/director/dashboard"       element={<AuthGuard allowedRoles={['director']}><DirectorDashboard /></AuthGuard>} />
+            <Route path="/director/withdrawals"     element={<AuthGuard allowedRoles={['director']}><DirectorWithdrawals /></AuthGuard>} />
+            <Route path="/director/staff"           element={<AuthGuard allowedRoles={['director']}><DirectorStaff /></AuthGuard>} />
+            <Route path="/director/officers/:officerId" element={<AuthGuard allowedRoles={['director']}><DirectorOfficerDetail /></AuthGuard>} />
+            <Route path="/director/customers"       element={<AuthGuard allowedRoles={['director']}><DirectorAllCustomers /></AuthGuard>} />
+            <Route path="/director/customers/:customerId" element={<AuthGuard allowedRoles={['director']}><DirectorCustomerDetail /></AuthGuard>} />
+            <Route path="/director/settings"        element={<AuthGuard allowedRoles={['director']}><DirectorSettings /></AuthGuard>} />
+            <Route path="/director/identity-services" element={<AuthGuard allowedRoles={['director']}><DirectorIdentityServices /></AuthGuard>} />
+            <Route path="/director/instant-message" element={<AuthGuard allowedRoles={['director']}><DirectorInstantMessage /></AuthGuard>} />
+            <Route path="/director/promo-banners"   element={<AuthGuard allowedRoles={['director']}><DirectorPromoBanners /></AuthGuard>} />
+            <Route path="/director/analytics"       element={<AuthGuard allowedRoles={['director']}><DirectorAnalytics /></AuthGuard>} />
+            <Route path="/director/live-metrics"    element={<AuthGuard allowedRoles={['director']}><DirectorLiveMetrics /></AuthGuard>} />
+            <Route path="/director/system-health"   element={<AuthGuard allowedRoles={['director']}><DirectorSystemHealth /></AuthGuard>} />
+            <Route path="/director/report"          element={<AuthGuard allowedRoles={['director']}><DirectorReport /></AuthGuard>} />
+            <Route path="/director/audit-log"       element={<AuthGuard allowedRoles={['director']}><DirectorAuditLog /></AuthGuard>} />
+            <Route path="/director/broadcast"       element={<AuthGuard allowedRoles={['director']}><DirectorBroadcast /></AuthGuard>} />
+            <Route path="/director/notifications"   element={<AuthGuard allowedRoles={['director']}><DirectorNotifications /></AuthGuard>} />
+            <Route path="/director/profile"         element={<AuthGuard allowedRoles={['director']}><DirectorProfile /></AuthGuard>} />
+            <Route path="/director/more"            element={<AuthGuard allowedRoles={['director']}><DirectorMore /></AuthGuard>} />
+            <Route path="/director/disputes"        element={<AuthGuard allowedRoles={['director']}><DisputesListPage /></AuthGuard>} />
+            <Route path="/director/service-workers" element={<AuthGuard allowedRoles={['director']}><DirectorServiceWorkers /></AuthGuard>} />
+
+            {/* ── Service Worker ── */}
+            <Route path="/worker/dashboard"      element={<AuthGuard allowedRoles={['service_worker']}><WorkerDashboardPage /></AuthGuard>} />
+            <Route path="/worker/my-jobs"        element={<AuthGuard allowedRoles={['service_worker']}><WorkerMyJobsPage /></AuthGuard>} />
+            <Route path="/worker/jobs"           element={<AuthGuard allowedRoles={['service_worker']}><WorkerMyJobsPage /></AuthGuard>} />
+            <Route path="/worker/earnings"       element={<AuthGuard allowedRoles={['service_worker']}><WorkerEarningsPage /></AuthGuard>} />
+            <Route path="/worker/disputes"       element={<AuthGuard allowedRoles={['service_worker']}><WorkerDisputesPage /></AuthGuard>} />
+            <Route path="/worker/profile"        element={<AuthGuard allowedRoles={['service_worker']}><WorkerProfilePage /></AuthGuard>} />
+            <Route path="/worker/notifications"  element={<AuthGuard allowedRoles={['service_worker']}><WorkerNotificationsPage /></AuthGuard>} />
+
+            {/* ── Disputes detail — shared route, all roles ── */}
+            <Route path="/disputes/:disputeId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director', 'service_worker']}><DisputeDetailPage /></AuthGuard>} />
+
+            {/* ── Service request detail — one shared route, all three roles ── */}
+            <Route path="/services/requests/:requestId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director']}><ServiceRequestDetailPage /></AuthGuard>} />
+          </Route>
 
           {/* ── Fallback ── */}
           <Route path="*" element={<Navigate to="/auth/login" replace />} />

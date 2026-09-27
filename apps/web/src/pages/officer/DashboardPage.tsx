@@ -13,7 +13,6 @@ import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { PromoBannerCarousel } from '@/components/dashboard/PromoBannerCarousel'
 import { CustomerStatsPanel } from '@/components/dashboard/CustomerStatsPanel'
 import { formatNaira, initials, formatDate, copyToClipboard } from '@/lib/utils'
@@ -491,8 +490,6 @@ export default function OfficerDashboardPage() {
         isOpen={showFoodScanner}
         onClose={() => setShowFoodScanner(false)}
       />
-
-      <BottomNav />
     </div>
   )
 }

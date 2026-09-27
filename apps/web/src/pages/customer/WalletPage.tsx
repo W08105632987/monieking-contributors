@@ -12,7 +12,6 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { DisputeModal } from '@/components/disputes/DisputeModal'
 import { useAuthStore } from '@/store/auth.store'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { formatNaira, formatDateTime, timeAgo, copyToClipboard } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -247,7 +246,7 @@ function KycRequiredPrompt({ onClose }: { onClose: () => void }) {
 // ── Main page ─────────────────────────────────────────────────────
 export default function WalletPage() {
   const navigate = useNavigate()
-  const { user } = useAuthStore()
+  const user = useAuthStore((s) => s.user)
   const { wallet, transactions, isLoading, refetch } = useWallet()
   const [showFundSheet, setShowFundSheet] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -486,8 +485,6 @@ export default function WalletPage() {
           </div>
         </div>
       </div>
-
-      <BottomNav />
 
       <AnimatePresence>
         {showFundSheet && <FundWalletSheet onClose={() => setShowFundSheet(false)} />}

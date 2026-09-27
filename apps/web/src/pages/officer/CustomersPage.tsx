@@ -13,7 +13,6 @@ import { api, getErrorMessage } from '@/lib/api'
 import { showFeedback } from '@/store/feedback.store'
 import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { formatNaira, initials, idempotencyKey } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { PleaseHold } from '@/components/ui/PleaseHold'
@@ -591,8 +590,6 @@ export default function CustomersPage() {
           </>
         )}
       </div>
-
-      <BottomNav />
 
       <AnimatePresence>
         {showRegisterSheet && (

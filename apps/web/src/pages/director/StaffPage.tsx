@@ -5,7 +5,6 @@ import { ArrowLeft, Plus, Shield, UserCog, MoreVertical } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { ManageMemberSheet } from '@/components/settings/ManageMemberSheet'
 import { cn, initials, formatDate } from '@/lib/utils'
 import type { User, Zone } from '@/types'
@@ -203,8 +202,6 @@ export default function StaffPage() {
           </div>
         )}
       </div>
-
-      <BottomNav />
 
       <AnimatePresence>
         {showCreate && <CreateStaffSheet tab={tab} onClose={() => setShowCreate(false)} />}

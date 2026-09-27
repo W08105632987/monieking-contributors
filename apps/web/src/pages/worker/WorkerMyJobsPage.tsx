@@ -10,7 +10,6 @@ import {
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatServiceCategory, formatServiceType } from '@/lib/utils'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import { ViewInfoModal, type JobDetailData } from '@/components/worker/ViewInfoModal'
 import { useJobPoolRealtime } from '@/hooks/useJobPoolRealtime'
@@ -766,8 +765,6 @@ export default function WorkerMyJobsPage() {
           </div>
         )}
       </AnimatePresence>
-
-      <BottomNav />
     </div>
   )
 }

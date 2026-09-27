@@ -9,8 +9,8 @@ const POLL_INTERVAL_MS = 10_000 // 10 seconds
 /** Keeps the notification bell badge live app-wide, not just when the
  *  Notifications page happens to be open. Polls a cheap count-only endpoint. */
 export function useNotificationsPoll() {
-  const { isAuthenticated } = useAuthStore()
-  const { setUnreadCount } = useNotificationsStore()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const setUnreadCount = useNotificationsStore((s) => s.setUnreadCount)
   const qc = useQueryClient()
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const prevCountRef = useRef<number | null>(null)

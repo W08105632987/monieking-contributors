@@ -7,7 +7,6 @@ import {
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import { formatNaira } from '@/lib/utils'
 
@@ -400,8 +399,6 @@ export default function WorkerEarningsPage() {
           </div>
         )}
       </AnimatePresence>
-
-      <BottomNav />
     </div>
   )
 }

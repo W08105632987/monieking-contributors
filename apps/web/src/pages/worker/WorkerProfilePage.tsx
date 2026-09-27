@@ -11,7 +11,6 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { api, getErrorMessage } from '@/lib/api'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
@@ -640,8 +639,6 @@ export default function WorkerProfilePage() {
           MonieKing Service Worker Portal · All rights reserved
         </p>
       </div>
-
-      <BottomNav />
 
       {/* Sheets & Modals */}
       <AnimatePresence>

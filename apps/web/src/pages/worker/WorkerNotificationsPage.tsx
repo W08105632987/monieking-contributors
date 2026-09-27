@@ -10,7 +10,6 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { useNotificationsStore } from '@/store/notifications.store'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import { formatDateTime, cn } from '@/lib/utils'
 import type { AppNotification } from '@/types'
@@ -320,8 +319,6 @@ export default function WorkerNotificationsPage() {
           </div>
         )}
       </AnimatePresence>
-
-      <BottomNav />
     </div>
   )
 }

@@ -11,7 +11,6 @@ import {
 import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'
 import { api } from '@/lib/api'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
@@ -463,8 +462,6 @@ export default function ProfilePage() {
           MonieKing Contributors · All rights reserved
         </p>
       </div>
-
-      <BottomNav />
 
       <AnimatePresence>
         {showWithdrawSheet && <ChangeWithdrawPasswordSheet onClose={() => setShowWithdrawSheet(false)} />}

@@ -33,7 +33,7 @@ const MIN_DURATION_S = 8
  * loops back to the first with no jump, no matter how long the message is.
  */
 export function InstantMessageTicker() {
-  const { isAuthenticated } = useAuthStore()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [dismissedId, setDismissedId] = useState<string | null>(null)
 
   const { data: message } = useQuery({

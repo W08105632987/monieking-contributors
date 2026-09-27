@@ -1,10 +1,11 @@
 import { useRef, useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Home, CreditCard, Wallet, Bell, User, UserCog, Grid2x2, LayoutGrid, Briefcase, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { useAuthStore } from '@/store/auth.store'
+import { useAppNavigate } from '@/hooks/useAppNavigate'
 
 interface NavItem {
   label: string
@@ -53,16 +54,18 @@ const navByRole: Record<string, NavItem[]> = {
 }
 
 export function BottomNav() {
-  const location  = useLocation()
-  const navigate  = useNavigate()
-  const { user }  = useAuthStore()
-  const { unreadCount } = useNotificationsStore()
+  const location = useLocation()
+  const navigate = useAppNavigate()
+  const user = useAuthStore((s) => s.user)
+  const unreadCount = useNotificationsStore((s) => s.unreadCount)
 
   const navItems = navByRole[user?.role ?? 'customer'] ?? customerNav
 
   const activeIdx = (() => {
-    const idx = navItems.findIndex((item) => location.pathname.startsWith(item.href))
-    return idx >= 0 ? idx : 0
+    const idx = navItems.findIndex(
+      (item) => location.pathname === item.href || location.pathname.startsWith(item.href + '/'),
+    )
+    return idx
   })()
 
   // Refs for each tab button to measure position
@@ -70,6 +73,7 @@ export function BottomNav() {
   const [blobStyle, setBlobStyle] = useState({ left: 0, width: 0 })
 
   useEffect(() => {
+    if (activeIdx < 0) return
     const el = tabRefs.current[activeIdx]
     if (!el) return
     const rect = el.getBoundingClientRect()
@@ -96,7 +100,13 @@ export function BottomNav() {
         {/* Liquid blob — sits behind active icon */}
         <motion.div
           className="absolute top-1 rounded-full pointer-events-none"
-          animate={{ left: blobStyle.left, width: blobStyle.width, height: blobStyle.width }}
+          initial={false}
+          animate={{
+            left: blobStyle.left,
+            width: blobStyle.width,
+            height: blobStyle.width,
+            opacity: blobStyle.width > 0 && activeIdx >= 0 ? 1 : 0,
+          }}
           transition={{ type: 'spring', stiffness: 400, damping: 32 }}
           style={{
             background: 'radial-gradient(circle, rgba(245,158,11,0.35) 0%, rgba(245,158,11,0.10) 70%)',

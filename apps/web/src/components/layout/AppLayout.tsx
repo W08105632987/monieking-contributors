@@ -1,13 +1,15 @@
+import { Suspense } from 'react'
 import { Outlet } from 'react-router-dom'
 import { BottomNav } from './BottomNav'
+import { PageContentSkeleton } from '@/components/ui/PageContentSkeleton'
 
 export function AppLayout() {
   return (
-    <div className="min-h-dvh flex flex-col bg-surface">
-      <main className="flex-1 pb-20"> {/* pb-20 = space for bottom nav */}
+    <>
+      <Suspense fallback={<PageContentSkeleton />}>
         <Outlet />
-      </main>
+      </Suspense>
       <BottomNav />
-    </div>
+    </>
   )
 }

@@ -20,7 +20,7 @@ export function AppShell({
   noNav,
   noPadding,
 }: AppShellProps) {
-  const { user } = useAuthStore()
+  const user = useAuthStore((s) => s.user)
   const showNav  = !noNav && !!user
 
   return (

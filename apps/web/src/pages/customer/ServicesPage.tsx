@@ -8,7 +8,6 @@ import { formatNaira } from '@/lib/utils'
 import type { IdentityService, IdentityServiceCategory } from '@/types'
 import { CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_ORDER } from '@/lib/identityServices'
 import { FallbackError } from '@/components/ui/FallbackError'
-import { BottomNav } from '@/components/layout/BottomNav'
 
 // Base starting prices for manual services (in kobo)
 const MANUAL_BASE_PRICES: Record<string, number> = {
@@ -286,8 +285,6 @@ export default function ServicesPage() {
           })
         )}
       </div>
-
-      {!customerId && <BottomNav />}
     </div>
   )
 }

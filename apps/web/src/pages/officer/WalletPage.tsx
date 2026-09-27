@@ -12,7 +12,6 @@ import toast from 'react-hot-toast'
 import { useWallet } from '@/hooks/useWallet'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
-import { BottomNav } from '@/components/layout/BottomNav'
 import { formatNaira, timeAgo, formatDateTime, copyToClipboard } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { WalletTransaction } from '@/types'
@@ -502,8 +501,6 @@ export default function OfficerWalletPage() {
           </div>
         </div>
       </div>
-
-      <BottomNav />
 
       <AnimatePresence>
         {showFundSheet && <FundWalletSheet onClose={() => setShowFundSheet(false)} />}
