@@ -280,6 +280,7 @@ export interface InstantMessage {
 
 // ─── Director portal: promo banners ──────────────────────────────
 export type PromoBannerLinkType = 'none' | 'internal_route' | 'external_url'
+export type PromoBannerLayoutStyle = 'gradient_only' | 'full_bleed_image' | 'split_image_text'
 
 export interface PromoBanner {
   id: string
@@ -287,6 +288,10 @@ export interface PromoBanner {
   subtitle: string | null
   gradient_from: string
   gradient_to: string
+  layout_style: PromoBannerLayoutStyle
+  image_url: string | null
+  image_focal_x: number
+  image_focal_y: number
   link_type: PromoBannerLinkType
   link_target: string | null
   display_order: number

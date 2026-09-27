@@ -1,36 +1,19 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Archive, ChevronRight, Eye,
   TrendingUp, MousePointerClick, BarChart2, Edit2, Check, X,
+  Upload, Trash2,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { PromoBanner } from '@/types'
+import type { PromoBanner, PromoBannerLayoutStyle } from '@/types'
+import { PROMO_INTERNAL_ROUTES, isValidPromoExternalUrl } from '@/lib/promoBannerConstants'
 
-/* ── CTA allowlist (mirrors real app routes from App.tsx) ──────────────────── */
-const INTERNAL_ROUTES = [
-  { path: '/customer/wallet',           label: 'Wallet / Fund wallet' },
-  { path: '/customer/withdrawals/new',  label: 'Withdraw funds' },
-  { path: '/customer/cards',            label: 'My cards' },
-  { path: '/customer/services',         label: 'Manual services' },
-  { path: '/customer/referrals',        label: 'Refer & earn' },
-  { path: '/customer/food',             label: 'Food collection' },
-  { path: '/customer/notifications',    label: 'Notifications' },
-  { path: '/customer/profile',          label: 'Profile' },
-] as const
-
-/* Validate external URLs — https:// only, no javascript: / data: etc */
-function isValidExternalUrl(url: string): boolean {
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
+/* ── Constants ─────────────────────────────────────────────────────────────── */
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5MB, matches backend cap
 
 /* ── Gradient presets ──────────────────────────────────────────────────────── */
 const PRESETS = [
@@ -42,18 +25,147 @@ const PRESETS = [
   { from: '#881337', to: '#F43F5E',  label: 'Valentine'        },
 ]
 
-/* ── Starter content presets (3.5) ────────────────────────────────────────── */
+/* ── Starter content presets ───────────────────────────────────────────────── */
 const STARTERS = [
-  { title: 'Refer a friend, earn ₦500', subtitle: 'Share your referral link today — both of you win.', preset: PRESETS[0], cta: '/customer/referrals' },
+  { title: 'Refer a friend, earn ₦500', subtitle: 'Share your referral link today — both of you win.', preset: PRESETS[0], cta: '/customer/wallet' },
   { title: 'Fund your wallet now',      subtitle: 'Instant virtual account top-up, no charges.',        preset: PRESETS[1], cta: '/customer/wallet' },
   { title: 'Need a document verified?', subtitle: 'NIN, BVN, TIN & more — same-day turnaround.',        preset: PRESETS[2], cta: '/customer/services' },
-  { title: 'Holiday food collection',   subtitle: 'Your condiments pass is ready — don\'t miss pickup.', preset: PRESETS[4], cta: '/customer/food' },
 ]
+
+/* ── Client-side image validation ──────────────────────────────────────────── */
+function validateImageFile(file: File): string | null {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    return 'Only JPEG, PNG, and WebP images are allowed'
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return `Image must be under 5MB (yours is ${(file.size / 1024 / 1024).toFixed(1)}MB)`
+  }
+  return null
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+/* ── Focal point picker ────────────────────────────────────────────────────── */
+function FocalPointPicker({
+  imageUrl, focalX, focalY, onChange,
+}: {
+  imageUrl: string
+  focalX: number
+  focalY: number
+  onChange: (x: number, y: number) => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
+    onChange(x, y)
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-green-600 dark:text-night-200 text-[11px] font-bold uppercase tracking-wide">
+        Focal point <span className="font-normal normal-case">(click to reposition)</span>
+      </p>
+      <div
+        ref={containerRef}
+        className="relative overflow-hidden rounded-xl cursor-crosshair"
+        style={{ height: 100 }}
+        onClick={handleClick}
+      >
+        <img
+          src={imageUrl}
+          alt="Focal point preview"
+          className="w-full h-full object-cover"
+          style={{ objectPosition: `${focalX * 100}% ${focalY * 100}%` }}
+        />
+        {/* Marker */}
+        <div
+          className="absolute w-5 h-5 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+          style={{ left: `${focalX * 100}%`, top: `${focalY * 100}%` }}
+        >
+          <div className="w-5 h-5 rounded-full border-2 border-white shadow-lg bg-amber-400/60" />
+        </div>
+      </div>
+    </div>
+  )
+}
 
 /* ── Live preview ──────────────────────────────────────────────────────────── */
 function LivePreview({
-  title, subtitle, from, to,
-}: { title: string; subtitle: string; from: string; to: string }) {
+  title, subtitle, from, to, layoutStyle, imageUrl, focalX, focalY,
+}: {
+  title: string; subtitle: string; from: string; to: string
+  layoutStyle: PromoBannerLayoutStyle; imageUrl: string | null
+  focalX: number; focalY: number
+}) {
+  const [imgBroken, setImgBroken] = useState(false)
+  const effectiveLayout = (imgBroken || !imageUrl) ? 'gradient_only' : layoutStyle
+
+  if (effectiveLayout === 'full_bleed_image' && imageUrl) {
+    return (
+      <div
+        className="relative overflow-hidden rounded-2xl"
+        style={{
+          background: `linear-gradient(115deg, ${from} 0%, ${to} 100%)`,
+          minHeight: 100,
+        }}
+      >
+        <img
+          src={imageUrl}
+          alt="preview"
+          onError={() => setImgBroken(true)}
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ objectPosition: `${focalX * 100}% ${focalY * 100}%` }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.10) 100%)' }}
+        />
+        <div className="relative z-10 p-4 flex flex-col justify-end" style={{ minHeight: 100 }}>
+          <p className="text-white font-extrabold text-sm drop-shadow">{title || 'Banner title'}</p>
+          {subtitle && <p className="text-white/85 text-xs mt-0.5 drop-shadow">{subtitle}</p>}
+        </div>
+      </div>
+    )
+  }
+
+  if (effectiveLayout === 'split_image_text' && imageUrl) {
+    return (
+      <div
+        className="relative overflow-hidden rounded-2xl flex flex-row"
+        style={{
+          background: `linear-gradient(115deg, ${from} 0%, ${to} 100%)`,
+          minHeight: 100,
+        }}
+      >
+        <div className="flex-1 p-4 flex flex-col justify-center z-10">
+          <p className="text-white font-extrabold text-sm leading-tight">{title || 'Banner title'}</p>
+          {subtitle && <p className="text-white/80 text-xs mt-1 leading-snug">{subtitle}</p>}
+        </div>
+        <div className="relative overflow-hidden" style={{ width: '42%', flexShrink: 0 }}>
+          <img
+            src={imageUrl}
+            alt="preview"
+            onError={() => setImgBroken(true)}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ objectPosition: `${focalX * 100}% ${focalY * 100}%` }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // gradient_only (default)
   return (
     <div
       className="relative overflow-hidden rounded-2xl p-5"
@@ -146,6 +258,66 @@ function ArchiveConfirmModal({
   )
 }
 
+/* ── Image upload control ─────────────────────────────────────────────────── */
+function ImageUploadControl({
+  imageBase64, imageUrl, onImageChange, onImageClear,
+}: {
+  imageBase64: string | null
+  imageUrl: string | null
+  onImageChange: (base64: string) => void
+  onImageClear: () => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [imgError, setImgError] = useState('')
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const err = validateImageFile(file)
+    if (err) { setImgError(err); return }
+    setImgError('')
+    const b64 = await fileToBase64(file)
+    onImageChange(b64)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  const preview = imageBase64 || imageUrl
+
+  return (
+    <div className="space-y-2">
+      <p className="text-green-600 dark:text-night-200 text-[11px] font-bold uppercase tracking-wide">Banner image</p>
+      {preview ? (
+        <div className="relative overflow-hidden rounded-xl border border-green-100 dark:border-night-500 bg-black" style={{ height: 80 }}>
+          <img src={preview} alt="Banner image" className="w-full h-full object-cover opacity-80" />
+          <button
+            onClick={onImageClear}
+            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-500/90 text-white flex items-center justify-center"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="w-full h-20 rounded-xl border-2 border-dashed border-green-200 dark:border-night-500 flex flex-col items-center justify-center gap-1 text-green-400 dark:text-night-300 hover:border-green-400 transition-colors"
+        >
+          <Upload className="w-5 h-5" />
+          <span className="text-xs font-semibold">Upload image (JPEG/PNG/WebP, max 5MB)</span>
+        </button>
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="sr-only"
+        onChange={handleFileChange}
+      />
+      {imgError && <p className="text-red-500 text-xs">{imgError}</p>}
+    </div>
+  )
+}
+
 /* ── Inline edit row ──────────────────────────────────────────────────────── */
 function BannerCard({ banner, onArchive }: { banner: PromoBanner; onArchive: (id: string) => void }) {
   const [editing, setEditing] = useState(false)
@@ -165,10 +337,25 @@ function BannerCard({ banner, onArchive }: { banner: PromoBanner; onArchive: (id
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
+  const layoutLabel: Record<PromoBannerLayoutStyle, string> = {
+    gradient_only: 'Gradient',
+    full_bleed_image: 'Full image',
+    split_image_text: 'Split image',
+  }
+
   return (
     <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-3">
       <div className="rounded-xl overflow-hidden mb-2">
-        <LivePreview title={banner.title} subtitle={banner.subtitle ?? ''} from={banner.gradient_from} to={banner.gradient_to} />
+        <LivePreview
+          title={banner.title}
+          subtitle={banner.subtitle ?? ''}
+          from={banner.gradient_from}
+          to={banner.gradient_to}
+          layoutStyle={banner.layout_style ?? 'gradient_only'}
+          imageUrl={banner.image_url}
+          focalX={banner.image_focal_x ?? 0.5}
+          focalY={banner.image_focal_y ?? 0.5}
+        />
       </div>
 
       {editing ? (
@@ -200,6 +387,9 @@ function BannerCard({ banner, onArchive }: { banner: PromoBanner; onArchive: (id
         <div className="flex items-center justify-between mb-1.5">
           <div className="flex items-center gap-2">
             <StatusBadge banner={banner} />
+            <span className="text-green-400 dark:text-night-300 text-[10px]">
+              {layoutLabel[banner.layout_style ?? 'gradient_only']}
+            </span>
             <span className="text-green-400 dark:text-night-300 text-[10px] capitalize">
               {banner.target_roles === 'all' ? 'Everyone' : `${banner.target_roles}s only`}
             </span>
@@ -253,6 +443,10 @@ export default function PromoBannersPage() {
   const [linkType, setLinkType]           = useState<'none' | 'internal_route' | 'external_url'>('none')
   const [linkTarget, setLinkTarget]       = useState('')
   const [linkError, setLinkError]         = useState('')
+  const [layoutStyle, setLayoutStyle]     = useState<PromoBannerLayoutStyle>('gradient_only')
+  const [imageBase64, setImageBase64]     = useState<string | null>(null)
+  const [imageFocalX, setImageFocalX]     = useState(0.5)
+  const [imageFocalY, setImageFocalY]     = useState(0.5)
 
   // Archive modal state
   const [archivingId, setArchivingId]     = useState<string | null>(null)
@@ -275,21 +469,36 @@ export default function PromoBannersPage() {
     if (linkType === 'none') return true
     if (!linkTarget.trim()) { setLinkError('Please enter a target'); return false }
     if (linkType === 'internal_route') {
-      const allowed: string[] = INTERNAL_ROUTES.map(r => r.path)
+      const allowed = PROMO_INTERNAL_ROUTES.map(r => r.path) as string[]
       if (!allowed.includes(linkTarget)) { setLinkError('Select a valid internal route from the dropdown'); return false }
     }
     if (linkType === 'external_url') {
-      if (!isValidExternalUrl(linkTarget)) { setLinkError('Only https:// URLs are allowed'); return false }
+      if (!isValidPromoExternalUrl(linkTarget)) { setLinkError('Only https:// URLs are allowed'); return false }
     }
     return true
+  }
+
+  const resetForm = () => {
+    setTitle(''); setSubtitle('')
+    setGradientFrom(PRESETS[0].from); setGradientTo(PRESETS[0].to)
+    setLinkType('none'); setLinkTarget(''); setLinkError(''); setAudience('all')
+    setLayoutStyle('gradient_only'); setImageBase64(null)
+    setImageFocalX(0.5); setImageFocalY(0.5)
   }
 
   const createMutation = useMutation({
     mutationFn: () => {
       if (!validateLink()) throw new Error('Invalid link')
+      if ((layoutStyle === 'full_bleed_image' || layoutStyle === 'split_image_text') && !imageBase64) {
+        toast.error(`An image is required for "${layoutStyle}" layout`)
+        throw new Error('Image required')
+      }
       return api.post('/promo-banners', {
         title: title.trim(), subtitle: subtitle.trim() || null,
         gradient_from: gradientFrom, gradient_to: gradientTo,
+        layout_style: layoutStyle,
+        image_base64: imageBase64 || undefined,
+        image_focal_x: imageFocalX, image_focal_y: imageFocalY,
         link_type: linkType, link_target: linkType !== 'none' ? linkTarget.trim() : null,
         target_roles: audience,
       })
@@ -297,10 +506,14 @@ export default function PromoBannersPage() {
     onSuccess: () => {
       toast.success('Banner created')
       qc.invalidateQueries({ queryKey: ['promo-banners'] })
-      setShowCreate(false); setTitle(''); setSubtitle('')
-      setLinkType('none'); setLinkTarget(''); setLinkError(''); setAudience('all')
+      setShowCreate(false); resetForm()
     },
-    onError: (e) => toast.error(getErrorMessage(e)),
+    onError: (e: unknown) => {
+      const msg = getErrorMessage(e)
+      if (msg && !msg.includes('Invalid link') && !msg.includes('Image required')) {
+        toast.error(msg)
+      }
+    },
   })
 
   const archiveMutation = useMutation({
@@ -341,13 +554,19 @@ export default function PromoBannersPage() {
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-5 space-y-4">
             <div className="flex items-center justify-between mb-1">
               <p className="text-green-900 dark:text-white font-bold text-sm">New banner</p>
-              <button onClick={() => setShowCreate(false)} className="text-green-400 dark:text-night-300">
+              <button onClick={() => { setShowCreate(false); resetForm() }} className="text-green-400 dark:text-night-300">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Live preview */}
-            <LivePreview title={title} subtitle={subtitle} from={gradientFrom} to={gradientTo} />
+            <LivePreview
+              title={title} subtitle={subtitle}
+              from={gradientFrom} to={gradientTo}
+              layoutStyle={layoutStyle}
+              imageUrl={imageBase64}
+              focalX={imageFocalX} focalY={imageFocalY}
+            />
 
             {/* Quick starters */}
             <div>
@@ -371,9 +590,57 @@ export default function PromoBannersPage() {
                 className="w-full border border-green-200 dark:border-night-500 rounded-xl px-4 py-2.5 text-sm text-green-900 dark:text-white bg-white dark:bg-night-600" />
             </div>
 
-            {/* Gradient presets */}
+            {/* Layout style selector */}
             <div>
-              <p className="text-green-600 dark:text-night-200 text-[11px] font-bold uppercase tracking-wide mb-1.5">Color</p>
+              <p className="text-green-600 dark:text-night-200 text-[11px] font-bold uppercase tracking-wide mb-1.5">Layout style</p>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { value: 'gradient_only', label: 'Gradient only', icon: '🎨' },
+                  { value: 'full_bleed_image', label: 'Full image', icon: '🖼️' },
+                  { value: 'split_image_text', label: 'Split', icon: '⬜' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setLayoutStyle(opt.value)}
+                    className={cn(
+                      'flex flex-col items-center gap-1 py-2 rounded-xl text-xs font-bold border transition-colors',
+                      layoutStyle === opt.value
+                        ? 'bg-green-900 dark:bg-night-100 text-white dark:text-night-900 border-green-900 dark:border-night-100'
+                        : 'bg-green-50 dark:bg-night-600 text-green-600 dark:text-night-200 border-green-100 dark:border-night-500',
+                    )}
+                  >
+                    <span className="text-base">{opt.icon}</span>
+                    <span>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Image upload — shown for image layouts */}
+            {(layoutStyle === 'full_bleed_image' || layoutStyle === 'split_image_text') && (
+              <ImageUploadControl
+                imageBase64={imageBase64}
+                imageUrl={null}
+                onImageChange={setImageBase64}
+                onImageClear={() => setImageBase64(null)}
+              />
+            )}
+
+            {/* Focal point — shown when there's a preview image */}
+            {(layoutStyle === 'full_bleed_image' || layoutStyle === 'split_image_text') && imageBase64 && (
+              <FocalPointPicker
+                imageUrl={imageBase64}
+                focalX={imageFocalX}
+                focalY={imageFocalY}
+                onChange={(x, y) => { setImageFocalX(x); setImageFocalY(y) }}
+              />
+            )}
+
+            {/* Gradient presets — shown for gradient_only or as background for image layouts */}
+            <div>
+              <p className="text-green-600 dark:text-night-200 text-[11px] font-bold uppercase tracking-wide mb-1.5">
+                {layoutStyle === 'gradient_only' ? 'Color' : 'Fallback / loading gradient'}
+              </p>
               <div className="flex gap-2 flex-wrap">
                 {PRESETS.map(p => (
                   <button key={p.label} onClick={() => { setGradientFrom(p.from); setGradientTo(p.to) }}
@@ -419,7 +686,7 @@ export default function PromoBannersPage() {
                   className="w-full border border-green-200 dark:border-night-500 rounded-xl px-4 py-2.5 text-sm text-green-900 dark:text-white bg-white dark:bg-night-600"
                 >
                   <option value="">Select page…</option>
-                  {INTERNAL_ROUTES.map(r => (
+                  {PROMO_INTERNAL_ROUTES.map(r => (
                     <option key={r.path} value={r.path}>{r.label}</option>
                   ))}
                 </select>
@@ -436,7 +703,7 @@ export default function PromoBannersPage() {
 
             {/* Submit */}
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setShowCreate(false)} className="flex-1 border border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 font-bold text-sm rounded-full py-3">
+              <button onClick={() => { setShowCreate(false); resetForm() }} className="flex-1 border border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 font-bold text-sm rounded-full py-3">
                 Cancel
               </button>
               <button
