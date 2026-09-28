@@ -317,7 +317,7 @@ export default function OfficerCardDetailPage() {
         </span>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
 
         {/* Flippable card */}
         <div className="w-full mb-5 mt-2 cursor-pointer flip-card" style={{ perspective: '1000px', height: '200px' }}

@@ -132,7 +132,7 @@ export default function ServiceRequestFormPage() {
         <h1 className="text-green-900 dark:text-white font-bold text-lg">{service?.name ?? 'Service request'}</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-6">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {isError ? (
           <FallbackError
             title="Couldn't load this service"
