@@ -616,7 +616,7 @@ export default function WorkerProfilePage() {
             icon={Info}
             label="About MonieKing"
             sublabel="Version 1.0.0 · Service Worker Network"
-            onClick={() => setShowAbout(true)}
+            onClick={() => window.open('https://monieking.com', '_blank')}
           />
           <div className="pb-2" />
         </div>
@@ -654,7 +654,7 @@ export default function WorkerProfilePage() {
         <ContactSupportSheet open={showContactSheet} onClose={() => setShowContactSheet(false)} />
       </AnimatePresence>
 
-      <AboutMonieKingModal open={showAbout} onClose={() => setShowAbout(false)} />
+
     </div>
   )
 }

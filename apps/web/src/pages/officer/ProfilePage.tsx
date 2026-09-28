@@ -348,7 +348,7 @@ export default function OfficerProfilePage() {
             icon={Info}
             label="About MonieKing"
             sublabel="Version 1.0.0"
-            onClick={() => window.open('/', '_blank')}
+            onClick={() => window.open('https://monieking.com', '_blank')}
           />
           <MenuRow
             icon={MessageCircle}
@@ -382,7 +382,7 @@ export default function OfficerProfilePage() {
         {showSignOutSheet  && <SignOutSheet onClose={() => setShowSignOutSheet(false)} />}
       </AnimatePresence>
 
-      <AboutMonieKingModal open={showAbout} onClose={() => setShowAbout(false)} />
+
       <ContactSupportSheet open={showContactSheet} onClose={() => setShowContactSheet(false)} />
     </div>
   )

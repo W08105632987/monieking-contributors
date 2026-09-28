@@ -439,7 +439,7 @@ export default function ProfilePage() {
             icon={Info}
             label="About MonieKing"
             sublabel="Version 1.0.0"
-            onClick={() => window.open('/', '_blank')}
+            onClick={() => window.open('https://monieking.com', '_blank')}
           />
           <div className="pb-2" />
         </div>
@@ -469,7 +469,7 @@ export default function ProfilePage() {
         <ContactSupportSheet open={showContactSheet} onClose={() => setShowContactSheet(false)} />
       </AnimatePresence>
 
-      <AboutMonieKingModal open={showAbout} onClose={() => setShowAbout(false)} />
+
     </div>
   )
 }

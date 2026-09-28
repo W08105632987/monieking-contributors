@@ -80,7 +80,7 @@ export default function DirectorProfilePage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Profile</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-6 text-center mb-4">
           <div className="flex justify-center mb-3">
             <AvatarPicker
@@ -120,7 +120,7 @@ export default function DirectorProfilePage() {
         </div>
 
         <button
-          onClick={() => window.open('/', '_blank')}
+          onClick={() => window.open('https://monieking.com', '_blank')}
           className="w-full flex items-center justify-center gap-2 border-2 border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 font-bold text-sm rounded-2xl py-3.5 active:scale-95 transition-all mb-4"
         >
           <Info className="w-4 h-4" /> About MonieKing
@@ -134,7 +134,7 @@ export default function DirectorProfilePage() {
         </button>
       </div>
 
-      <AboutMonieKingModal open={showAbout} onClose={() => setShowAbout(false)} />
+
       {showSignOutSheet && <SignOutSheet onClose={() => setShowSignOutSheet(false)} />}
     </div>
   )
