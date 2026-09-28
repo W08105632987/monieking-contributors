@@ -92,7 +92,7 @@ export default function ServiceHistoryPage() {
         })}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {isError ? (
           <FallbackError
             title="Couldn't load your history"

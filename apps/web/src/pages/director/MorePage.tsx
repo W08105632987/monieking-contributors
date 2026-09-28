@@ -32,7 +32,7 @@ export default function MorePage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">More</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-40">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <div className="grid grid-cols-2 gap-3">
           {actions.map(a => (
             <button

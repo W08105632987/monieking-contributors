@@ -71,3 +71,11 @@ class DisputeResponse(BaseModel):
 class DisputeDetailResponse(DisputeResponse):
     messages:    list[DisputeMessageResponse]
     job_context: dict[str, Any] | None = None   # 4.2 — enriched manual-service context
+
+
+class PaginatedDisputeResponse(BaseModel):
+    data:      list[DisputeResponse]
+    total:     int
+    page:      int
+    page_size: int
+    has_next:  bool

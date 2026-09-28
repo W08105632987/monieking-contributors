@@ -74,7 +74,7 @@ export default function ContributePage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Contribute</h1>
       </header>
 
-      <div className="relative flex-1 overflow-y-auto px-4 pb-10">
+      <div className="relative flex-1 overflow-y-auto px-4 pb-safe-nav">
         {loading && <PleaseHold message="Please hold while we mark your card…" />}
         {isLoading ? (
           <div className="space-y-4 mt-4">

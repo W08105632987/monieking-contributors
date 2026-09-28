@@ -252,7 +252,7 @@ export default function WorkerMyJobsPage() {
   }
 
   return (
-    <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 pb-24 text-green-950 dark:text-white">
+    <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 pb-safe-nav text-green-950 dark:text-white">
       <WorkerHeader
         title="My Jobs"
         subtitle={activeJob ? '1 active job in progress' : 'No active jobs claimed'}

@@ -304,7 +304,7 @@ export default function WalletPage() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto pb-40">
+      <div className="flex-1 overflow-y-auto pb-safe-nav">
 
         {/* Wallet balance hero */}
         <div className="px-4 mb-4">

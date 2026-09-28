@@ -19,10 +19,10 @@ FIX HISTORY (migration 038 / dispute overhaul):
 import uuid
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload, aliased
 
 from app.core.database import get_db
@@ -38,11 +38,12 @@ from app.models.notification import NotificationType
 from app.models.settings import SystemConfig
 from app.schemas.dispute import (
     CreateDisputeRequest, AddMessageRequest, ResolveDisputeRequest,
-    DisputeResponse, DisputeDetailResponse,
+    DisputeResponse, DisputeDetailResponse, PaginatedDisputeResponse,
 )
 from app.utils.audit import log_action
 from app.services.notification_service import send_notification
 from app.services.dispute_sla_sweep import sweep_dispute_sla
+from app.services.settings_service import get_config_int as _get_config_int
 
 router = APIRouter(prefix="/disputes", tags=["disputes"])
 
@@ -193,14 +194,6 @@ def _officer_has_zone_access(dispute: Dispute, officer: User) -> bool:
     return dispute.zone_id == officer.zone_id
 
 
-async def _get_config_int(db: AsyncSession, key: str, default: int) -> int:
-    row = await db.get(SystemConfig, key)
-    if row:
-        try:
-            return int(row.value)
-        except (ValueError, TypeError):
-            pass
-    return default
 
 
 # ─── Commission hold helpers (4.4) ──────────────────────────────────────────
@@ -379,12 +372,16 @@ async def create_dispute(
     return _serialize_dispute(dispute, customer)
 
 
-@router.get("", response_model=list[DisputeResponse])
+@router.get("", response_model=PaginatedDisputeResponse)
 async def list_disputes(
     current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    include_resolved: bool = Query(False),
+    status: DisputeStatus | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    # 4.1.9 — sweep any overdue disputes past dispute_sla_hours
+    # 4.1.9 — sweep any overdue disputes past dispute_sla_hours (debounced)
     await sweep_dispute_sla(db)
 
     query = select(Dispute).options(selectinload(Dispute.customer), selectinload(Dispute.handler))
@@ -413,14 +410,35 @@ async def list_disputes(
     else:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    query = query.order_by(Dispute.created_at.desc())
+    # Filter by status / active
+    if status is not None:
+        query = query.where(Dispute.status == status)
+    elif not include_resolved:
+        query = query.where(Dispute.status != DisputeStatus.RESOLVED)
+
+    # Total count
+    count_query = select(func.count()).select_from(query.order_by(None).subquery())
+    total = (await db.scalar(count_query)) or 0
+
+    query = query.order_by(Dispute.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
-    return [_serialize_dispute(d, current_user) for d in result.scalars().all()]
+    items = [_serialize_dispute(d, current_user) for d in result.scalars().all()]
+    return {
+        "data": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_next": (page * page_size) < total,
+    }
 
 
-@router.get("/worker/mine", response_model=list[DisputeResponse])
+@router.get("/worker/mine", response_model=PaginatedDisputeResponse)
 async def list_worker_disputes(
     current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    include_resolved: bool = Query(False),
+    status: DisputeStatus | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """4.3 Service Worker: list all disputes assigned to or raised by the worker."""
@@ -435,10 +453,26 @@ async def list_worker_disputes(
         .where(
             (Dispute.assigned_worker_id == current_user.id) | (Dispute.raised_by == current_user.id)
         )
-        .order_by(Dispute.created_at.desc())
     )
+
+    if status is not None:
+        query = query.where(Dispute.status == status)
+    elif not include_resolved:
+        query = query.where(Dispute.status != DisputeStatus.RESOLVED)
+
+    count_query = select(func.count()).select_from(query.order_by(None).subquery())
+    total = (await db.scalar(count_query)) or 0
+
+    query = query.order_by(Dispute.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
-    return [_serialize_dispute(d, current_user) for d in result.scalars().all()]
+    items = [_serialize_dispute(d, current_user) for d in result.scalars().all()]
+    return {
+        "data": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_next": (page * page_size) < total,
+    }
 
 
 @router.get("/{dispute_id}", response_model=DisputeDetailResponse)

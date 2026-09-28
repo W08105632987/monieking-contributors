@@ -244,7 +244,7 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto pb-36">
+      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 'calc(var(--bottom-nav-height, 4.5rem) + 9rem)' }}>
         <div className="px-4 pt-4 space-y-4 max-w-lg mx-auto">
 
           {/* Officer Banner */}
@@ -308,8 +308,8 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
         </div>
       </div>
 
-      {/* Bottom Action Bar (fixed) */}
-      <div className="fixed bottom-0 left-0 right-0 z-20 bg-white dark:bg-night-900 border-t border-green-100 dark:border-night-600 px-4 py-4 space-y-3 max-w-lg mx-auto">
+      {/* Bottom Action Bar (fixed above BottomNav) */}
+      <div className="fixed left-0 right-0 z-30 bg-white dark:bg-night-900 border-t border-green-100 dark:border-night-600 px-4 py-4 space-y-3 max-w-lg mx-auto" style={{ bottom: 'var(--bottom-nav-height, 4.5rem)' }}>
         {/* Consent */}
         <button
           type="button"

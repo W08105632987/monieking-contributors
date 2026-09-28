@@ -333,7 +333,7 @@ export default function WithdrawalPage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Request withdrawal</h1>
       </header>
 
-      <div className="flex-1 px-4 pb-10 overflow-y-auto">
+      <div className="flex-1 px-4 pb-safe-nav overflow-y-auto">
         {/* Info banner */}
         <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-3 mb-5 mt-2">
           <p className="text-amber-700 dark:text-amber-300 text-xs font-semibold">⏱ Processing time</p>

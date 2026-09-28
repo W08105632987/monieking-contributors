@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn, timeAgo } from '@/lib/utils'
 import type { Dispute, DisputeStatus } from '@/types'
@@ -19,27 +20,80 @@ const STATUS_LABEL: Record<DisputeStatus, string> = {
   resolved:      'Resolved',
 }
 
+interface PaginatedDisputes {
+  data: Dispute[]
+  total: number
+  page: number
+  page_size: number
+  has_next: boolean
+}
+
 export default function DisputesListPage() {
   const navigate = useNavigate()
+  const [tab, setTab] = useState<'active' | 'resolved'>('active')
+  const [page, setPage] = useState(1)
 
-  const { data: disputes = [], isLoading } = useQuery({
-    queryKey: ['my-disputes'],
+  const { data, isLoading } = useQuery<PaginatedDisputes>({
+    queryKey: ['my-disputes', tab, page],
     queryFn: async () => {
-      const { data } = await api.get<Dispute[]>('/disputes')
-      return data
+      const res = await api.get('/disputes', {
+        params: {
+          page,
+          page_size: 20,
+          include_resolved: tab === 'resolved',
+          status: tab === 'resolved' ? 'resolved' : undefined,
+        },
+      })
+      // Normalize response if direct array or paginated object
+      if (Array.isArray(res.data)) {
+        return { data: res.data, total: res.data.length, page: 1, page_size: 20, has_next: false }
+      }
+      return res.data
     },
   })
 
+  const disputes = data?.data ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.ceil(total / 20) || 1
+
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
-      <header className="flex items-center gap-3 px-4 py-3">
+      <header className="flex items-center gap-3 px-4 py-3 border-b border-green-100/60 dark:border-night-700">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-green-100 dark:bg-night-600 rounded-xl flex items-center justify-center">
           <ArrowLeft className="w-4 h-4 text-green-700 dark:text-night-100" />
         </button>
         <h1 className="text-green-900 dark:text-white font-bold text-lg">Disputes</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      {/* Filter Tabs: Active vs Resolved History */}
+      <div className="px-4 pt-3 pb-1">
+        <div className="flex bg-green-100/70 dark:bg-night-700/60 p-1 rounded-xl gap-1 max-w-sm">
+          <button
+            onClick={() => { setTab('active'); setPage(1) }}
+            className={cn(
+              'flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all',
+              tab === 'active'
+                ? 'bg-white dark:bg-night-600 text-green-900 dark:text-white shadow-sm'
+                : 'text-green-700 dark:text-night-300 hover:text-green-900'
+            )}
+          >
+            Open & Active
+          </button>
+          <button
+            onClick={() => { setTab('resolved'); setPage(1) }}
+            className={cn(
+              'flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all',
+              tab === 'resolved'
+                ? 'bg-white dark:bg-night-600 text-green-900 dark:text-white shadow-sm'
+                : 'text-green-700 dark:text-night-300 hover:text-green-900'
+            )}
+          >
+            Resolved History
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {isLoading ? (
           <div className="space-y-3 mt-2">
             {[1, 2, 3].map(i => <div key={i} className="h-20 bg-white dark:bg-night-700 rounded-2xl animate-pulse" />)}
@@ -47,8 +101,12 @@ export default function DisputesListPage() {
         ) : disputes.length === 0 ? (
           <div className="text-center py-16">
             <AlertTriangle className="w-10 h-10 text-green-200 dark:text-night-400 mx-auto mb-3" />
-            <p className="text-green-700 dark:text-night-100 font-semibold">No disputes</p>
-            <p className="text-green-400 dark:text-night-300 text-sm mt-1">Nothing to see here — that's a good thing.</p>
+            <p className="text-green-700 dark:text-night-100 font-semibold">
+              {tab === 'active' ? 'No active disputes' : 'No resolved disputes'}
+            </p>
+            <p className="text-green-400 dark:text-night-300 text-sm mt-1">
+              {tab === 'active' ? "Nothing needs attention — that's a good thing." : 'No past resolved dispute records found.'}
+            </p>
           </div>
         ) : (
           <div className="space-y-3 mt-2">
@@ -56,7 +114,7 @@ export default function DisputesListPage() {
               <button
                 key={d.id}
                 onClick={() => navigate(`/disputes/${d.id}`)}
-                className="w-full text-left bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4"
+                className="w-full text-left bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 transition-transform active:scale-[0.99]"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-1.5">
@@ -84,6 +142,27 @@ export default function DisputesListPage() {
                 </p>
               </button>
             ))}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-4 pb-2 text-xs text-green-700 dark:text-night-300">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white dark:bg-night-700 border border-green-200 dark:border-night-600 disabled:opacity-40"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                </button>
+                <span>Page {page} of {totalPages} ({total} total)</span>
+                <button
+                  disabled={!data?.has_next && page >= totalPages}
+                  onClick={() => setPage(p => p + 1)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white dark:bg-night-700 border border-green-200 dark:border-night-600 disabled:opacity-40"
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -46,6 +46,7 @@ async def get_overview(
     officer_id: uuid.UUID | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    all_time: bool = False,
 ):
     """
     Director's Customer Statistics panel. No officer_id → platform-wide
@@ -55,7 +56,7 @@ async def get_overview(
     rest of the app.
     """
     zone_id = await _officer_zone_id(db, officer_id) if officer_id else None
-    return await svc.get_overview_with_trend(db, zone_id=zone_id, start_date=start_date, end_date=end_date)
+    return await svc.get_overview_with_trend(db, zone_id=zone_id, start_date=start_date, end_date=end_date, all_time=all_time)
 
 
 @router.get("/my-zone-overview")
@@ -64,11 +65,12 @@ async def get_my_zone_overview(
     db: AsyncSession = Depends(get_db),
     start_date: date | None = None,
     end_date: date | None = None,
+    all_time: bool = False,
 ):
     """Officer's own dashboard/detail page — always their own zone,
     never anyone else's, so there's no zone_id param to trust from the
     client here at all."""
-    return await svc.get_overview_with_trend(db, zone_id=officer.zone_id, start_date=start_date, end_date=end_date)
+    return await svc.get_overview_with_trend(db, zone_id=officer.zone_id, start_date=start_date, end_date=end_date, all_time=all_time)
 
 
 @router.get("/officer-contribution")

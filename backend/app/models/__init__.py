@@ -9,7 +9,7 @@ from app.models.audit import AuditLog
 from app.models.webhook import PaymentWebhook
 from app.models.settings import SystemConfig, PendingRateChange, PendingRateChangeStatus
 from app.models.instant_message import InstantMessage, InstantMessagePriority
-from app.models.promo_banner import PromoBanner, PromoBannerLinkType
+from app.models.promo_banner import PromoBanner, PromoBannerLinkType, PromoBannerEvent
 from app.models.webauthn_credential import WebAuthnCredential
 from app.models.dispute import Dispute, DisputeMessage, DisputeEntityType, DisputeStatus, DisputeReason
 from app.models.identity_service import (
@@ -38,7 +38,7 @@ __all__ = [
     "PaymentWebhook",
     "SystemConfig", "PendingRateChange", "PendingRateChangeStatus",
     "InstantMessage", "InstantMessagePriority",
-    "PromoBanner", "PromoBannerLinkType",
+    "PromoBanner", "PromoBannerLinkType", "PromoBannerEvent",
     "WebAuthnCredential",
     "Dispute", "DisputeMessage", "DisputeEntityType", "DisputeStatus", "DisputeReason",
     "IdentityService", "IdentityServiceRequest", "IdentityServiceNotifyRequest", "IdentityServiceCategory", "IdentityRequestStatus", "InitiatedBy",

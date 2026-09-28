@@ -29,46 +29,22 @@ logger = logging.getLogger(__name__)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+from app.services.settings_service import get_config_int, get_config_float
+
+
 async def _get_timeout_minutes(db: AsyncSession) -> int:
-    """Reads Director-configured SLA timeout from system_config (defaults 30)."""
-    from app.models.settings import SystemConfig
-    row = await db.scalar(
-        select(SystemConfig.value).where(
-            SystemConfig.key == "service_worker_job_timeout_minutes"
-        )
-    )
-    try:
-        return int(row) if row else 30
-    except ValueError:
-        return 30
+    """Reads Director-configured SLA timeout from system_config (cached TTL, defaults 30)."""
+    return await get_config_int(db, "service_worker_job_timeout_minutes", default=30)
 
 
 async def _get_referral_hold_minutes(db: AsyncSession) -> int:
-    """Reads Director-configured referral hold window from system_config (defaults 30)."""
-    from app.models.settings import SystemConfig
-    row = await db.scalar(
-        select(SystemConfig.value).where(
-            SystemConfig.key == "service_worker_referral_hold_minutes"
-        )
-    )
-    try:
-        return int(row) if row else 30
-    except ValueError:
-        return 30
+    """Reads Director-configured referral hold window from system_config (cached TTL, defaults 30)."""
+    return await get_config_int(db, "service_worker_referral_hold_minutes", default=30)
 
 
 async def _get_commission_percent(db: AsyncSession) -> float:
-    """Reads Director-configured commission % from system_config (defaults 10)."""
-    from app.models.settings import SystemConfig
-    row = await db.scalar(
-        select(SystemConfig.value).where(
-            SystemConfig.key == "service_worker_default_commission_percent"
-        )
-    )
-    try:
-        return float(row) if row else 10.0
-    except ValueError:
-        return 10.0
+    """Reads Director-configured commission % from system_config (cached TTL, defaults 10)."""
+    return await get_config_float(db, "service_worker_default_commission_percent", default=10.0)
 
 
 # ── Pool Listing ───────────────────────────────────────────────────────────────

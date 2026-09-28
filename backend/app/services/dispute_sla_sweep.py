@@ -6,6 +6,7 @@ Mirroring `reclaim_expired_jobs`.
 """
 from __future__ import annotations
 
+import time
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -14,31 +15,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dispute import Dispute, DisputeStatus, DisputeMessage
 from app.models.user import User, UserRole
-from app.models.settings import SystemConfig
 from app.models.notification import NotificationType
 from app.services.notification_service import send_notification
+from app.services.settings_service import get_config_int
 from app.utils.audit import log_action
 
 logger = logging.getLogger(__name__)
 
+# In-process debounce to prevent redundant sweeps on consecutive list requests (1.4)
+_last_sweep_time: float = 0.0
+SWEEP_DEBOUNCE_SECONDS: float = 120.0  # run at most once every 2 minutes
+
 
 async def get_dispute_sla_hours(db: AsyncSession) -> int:
-    """Reads dispute_sla_hours from system_config (default 48)."""
-    val = await db.scalar(
-        select(SystemConfig.value).where(SystemConfig.key == "dispute_sla_hours")
-    )
-    try:
-        return max(1, int(val)) if val else 48
-    except (ValueError, TypeError):
-        return 48
+    """Reads dispute_sla_hours from system_config (cached TTL, default 48)."""
+    val = await get_config_int(db, "dispute_sla_hours", default=48)
+    return max(1, val)
 
 
-async def sweep_dispute_sla(db: AsyncSession) -> int:
+async def sweep_dispute_sla(db: AsyncSession, force: bool = False) -> int:
     """
     Checks for open or under-review disputes older than dispute_sla_hours.
     Auto-escalates them to the open Director queue (assigned_to = None, status = ESCALATED)
     and notifies all directors.
+    Debounced: Runs at most once every SWEEP_DEBOUNCE_SECONDS unless force=True.
     """
+    global _last_sweep_time
+    now_ts = time.time()
+    if not force and (now_ts - _last_sweep_time) < SWEEP_DEBOUNCE_SECONDS:
+        return 0
+    _last_sweep_time = now_ts
+
     sla_hours = await get_dispute_sla_hours(db)
     now = datetime.now(timezone.utc)
     threshold = now - timedelta(hours=sla_hours)

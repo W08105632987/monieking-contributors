@@ -186,12 +186,16 @@ async def get_overview_with_trend(
     zone_id: uuid.UUID | None,
     start_date: date | None,
     end_date: date | None,
+    all_time: bool = False,
 ) -> dict:
     """Wraps get_overview with the trend arrows: same numbers for the
     immediately-preceding equal-length period, expressed as a %
-    change per metric. Skipped (trend=None throughout) for the
-    all-time / no-range case, since there's no prior period to diff
-    against."""
+    change per metric.
+    Defaults to rolling 12-month window when date range is omitted to avoid
+    expensive unbounded scans on dashboard load (1.5)."""
+    if not all_time and start_date is None and end_date is None:
+        start_date = date.today() - timedelta(days=365)
+
     start_dt, end_dt = date_range_filters(start_date, end_date)
     current = await get_overview(db, zone_id=zone_id, start_dt=start_dt, end_dt=end_dt)
 

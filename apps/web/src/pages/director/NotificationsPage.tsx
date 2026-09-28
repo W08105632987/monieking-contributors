@@ -243,7 +243,7 @@ export default function DirectorNotificationsPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-40">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3, 4].map(i => (

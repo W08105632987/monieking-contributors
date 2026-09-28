@@ -2,13 +2,13 @@ import base64
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import CurrentUser, DirectorOnly
-from app.models.promo_banner import PromoBanner, PromoBannerLayoutStyle
+from app.models.promo_banner import PromoBanner, PromoBannerLayoutStyle, PromoBannerEvent
 from app.schemas.promo_banner import (
     BannerImageUploadRequest,
     PromoBannerCreate,
@@ -109,8 +109,32 @@ async def get_active_banners(current_user: CurrentUser, db: AsyncSession = Depen
 
 @router.get("", response_model=list[PromoBannerResponse])
 async def list_banners(director: DirectorOnly, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(PromoBanner).order_by(PromoBanner.display_order.asc()))
-    return result.scalars().all()
+    # Live aggregate of append-only events combined with any legacy baseline counter
+    event_counts = (
+        select(
+            PromoBannerEvent.banner_id,
+            func.count(case((PromoBannerEvent.event_type == "impression", 1))).label("impressions"),
+            func.count(case((PromoBannerEvent.event_type == "click", 1))).label("clicks"),
+        )
+        .group_by(PromoBannerEvent.banner_id)
+        .subquery()
+    )
+    stmt = (
+        select(
+            PromoBanner,
+            func.coalesce(event_counts.c.impressions, 0).label("live_impressions"),
+            func.coalesce(event_counts.c.clicks, 0).label("live_clicks"),
+        )
+        .outerjoin(event_counts, PromoBanner.id == event_counts.c.banner_id)
+        .order_by(PromoBanner.display_order.asc())
+    )
+    result = await db.execute(stmt)
+    banners = []
+    for banner, live_imp, live_clk in result.all():
+        banner.impressions = (banner.impressions or 0) + live_imp
+        banner.clicks = (banner.clicks or 0) + live_clk
+        banners.append(banner)
+    return banners
 
 
 @router.post("", response_model=PromoBannerResponse, status_code=201)
@@ -287,12 +311,13 @@ async def track_banner_impression(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Records an impression (carousel render) on a promo banner."""
-    await db.execute(
-        update(PromoBanner)
-        .where(PromoBanner.id == banner_id)
-        .values(impressions=PromoBanner.impressions + 1)
+    """Records an impression (carousel render) on a promo banner via append-only event row."""
+    event = PromoBannerEvent(
+        banner_id=banner_id,
+        event_type="impression",
+        user_id=current_user.id if current_user else None,
     )
+    db.add(event)
     await db.flush()
 
 
@@ -302,12 +327,13 @@ async def track_banner_click(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Records a click/tap event on a banner."""
-    await db.execute(
-        update(PromoBanner)
-        .where(PromoBanner.id == banner_id)
-        .values(clicks=PromoBanner.clicks + 1)
+    """Records a click/tap event on a banner via append-only event row."""
+    event = PromoBannerEvent(
+        banner_id=banner_id,
+        event_type="click",
+        user_id=current_user.id if current_user else None,
     )
+    db.add(event)
     await db.flush()
 
 

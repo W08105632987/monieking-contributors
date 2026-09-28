@@ -255,7 +255,7 @@ export default function WithdrawalsPage() {
         <div className="pointer-events-none absolute top-0 right-0 h-full w-8 bg-gradient-to-l from-green-50 to-transparent" />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-40">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {isLoading ? (
           <div className="space-y-3">
             {[1,2,3].map(i => <div key={i} className="h-20 bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 animate-pulse" />)}

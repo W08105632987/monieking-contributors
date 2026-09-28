@@ -28,7 +28,7 @@ async def track_event(
     await db.commit()
 
 
-async def get_overview(db: AsyncSession, *, start_date: date | None, end_date: date | None) -> dict:
+async def get_overview(db: AsyncSession, *, start_date: date | None, end_date: date | None, all_time: bool = False) -> dict:
     """
     The dashboard's headline numbers plus a daily time series — the
     "Google Analytics inside the app" the product ask was for, scoped
@@ -37,7 +37,12 @@ async def get_overview(db: AsyncSession, *, start_date: date | None, end_date: d
     page visit still counts), top pages, top clicks, and a role
     breakdown (how much of the traffic is customers vs officers vs
     directors vs the public).
+    Defaults to rolling 30-day window when date range is omitted to avoid
+    expensive unbounded scans on dashboard load (1.5).
     """
+    if not all_time and start_date is None and end_date is None:
+        start_date = date.today() - timedelta(days=30)
+
     start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc) if start_date else None
     end_dt = (
         datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(days=1)

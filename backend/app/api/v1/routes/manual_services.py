@@ -25,6 +25,7 @@ from app.models.user import User, UserRole
 from app.models.settings import SystemConfig
 from app.models.notification import NotificationType
 from app.services.notification_service import send_notification
+from app.services.settings_service import get_config_value, invalidate_config_cache
 from app.services.wallet_service import get_or_create_wallet, debit_wallet
 from app.services.withdrawal_auth_service import check_withdrawal_password
 from app.utils.supabase_admin_client import supabase_admin_request
@@ -119,10 +120,10 @@ PRICE_MAP: dict[str, dict[str, int]] = {
 
 
 async def _get_current_price_map(db: AsyncSession) -> dict[str, dict[str, int]]:
-    cfg = await db.get(SystemConfig, "manual_services_pricing")
-    if cfg and cfg.value:
+    val = await get_config_value(db, "manual_services_pricing")
+    if val:
         try:
-            custom = json.loads(cfg.value)
+            custom = json.loads(val)
             merged = {**PRICE_MAP}
             for cat, sub in custom.items():
                 if cat in merged:
@@ -519,11 +520,11 @@ DEFAULT_COVER_LABELS: dict[str, str] = {
 
 
 async def _get_current_cover_labels(db: AsyncSession) -> dict[str, str]:
-    cfg = await db.get(SystemConfig, "manual_services_cover_labels")
+    val = await get_config_value(db, "manual_services_cover_labels")
     labels = dict(DEFAULT_COVER_LABELS)
-    if cfg and cfg.value:
+    if val:
         try:
-            custom = json.loads(cfg.value)
+            custom = json.loads(val)
             if isinstance(custom, dict):
                 labels.update(custom)
         except Exception:
@@ -601,6 +602,8 @@ async def update_manual_services_pricing(
             label_cfg.updated_by = current_user.id
 
     await db.commit()
+    invalidate_config_cache("manual_services_pricing")
+    invalidate_config_cache("manual_services_cover_labels")
     return {
         "pricing": current_pricing,
         "cover_labels": current_labels,

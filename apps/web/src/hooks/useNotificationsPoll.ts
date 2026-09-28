@@ -1,15 +1,18 @@
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth.store'
 import { useNotificationsStore } from '@/store/notifications.store'
 
-const POLL_INTERVAL_MS = 10_000 // 10 seconds
+// Safety-net fallback poll interval (every 3 minutes instead of aggressive 10-second polling)
+const FALLBACK_POLL_INTERVAL_MS = 3 * 60 * 1000
 
-/** Keeps the notification bell badge live app-wide, not just when the
- *  Notifications page happens to be open. Polls a cheap count-only endpoint. */
+/** Keeps the notification bell badge live app-wide.
+ *  Uses Supabase Realtime postgres_changes subscription as primary push mechanism (1.6),
+ *  with a conservative 3-minute fallback poll and window focus refresh. */
 export function useNotificationsPoll() {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const { user, isAuthenticated } = useAuthStore()
   const setUnreadCount = useNotificationsStore((s) => s.setUnreadCount)
   const qc = useQueryClient()
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -33,30 +36,52 @@ export function useNotificationsPoll() {
       }
     }
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !user) {
       if (intervalRef.current) clearInterval(intervalRef.current)
       prevCountRef.current = null
       return
     }
 
-    fetchCount() // immediately on mount / login
-    intervalRef.current = setInterval(fetchCount, POLL_INTERVAL_MS)
+    // 1. Initial fetch on mount / login
+    fetchCount()
 
-    // Also refresh the instant a tab regains focus — catches anything that
-    // happened while the user was in their banking app or phone was locked.
+    // 2. Realtime push subscription on notifications table for the current user
+    const channel = supabase
+      .channel(`user-notifications-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          fetchCount()
+        },
+      )
+      .subscribe()
+
+    // 3. Low-frequency safety-net poll in case realtime websocket disconnects silently
+    intervalRef.current = setInterval(fetchCount, FALLBACK_POLL_INTERVAL_MS)
+
+    // 4. Also refresh when tab regains focus
     const onFocus = () => {
       fetchCount()
       qc.invalidateQueries({ queryKey: ['wallet'] })
       qc.invalidateQueries({ queryKey: ['wallet-transactions'] })
     }
     window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', () => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') onFocus()
-    })
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
+      supabase.removeChannel(channel)
       if (intervalRef.current) clearInterval(intervalRef.current)
       window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [isAuthenticated, qc])
+  }, [isAuthenticated, user?.id, qc])
 }

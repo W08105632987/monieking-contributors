@@ -382,7 +382,7 @@ export default function WorkerProfilePage() {
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
       <WorkerHeader title="My Profile" subtitle="Service Worker" />
 
-      <div className="flex-1 overflow-y-auto pb-40 px-4">
+      <div className="flex-1 overflow-y-auto pb-safe-nav px-4">
         {/* Avatar + name hero */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}

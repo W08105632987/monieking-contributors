@@ -171,7 +171,7 @@ export default function StaffPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-40">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <button
           onClick={() => setShowCreate(true)}
           className="w-full flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-500 text-green-950 font-bold text-sm rounded-2xl py-3.5 active:scale-95 transition-all mb-4 shadow-card"

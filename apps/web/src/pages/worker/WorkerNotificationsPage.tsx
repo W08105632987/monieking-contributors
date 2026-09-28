@@ -143,7 +143,7 @@ export default function WorkerNotificationsPage() {
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
       <WorkerHeader title="Notifications" subtitle="Job updates, disputes & payouts" />
 
-      <main className="flex-1 px-4 py-4 max-w-lg mx-auto w-full pb-28">
+      <main className="flex-1 px-4 py-4 max-w-lg mx-auto w-full pb-safe-nav">
         {/* Header Actions */}
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">

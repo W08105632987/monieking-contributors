@@ -431,3 +431,15 @@ input:-webkit-autofill:focus {
 .animate-fadeIn {
   animation: fadeIn 0.15s ease-out;
 }
+
+/* Safe dynamic bottom padding to clear the fixed BottomNav on all devices */
+:root {
+  --bottom-nav-height: 4.5rem;
+}
+
+@layer utilities {
+  .pb-safe-nav {
+    padding-bottom: calc(var(--bottom-nav-height, 4.5rem) + 1.5rem) !important;
+  }
+}
+

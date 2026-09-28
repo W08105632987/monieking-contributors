@@ -220,7 +220,7 @@ export default function OfficerProfilePage() {
         <span className="text-xs font-bold bg-green-900 text-amber-400 px-2.5 py-1 rounded-full">Officer</span>
       </header>
 
-      <div className="flex-1 overflow-y-auto pb-40 px-4">
+      <div className="flex-1 overflow-y-auto pb-safe-nav px-4">
 
         {/* Avatar hero */}
         <motion.div

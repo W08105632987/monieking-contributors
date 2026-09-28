@@ -147,7 +147,7 @@ export default function AirtimeDataPage() {
         <h1 className="text-green-900 dark:text-white font-bold text-lg">Airtime & Data</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-28">
+      <div className="flex-1 overflow-y-auto px-4" style={{ paddingBottom: 'calc(var(--bottom-nav-height, 4.5rem) + 6rem)' }}>
         {customerId && (
           <div className="bg-amber-50 dark:bg-night-600 rounded-2xl px-4 py-3 mt-2 mb-4">
             <p className="text-amber-700 dark:text-night-100 text-xs font-semibold">
@@ -306,7 +306,7 @@ export default function AirtimeDataPage() {
           inside the confirmation sheet, right next to what it's being
           compared against, instead of floating in a bar that isn't
           part of the actual decision moment. */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-night-900 border-t border-green-50 dark:border-night-700 px-4 py-3">
+      <div className="fixed left-0 right-0 z-30 bg-white dark:bg-night-900 border-t border-green-50 dark:border-night-700 px-4 py-3" style={{ bottom: 'var(--bottom-nav-height, 4.5rem)' }}>
         <button
           onClick={handlePay}
           disabled={!canPay || payMutation.isPending}

@@ -64,7 +64,7 @@ export default function EducationPaymentsPage() {
         <h1 className="text-green-900 dark:text-white font-bold text-lg">Education Payments</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-28">
+      <div className="flex-1 overflow-y-auto px-4" style={{ paddingBottom: 'calc(var(--bottom-nav-height, 4.5rem) + 7rem)' }}>
         {customerId && (
           <div className="bg-amber-50 dark:bg-night-600 rounded-2xl px-4 py-3 mt-2 mb-4">
             <p className="text-amber-700 dark:text-night-100 text-xs font-semibold">
@@ -139,7 +139,7 @@ export default function EducationPaymentsPage() {
         )}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-night-900 border-t border-green-50 dark:border-night-700 px-4 py-3">
+      <div className="fixed left-0 right-0 z-30 bg-white dark:bg-night-900 border-t border-green-50 dark:border-night-700 px-4 py-3" style={{ bottom: 'var(--bottom-nav-height, 4.5rem)' }}>
         <div className="flex items-center justify-between mb-2 text-xs text-green-500 dark:text-night-300">
           <span>Wallet balance</span>
           <span className="font-semibold text-green-700 dark:text-night-100">{formatNaira(wallet?.balance_kobo ?? 0)}</span>

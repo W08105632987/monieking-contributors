@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, forwardRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Home, CreditCard, Wallet, Bell, User, UserCog, Grid2x2, LayoutGrid, Briefcase, ShieldAlert } from 'lucide-react'
@@ -53,7 +53,7 @@ const navByRole: Record<string, NavItem[]> = {
   service_worker: workerNav,
 }
 
-export function BottomNav() {
+export const BottomNav = forwardRef<HTMLElement>(function BottomNav(_props, ref) {
   const location = useLocation()
   const navigate = useAppNavigate()
   const user = useAuthStore((s) => s.user)
@@ -89,6 +89,8 @@ export function BottomNav() {
 
   return (
     <nav
+      ref={ref}
+      id="app-bottom-nav"
       className="fixed bottom-0 left-0 right-0 z-50 bg-nav-gradient dark:bg-gradient-to-b dark:from-night-900 dark:to-night-950"
       style={{
         paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))',
@@ -158,4 +160,4 @@ export function BottomNav() {
       </div>
     </nav>
   )
-}
+})

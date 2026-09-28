@@ -226,7 +226,7 @@ export default function ServicesPage() {
         <h1 className="text-green-900 dark:text-white font-bold text-lg">All services</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-28">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {isError ? (
           <FallbackError
             title="Couldn't load services"

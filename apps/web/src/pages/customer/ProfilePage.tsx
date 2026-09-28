@@ -251,7 +251,7 @@ export default function ProfilePage() {
         <BrandBlobLogo height={36} />
       </header>
 
-      <div className="flex-1 overflow-y-auto pb-40 px-4">
+      <div className="flex-1 overflow-y-auto pb-safe-nav px-4">
 
         {/* Avatar + name hero */}
         <motion.div

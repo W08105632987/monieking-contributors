@@ -61,5 +61,6 @@ async def overview(
     db: AsyncSession = Depends(get_db),
     start_date: date | None = None,
     end_date: date | None = None,
+    all_time: bool = False,
 ):
-    return await svc.get_overview(db, start_date=start_date, end_date=end_date)
+    return await svc.get_overview(db, start_date=start_date, end_date=end_date, all_time=all_time)

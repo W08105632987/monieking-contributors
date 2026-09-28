@@ -291,7 +291,7 @@ export default function WorkerDashboardPage() {
   ]
 
   return (
-    <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 pb-24 text-green-950 dark:text-white">
+    <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 pb-safe-nav text-green-950 dark:text-white">
       <WorkerHeader title="Worker Station" subtitle={hasActiveJob ? 'Busy — 1 active job' : 'Free to claim'} />
 
       <main className="flex-1 px-4 py-4 space-y-5 max-w-lg mx-auto w-full">

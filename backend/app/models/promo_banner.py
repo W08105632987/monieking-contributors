@@ -53,3 +53,18 @@ class PromoBanner(Base):
     created_at:    Mapped[datetime]  = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     impressions:   Mapped[int]       = mapped_column(Integer, default=0, server_default="0")
     clicks:        Mapped[int]       = mapped_column(Integer, default=0, server_default="0")
+
+
+class PromoBannerEvent(Base):
+    """
+    Append-only tracking table for promo banner impressions and clicks.
+    Avoids hot-row UPDATE contention and dead tuples on promo_banners.
+    """
+    __tablename__ = "promo_banner_events"
+
+    id:         Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    banner_id:  Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("promo_banners.id", ondelete="CASCADE"), nullable=False)
+    event_type: Mapped[str]       = mapped_column(String(20), nullable=False)  # 'impression' | 'click'
+    user_id:    Mapped[uuid.UUID|None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime]  = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
