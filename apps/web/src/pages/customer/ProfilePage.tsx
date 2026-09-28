@@ -18,7 +18,7 @@ import { BankDetailsEditor } from '@/components/settings/BankDetailsEditor'
 import { KycSection } from '@/components/settings/KycSection'
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
-import { AboutMonieKingModal } from '@/components/settings/AboutMonieKingModal'
+
 import { formatNaira, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -219,7 +219,7 @@ export default function ProfilePage() {
   const [showWithdrawSheet, setShowWithdrawSheet] = useState(false)
   const [showSignOutSheet, setShowSignOutSheet]   = useState(false)
   const [showContactSheet, setShowContactSheet]   = useState(false)
-  const [showAbout, setShowAbout] = useState(false)
+
 
   const { data: smsFee } = useQuery({
     queryKey: ['sms-fee'],

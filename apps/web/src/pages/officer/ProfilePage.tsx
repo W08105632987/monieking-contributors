@@ -15,7 +15,7 @@ import { BiometricSection } from '@/components/settings/BiometricSection'
 import { KycSection } from '@/components/settings/KycSection'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
-import { AboutMonieKingModal } from '@/components/settings/AboutMonieKingModal'
+
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { formatNaira, maskAccount, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -206,7 +206,7 @@ export default function OfficerProfilePage() {
   const navigate   = useNavigate()
   const [showWithdrawSheet, setShowWithdrawSheet] = useState(false)
   const [showSignOutSheet,  setShowSignOutSheet]  = useState(false)
-  const [showAbout, setShowAbout] = useState(false)
+
   const [showContactSheet, setShowContactSheet] = useState(false)
 
   if (!user) return null

@@ -7,7 +7,7 @@ import { formatDate } from '@/lib/utils'
 import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
-import { AboutMonieKingModal } from '@/components/settings/AboutMonieKingModal'
+
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
 import { useState } from 'react'
 
@@ -66,7 +66,7 @@ function SignOutSheet({ onClose }: { onClose: () => void }) {
 export default function DirectorProfilePage() {
   const navigate = useNavigate()
   const { user, setUser } = useAuthStore()
-  const [showAbout, setShowAbout] = useState(false)
+
   const [showSignOutSheet, setShowSignOutSheet] = useState(false)
 
   if (!user) return null

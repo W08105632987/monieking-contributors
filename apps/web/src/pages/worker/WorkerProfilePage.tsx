@@ -17,7 +17,7 @@ import { ChangePasswordSection } from '@/components/settings/ChangePasswordSecti
 import { BankDetailsEditor } from '@/components/settings/BankDetailsEditor'
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
-import { AboutMonieKingModal } from '@/components/settings/AboutMonieKingModal'
+
 import { formatNaira, maskAccount, formatDate, copyToClipboard, cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
@@ -350,7 +350,7 @@ export default function WorkerProfilePage() {
   const [showEditInfoSheet, setShowEditInfoSheet] = useState(false)
   const [showSignOutSheet, setShowSignOutSheet] = useState(false)
   const [showContactSheet, setShowContactSheet] = useState(false)
-  const [showAbout, setShowAbout] = useState(false)
+
   const [copiedCode, setCopiedCode] = useState(false)
 
   // Earnings summary query
