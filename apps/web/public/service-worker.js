@@ -4,7 +4,7 @@
 // under /api/) always goes straight to the network — financial data
 // must never be served stale or offline.
 
-const CACHE_NAME = 'monieking-shell-v3'
+const CACHE_NAME = 'monieking-shell-v4'
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg']
 
 self.addEventListener('install', (event) => {
