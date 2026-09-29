@@ -69,7 +69,7 @@ export default function AllCustomersPage() {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {isLoading ? (
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4">
             {[1, 2, 3, 4].map(i => (

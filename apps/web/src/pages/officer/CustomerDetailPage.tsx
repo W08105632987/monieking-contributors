@@ -99,7 +99,7 @@ export default function CustomerDetailPage() {
       </header>
 
       {/* Customer header card */}
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-12 h-12 rounded-full bg-green-900 flex items-center justify-center font-bold text-amber-400 text-base flex-shrink-0">

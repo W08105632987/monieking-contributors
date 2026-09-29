@@ -72,7 +72,7 @@ export default function AnalyticsPage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Analytics</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {/* Date range filter — defaults to All time */}
         <div className="flex items-center gap-2 mb-2 overflow-x-auto no-scrollbar">
           {([

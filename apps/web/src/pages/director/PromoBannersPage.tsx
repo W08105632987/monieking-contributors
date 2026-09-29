@@ -540,7 +540,7 @@ export default function PromoBannersPage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Promo Studio</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
 
         {/* Create / Starter pickers */}
         {!showCreate ? (

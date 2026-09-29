@@ -14,7 +14,7 @@ export default function OfficerCustomerStatsDetailPage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Customer statistics</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <CustomerStatsPanel scope={{ kind: 'my_zone' }} title="Your zone" />
       </div>
     </div>

@@ -144,7 +144,7 @@ export default function OfficerTransactionsPage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">All transactions</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <div className="flex gap-2 mb-4">
           {(['all', 'credit', 'debit'] as Filter[]).map(f => (
             <button

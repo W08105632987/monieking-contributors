@@ -85,7 +85,7 @@ export default function OfficerDetailPage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Officer</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-8">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {/* Profile card */}
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4 flex items-center gap-3">
           <Avatar name={officer.full_name} avatarUrl={officer.avatar_url} size={56} />

@@ -638,7 +638,7 @@ export default function BusinessSettingsPage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Business Settings</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <p className="text-green-500 dark:text-night-200 text-sm mb-4">
           Control the rates and fees that drive the whole platform. Food Card rate changes are deferred to the next January 1st to protect customers already contributing.
         </p>

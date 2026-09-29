@@ -222,7 +222,7 @@ export default function ServiceWorkersPage() {
   })
 
   return (
-    <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 pb-24 text-green-950 dark:text-white">
+    <div className="min-h-dvh flex flex-col bg-surface dark:bg-night-900 pb-safe-nav text-green-950 dark:text-white">
       {/* Header */}
       <header className="sticky top-0 z-30 px-4 py-3 bg-white/80 dark:bg-night-800/80 backdrop-blur-md border-b border-green-100 dark:border-night-700 flex items-center justify-between">
         <div>

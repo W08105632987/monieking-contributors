@@ -65,7 +65,7 @@ export default function LiveMetricsPage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Live metrics</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <div className="flex items-center gap-2 mb-4 overflow-x-auto no-scrollbar">
           {RANGE_OPTIONS.map(opt => (
             <button

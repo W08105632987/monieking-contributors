@@ -30,7 +30,7 @@ export default function BroadcastPage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Broadcast</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <p className="text-green-500 dark:text-night-200 text-sm mb-4">
           Sends a notification straight to each recipient's inbox — for things that don't need the urgency of the Instant Message ticker.
         </p>

@@ -54,7 +54,7 @@ export default function DirectorSystemHealthPage() {
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {!isLoading && data && (
           <div className={cn('rounded-2xl border p-4 mb-4 flex items-center gap-3', STATUS_TINT[overall])}>
             {(() => { const Icon = STATUS_ICON[overall]; return <Icon className="w-5 h-5" /> })()}

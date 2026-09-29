@@ -413,7 +413,7 @@ export default function IdentityServicesPage() {
         <h1 className="text-green-900 dark:text-white font-bold text-lg">Identity services & pricing</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <p className="text-green-500 dark:text-night-300 text-sm mb-4">
           Control card display prices (alphanumeric text like &ldquo;From ₦7,000&rdquo;) and configure inner child tier
           prices for each service. Toggle any service on or off at any time.

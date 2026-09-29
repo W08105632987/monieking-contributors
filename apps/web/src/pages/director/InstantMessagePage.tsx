@@ -51,7 +51,7 @@ export default function InstantMessagePage() {
         <h1 className="text-green-900 dark:text-white font-extrabold text-lg">Instant Message</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <p className="text-green-500 dark:text-night-200 text-sm mb-4">
           A scrolling banner shown on every page, for things too urgent to wait for someone to open their notifications.
         </p>
