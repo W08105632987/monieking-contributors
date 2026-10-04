@@ -308,6 +308,10 @@ async def submit_service_request(
     )
 
     # Wallet balance verification & atomic debit
+    # req_id generated up front (not after the ManualServiceRequest insert
+    # below) so the debit's related_entity_id can point at it from the
+    # start — same reasoning as the withdrawal_id fix in wallets.py.
+    req_id = uuid.uuid4()
     if price_kobo > 0:
         wallet = await get_or_create_wallet(db, target_user_id)
         if wallet.balance_kobo < price_kobo:
@@ -323,6 +327,8 @@ async def submit_service_request(
             reference=generate_reference(),
             description=f"Manual Service: {body.service_category.replace('_', ' ').title()}",
             initiated_by=current_user.id,
+            related_entity_type="manual_service_request",
+            related_entity_id=req_id,
         )
 
     # Resolve referred worker
@@ -351,6 +357,7 @@ async def submit_service_request(
         req_form_data["submitted_by_officer_id"] = str(current_user.id)
 
     req = ManualServiceRequest(
+        id=req_id,
         user_id=target_user_id,
         service_category=body.service_category,
         service_type=body.service_type,

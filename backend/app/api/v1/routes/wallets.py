@@ -16,12 +16,13 @@ from app.integrations.monnify import get_payment_provider
 from app.models.wallet import Wallet, WalletTransaction, TxCategory, TxType
 from app.models.withdrawal import Withdrawal, WithdrawalSource, WithdrawalStatus
 from app.models.notification import NotificationType
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.wallet import WalletResponse, WalletTransactionResponse, PaginatedTransactions, WalletSummaryResponse
 from app.schemas.withdrawal import WalletWithdrawalRequest, WithdrawalResponse
 from app.schemas.user import KycSubmitRequest
 from app.services.wallet_service import get_or_create_wallet, debit_wallet, credit_wallet
 from app.services.notification_service import send_notification
+from app.services.receipt_service import build_verification_code, build_receipt_details
 from app.utils.audit import log_action
 from app.utils.bank_codes import resolve_bank_code
 
@@ -255,6 +256,12 @@ async def request_wallet_withdrawal(
     # wallet is credited back — a compensating transaction, since an
     # external payment provider can't be part of the same database
     # transaction as the internal debit.
+    # Generated up front (not after the Withdrawal insert below) so
+    # the debit — and any reversal credit — can link back to it via
+    # related_entity_id from the moment it's recorded, rather than
+    # leaving the SUCCESS-path debit with no linkage at all.
+    withdrawal_id = uuid.uuid4()
+
     await debit_wallet(
         db,
         wallet=       wallet,
@@ -263,6 +270,8 @@ async def request_wallet_withdrawal(
         reference=    ref,
         description=  f"Withdrawal to {current_user.bank_name} ({current_user.account_number})",
         initiated_by= current_user.id,
+        related_entity_type="withdrawal",
+        related_entity_id=withdrawal_id,
     )
 
     provider = get_payment_provider()
@@ -281,6 +290,7 @@ async def request_wallet_withdrawal(
             db, wallet=wallet, amount_kobo=body.amount_kobo,
             category=TxCategory.WITHDRAWAL, reference=f"{ref}-reversal",
             description="Reversal — transfer initiation failed", initiated_by=current_user.id,
+            related_entity_type="withdrawal", related_entity_id=withdrawal_id,
         )
         raise HTTPException(status_code=502, detail="Transfer could not be initiated. Please try again.")
 
@@ -289,6 +299,7 @@ async def request_wallet_withdrawal(
             db, wallet=wallet, amount_kobo=body.amount_kobo,
             category=TxCategory.WITHDRAWAL, reference=f"{ref}-reversal",
             description="Reversal — transfer requires provider-side authorization", initiated_by=current_user.id,
+            related_entity_type="withdrawal", related_entity_id=withdrawal_id,
         )
         raise HTTPException(
             status_code=503,
@@ -300,10 +311,12 @@ async def request_wallet_withdrawal(
             db, wallet=wallet, amount_kobo=body.amount_kobo,
             category=TxCategory.WITHDRAWAL, reference=f"{ref}-reversal",
             description="Reversal — transfer failed", initiated_by=current_user.id,
+            related_entity_type="withdrawal", related_entity_id=withdrawal_id,
         )
         raise HTTPException(status_code=502, detail="Transfer failed. Please try again.")
 
     withdrawal = Withdrawal(
+        id=                      withdrawal_id,
         customer_id=            current_user.id,
         card_id=                None,
         source=                 WithdrawalSource.WALLET,
@@ -381,6 +394,51 @@ async def get_my_transactions(
         page_size= page_size,
         has_next=  (page * page_size) < total,
     )
+
+@router.get("/transactions/{transaction_id}/receipt")
+async def get_transaction_receipt(
+    transaction_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Everything the universal receipt page needs for one transaction:
+    the transaction's own fields, a reproducible verification code, and
+    structured, type-specific detail resolved via related_entity_type
+    (falling back gracefully to just the description for transaction
+    types with nothing further to join against, or old rows that
+    predate the related_entity_type/id columns — see receipt_service.py).
+
+    Access: the wallet's own owner, or a director/admin for oversight
+    and dispute-review purposes. Never any other customer's wallet.
+    """
+    tx = await db.get(WalletTransaction, transaction_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    wallet = await db.get(Wallet, tx.wallet_id)
+    is_owner = wallet is not None and wallet.owner_id == current_user.id
+    is_staff = current_user.role in (UserRole.DIRECTOR, UserRole.ADMIN)
+    if not (is_owner or is_staff):
+        raise HTTPException(status_code=403, detail="You don't have access to this transaction")
+
+    details = await build_receipt_details(db, tx)
+    owner = await db.get(User, wallet.owner_id) if wallet else None
+
+    return {
+        "id":                   str(tx.id),
+        "type":                 tx.type.value if hasattr(tx.type, "value") else str(tx.type),
+        "category":             tx.category.value if hasattr(tx.category, "value") else str(tx.category),
+        "amount_kobo":          tx.amount_kobo,
+        "balance_after_kobo":   tx.balance_after_kobo,
+        "reference":            tx.reference,
+        "description":          tx.description,
+        "created_at":           tx.created_at.isoformat(),
+        "account_holder_name":  owner.full_name if owner else None,
+        "verification_code":    build_verification_code(tx),
+        "details":              details,
+    }
+
 
 @router.get("/me/summary", response_model=WalletSummaryResponse)
 async def get_my_wallet_summary(

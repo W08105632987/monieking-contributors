@@ -93,6 +93,8 @@ export interface WalletTransaction {
   description: string | null
   related_card_id: string | null
   related_withdrawal_id: string | null
+  related_entity_type: string | null
+  related_entity_id: string | null
   initiated_by: string
   created_at: string
 }

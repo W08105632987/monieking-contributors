@@ -231,8 +231,9 @@ async def create_request(
         try:
             await debit_wallet(
                 db, wallet=wallet, amount_kobo=service.price_kobo, category=TxCategory.CHARGE,
-                reference=reference, description=f"{service.name} · {request_row.id}",
+                reference=reference, description=f"{service.name}",
                 initiated_by=user.id,
+                related_entity_type="identity_service", related_entity_id=request_row.id,
             )
         except HTTPException:
             # Balance changed between our pre-check and now (a race), or

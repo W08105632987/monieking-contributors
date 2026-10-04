@@ -252,6 +252,7 @@ async def pay_bill(
         db, wallet=wallet, amount_kobo=resolved_amount_kobo, category=TxCategory.CHARGE,
         reference=reference, description=f"{biller.name} — {biller.product_name}",
         initiated_by=officer_id or customer_id,
+        related_entity_type="bill_payment", related_entity_id=request.id,
     )
 
     request.status = BillPaymentStatus.COMPLETED

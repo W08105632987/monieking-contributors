@@ -110,6 +110,7 @@ async def monnify_payment_webhook(
             reference=    event.transaction_reference,
             description=  f"Monnify deposit — {event.transaction_reference}",
             initiated_by= wallet.owner_id,
+            related_entity_type="wallet_funding",
         )
     except Exception as e:
         webhook_record.processing_error = str(e)

@@ -284,6 +284,7 @@ async def charge_monthly_sms_subscriptions(
                 description=f"Monthly SMS notification service — {month_str}",
                 initiated_by=director.id,
                 allow_negative=True,
+                related_entity_type="sms_fee",
             )
             await send_notification(
                 db,

@@ -33,6 +33,8 @@ async def credit_wallet(
     description: str,
     initiated_by: uuid.UUID,
     related_card_id: uuid.UUID | None = None,
+    related_entity_type: str | None = None,
+    related_entity_id: uuid.UUID | None = None,
 ) -> WalletTransaction:
     """
     Credit wallet balance. Uses row-level lock.
@@ -75,6 +77,8 @@ async def credit_wallet(
         description=       description,
         initiated_by=      initiated_by,
         related_card_id=   related_card_id,
+        related_entity_type=related_entity_type,
+        related_entity_id=  related_entity_id,
     )
     db.add(tx)
     await db.flush()
@@ -92,6 +96,8 @@ async def debit_wallet(
     initiated_by: uuid.UUID,
     related_card_id: uuid.UUID | None = None,
     related_withdrawal_id: uuid.UUID | None = None,
+    related_entity_type: str | None = None,
+    related_entity_id: uuid.UUID | None = None,
     allow_negative: bool = False,
 ) -> WalletTransaction:
     """
@@ -134,6 +140,8 @@ async def debit_wallet(
         initiated_by=           initiated_by,
         related_card_id=        related_card_id,
         related_withdrawal_id=  related_withdrawal_id,
+        related_entity_type=    related_entity_type,
+        related_entity_id=      related_entity_id,
     )
     db.add(tx)
     await db.flush()

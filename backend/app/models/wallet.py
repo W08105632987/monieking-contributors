@@ -57,6 +57,13 @@ class WalletTransaction(Base):
     related_withdrawal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("withdrawals.id", ondelete="SET NULL"))
     initiated_by:          Mapped[uuid.UUID]        = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
+    # Generalized linkage for the universal receipt — covers every
+    # transaction source, not just cards/withdrawals (migration 041).
+    # Deliberately NOT a real FK: the source table varies by type, so
+    # the receipt endpoint resolves it with a type-keyed lookup instead.
+    related_entity_type: Mapped[str | None] = mapped_column(String(40))
+    related_entity_id:   Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     wallet: Mapped["Wallet"] = relationship("Wallet", back_populates="transactions")

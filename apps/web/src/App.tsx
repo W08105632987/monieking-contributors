@@ -37,6 +37,7 @@ const CustomerDashboard    = lazy(() => import('@/pages/customer/DashboardPage')
 const CustomerCards        = lazy(() => import('@/pages/customer/CardsPage'))
 const CustomerWallet       = lazy(() => import('@/pages/customer/WalletPage'))
 const CustomerTransactions = lazy(() => import('@/pages/customer/TransactionsPage'))
+const TransactionReceipt   = lazy(() => import('@/pages/shared/ReceiptPage'))
 const CustomerNotifications= lazy(() => import('@/pages/customer/NotificationsPage'))
 const CustomerProfile      = lazy(() => import('@/pages/customer/ProfilePage'))
 const ContributePage       = lazy(() => import('@/pages/customer/ContributePage'))
@@ -213,6 +214,8 @@ export default function App() {
             <Route path="/customer/cards"         element={<AuthGuard allowedRoles={['customer']}><CustomerCards /></AuthGuard>} />
             <Route path="/customer/wallet"        element={<AuthGuard allowedRoles={['customer']}><CustomerWallet /></AuthGuard>} />
             <Route path="/customer/wallet/transactions" element={<AuthGuard allowedRoles={['customer']}><CustomerTransactions /></AuthGuard>} />
+            {/* Shared across every role — a receipt is viewed the same way regardless of who's looking at it */}
+            <Route path="/transactions/:id/receipt" element={<AuthGuard><TransactionReceipt /></AuthGuard>} />
             <Route path="/customer/notifications" element={<AuthGuard allowedRoles={['customer']}><CustomerNotifications /></AuthGuard>} />
             <Route path="/customer/profile"       element={<AuthGuard allowedRoles={['customer']}><CustomerProfile /></AuthGuard>} />
             <Route path="/customer/cards/:cardId/contribute" element={<AuthGuard allowedRoles={['customer']}><ContributePage /></AuthGuard>} />

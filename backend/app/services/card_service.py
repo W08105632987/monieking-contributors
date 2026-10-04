@@ -291,6 +291,8 @@ async def post_contribution(
         description=     f"Contribution: {days} day(s) on card #{card.card_number}",
         initiated_by=    contributed_by,
         related_card_id= card_id,
+        related_entity_type="contribution_card",
+        related_entity_id=card_id,
     )
 
     # Always append fresh slots after the highest slot ever used — a
