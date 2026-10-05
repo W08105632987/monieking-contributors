@@ -3,6 +3,33 @@
 Auto-escalates any dispute sitting OPEN or UNDER_REVIEW beyond the
 Director-configured `dispute_sla_hours` (defaults to 48 hours).
 Mirroring `reclaim_expired_jobs`.
+
+HOTFIX NOTES
+------------
+The previous version crashed the first time it found an overdue dispute,
+and because it ran at the top of GET /disputes, that crash surfaced as a
+500 (and, because 500s bypass CORSMiddleware, as a CORS error) on the
+"My Disputes" page. Three separate defects:
+
+  1. DisputeMessage(..., sender_role="system") -- the model has no
+     `sender_role` column, so the constructor raised TypeError.
+  2. DisputeMessage(sender_id=None) -- dispute_messages.sender_id is
+     NOT NULL (migration 013), so a "system" message cannot be stored.
+  3. log_action(..., details=..., actor_id=None) -- log_action has no
+     `details` parameter, and audit_logs.actor_id is NOT NULL.
+
+Because `_last_sweep_time` is stamped before the work starts, a crash made
+the next ~2 minutes of requests skip the sweep and succeed, which is why
+the page failed on first open and worked after a refresh.
+
+What changed:
+  * The sweep now runs inside a SAVEPOINT and can never raise into the
+    request that triggered it; failures are logged and the cycle skipped.
+  * The system message and audit row are removed (both need a nullable
+    "system" actor, i.e. a schema change). The escalation is still fully
+    recorded on the dispute itself (status, is_escalated, escalated_at,
+    escalation_reason) and directors are still notified.
+  * The explicit commit is gone; the request's own get_db() commits.
 """
 from __future__ import annotations
 
@@ -13,12 +40,11 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.dispute import Dispute, DisputeStatus, DisputeMessage
+from app.models.dispute import Dispute, DisputeStatus
 from app.models.user import User, UserRole
 from app.models.notification import NotificationType
 from app.services.notification_service import send_notification
 from app.services.settings_service import get_config_int
-from app.utils.audit import log_action
 
 logger = logging.getLogger(__name__)
 
@@ -33,19 +59,7 @@ async def get_dispute_sla_hours(db: AsyncSession) -> int:
     return max(1, val)
 
 
-async def sweep_dispute_sla(db: AsyncSession, force: bool = False) -> int:
-    """
-    Checks for open or under-review disputes older than dispute_sla_hours.
-    Auto-escalates them to the open Director queue (assigned_to = None, status = ESCALATED)
-    and notifies all directors.
-    Debounced: Runs at most once every SWEEP_DEBOUNCE_SECONDS unless force=True.
-    """
-    global _last_sweep_time
-    now_ts = time.time()
-    if not force and (now_ts - _last_sweep_time) < SWEEP_DEBOUNCE_SECONDS:
-        return 0
-    _last_sweep_time = now_ts
-
+async def _run_sweep(db: AsyncSession) -> int:
     sla_hours = await get_dispute_sla_hours(db)
     now = datetime.now(timezone.utc)
     threshold = now - timedelta(hours=sla_hours)
@@ -70,7 +84,6 @@ async def sweep_dispute_sla(db: AsyncSession, force: bool = False) -> int:
 
     escalated_count = 0
     for d in disputes:
-        prev_assigned = d.assigned_to
         d.status = DisputeStatus.ESCALATED
         d.is_escalated = True
         d.escalated_at = now
@@ -78,31 +91,6 @@ async def sweep_dispute_sla(db: AsyncSession, force: bool = False) -> int:
         d.assigned_to = None
         d.updated_at = now
         escalated_count += 1
-
-        # Add a system dispute message
-        msg = DisputeMessage(
-            dispute_id=d.id,
-            sender_id=None,
-            sender_role="system",
-            message=f"Dispute exceeded the {sla_hours}-hour resolution SLA and was automatically escalated to the Director queue.",
-            is_internal=False,
-            created_at=now,
-        )
-        db.add(msg)
-
-        # Audit log
-        await log_action(
-            db,
-            actor_id=None,
-            action="dispute_auto_escalated_sla",
-            entity_type="dispute",
-            entity_id=d.id,
-            details={
-                "sla_hours": sla_hours,
-                "created_at": d.created_at.isoformat() if d.created_at else None,
-                "previous_assigned_to": str(prev_assigned) if prev_assigned else None,
-            },
-        )
 
         # Notify directors
         for dir_id in director_ids:
@@ -115,6 +103,32 @@ async def sweep_dispute_sla(db: AsyncSession, force: bool = False) -> int:
                 related_entity_id=d.id,
             )
 
-    await db.commit()
+    await db.flush()
     logger.info("Dispute SLA sweep: auto-escalated %d disputes past %d hours SLA", escalated_count, sla_hours)
     return escalated_count
+
+
+async def sweep_dispute_sla(db: AsyncSession, force: bool = False) -> int:
+    """
+    Checks for open or under-review disputes older than dispute_sla_hours.
+    Auto-escalates them to the open Director queue (assigned_to = None, status = ESCALATED)
+    and notifies all directors.
+    Debounced: Runs at most once every SWEEP_DEBOUNCE_SECONDS unless force=True.
+
+    Never raises: this is housekeeping that piggybacks on list requests, and
+    must not be able to break the request that happened to trigger it.
+    """
+    global _last_sweep_time
+    now_ts = time.time()
+    if not force and (now_ts - _last_sweep_time) < SWEEP_DEBOUNCE_SECONDS:
+        return 0
+    _last_sweep_time = now_ts
+
+    try:
+        # SAVEPOINT: if anything inside fails, only the sweep's own writes are
+        # rolled back, and the caller's session stays healthy for its own queries.
+        async with db.begin_nested():
+            return await _run_sweep(db)
+    except Exception:
+        logger.exception("Dispute SLA sweep failed — skipping this cycle")
+        return 0

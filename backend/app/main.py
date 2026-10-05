@@ -197,9 +197,20 @@ app.include_router(webhook_router,           prefix=PREFIX)
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     traceback.print_exc()
+    # Starlette runs this handler in ServerErrorMiddleware, which sits OUTSIDE
+    # CORSMiddleware — so without this, every 500 reaches the browser with no
+    # Access-Control-Allow-Origin header and shows up as a misleading CORS
+    # error instead of the real "500 Internal Server Error".
+    headers: dict[str, str] = {}
+    origin = request.headers.get("origin")
+    if origin and origin in settings.cors_origins_list:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Vary"] = "Origin"
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "Internal server error"},
+        headers=headers,
     )
 
 # ── Health & root ─────────────────────────────────────────────────
