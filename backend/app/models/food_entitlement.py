@@ -55,6 +55,13 @@ class FoodEntitlement(Base):
 
     created_at:    Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+    # NULL = part of the current, still-open distribution cycle. Stamped
+    # with the archive's id the moment a director closes that year — see
+    # food_ledger.py's close workflow and migration 042's comment.
+    archived_in_year_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("food_collection_year_archives.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
+
     card:          Mapped["ContributionCard"] = relationship("ContributionCard")
     customer:      Mapped["User"]             = relationship("User", foreign_keys=[customer_id])
 

@@ -38,6 +38,11 @@ const CustomerCards        = lazy(() => import('@/pages/customer/CardsPage'))
 const CustomerWallet       = lazy(() => import('@/pages/customer/WalletPage'))
 const CustomerTransactions = lazy(() => import('@/pages/customer/TransactionsPage'))
 const TransactionReceipt   = lazy(() => import('@/pages/shared/ReceiptPage'))
+const OfficerFoodLedger       = lazy(() => import('@/pages/officer/FoodLedgerPage'))
+const DirectorFoodOversight   = lazy(() => import('@/pages/director/FoodOversightPage'))
+const DirectorFoodCloseYear   = lazy(() => import('@/pages/director/FoodCloseYearPage'))
+const DirectorFoodArchives    = lazy(() => import('@/pages/director/FoodYearArchivesPage'))
+const DirectorFoodArchiveOne  = lazy(() => import('@/pages/director/FoodYearArchiveDetailPage'))
 const CustomerNotifications= lazy(() => import('@/pages/customer/NotificationsPage'))
 const CustomerProfile      = lazy(() => import('@/pages/customer/ProfilePage'))
 const ContributePage       = lazy(() => import('@/pages/customer/ContributePage'))
@@ -216,6 +221,11 @@ export default function App() {
             <Route path="/customer/wallet/transactions" element={<AuthGuard allowedRoles={['customer']}><CustomerTransactions /></AuthGuard>} />
             {/* Shared across every role — a receipt is viewed the same way regardless of who's looking at it */}
             <Route path="/transactions/:id/receipt" element={<AuthGuard><TransactionReceipt /></AuthGuard>} />
+            <Route path="/officer/food-ledger"            element={<AuthGuard allowedRoles={['officer']}><OfficerFoodLedger /></AuthGuard>} />
+            <Route path="/director/food/oversight"        element={<AuthGuard allowedRoles={['director']}><DirectorFoodOversight /></AuthGuard>} />
+            <Route path="/director/food/close-year"       element={<AuthGuard allowedRoles={['director']}><DirectorFoodCloseYear /></AuthGuard>} />
+            <Route path="/director/food/archives"         element={<AuthGuard allowedRoles={['director']}><DirectorFoodArchives /></AuthGuard>} />
+            <Route path="/director/food/archives/:year"   element={<AuthGuard allowedRoles={['director']}><DirectorFoodArchiveOne /></AuthGuard>} />
             <Route path="/customer/notifications" element={<AuthGuard allowedRoles={['customer']}><CustomerNotifications /></AuthGuard>} />
             <Route path="/customer/profile"       element={<AuthGuard allowedRoles={['customer']}><CustomerProfile /></AuthGuard>} />
             <Route path="/customer/cards/:cardId/contribute" element={<AuthGuard allowedRoles={['customer']}><ContributePage /></AuthGuard>} />

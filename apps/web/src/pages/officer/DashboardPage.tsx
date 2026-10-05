@@ -382,6 +382,15 @@ export default function OfficerDashboardPage() {
                 onClick: () => setShowFoodScanner(true),
               },
               {
+                icon: ClipboardList,
+                label: 'My Food Ledger',
+                sublabel: 'What you\'ve distributed',
+                color: 'bg-white dark:bg-night-700',
+                textColor: 'text-green-900 dark:text-white',
+                border: true,
+                onClick: () => navigate('/officer/food-ledger'),
+              },
+              {
                 icon: Users,
                 label: 'View customers',
                 sublabel: 'See your full zone list',

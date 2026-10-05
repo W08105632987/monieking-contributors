@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, ArrowRight, X } from 'lucide-react'
+import { api } from '@/lib/api'
 
 interface FoodCardRulesModalProps {
   isOpen: boolean
@@ -8,16 +10,34 @@ interface FoodCardRulesModalProps {
   onAccept: () => void
 }
 
-const CONDIMENT_ITEMS = [
-  { name: '50kg Bag of Premium Rice', desc: 'Long grain, stone-free polished rice', icon: '🌾' },
-  { name: '25L Pure Vegetable Cooking Oil', desc: 'Heart-friendly refined cooking oil', icon: '🛢️' },
-  { name: 'Carton of Seasoning & Tomato Paste', desc: 'Premium bouillon cubes & double concentrated puree', icon: '🥫' },
-  { name: 'Bag of Hand-Picked Beans & Yams', desc: 'Quality protein staples & tubers', icon: '🍠' },
-  { name: 'Exclusive Holiday Goodie Hamper', desc: 'Special celebration provisions & holiday treats', icon: '🎁' },
+interface PackageItem {
+  id: string
+  name: string
+  description: string | null
+  icon: string | null
+}
+
+// Fallback used only if the fetch fails or hasn't resolved yet — the
+// real source of truth is now /food-collections/package-items, director/
+// admin-editable, shared with the year-end cost-entry step.
+const FALLBACK_ITEMS: PackageItem[] = [
+  { id: 'rice', name: '50kg Bag of Premium Rice', description: 'Long grain, stone-free polished rice', icon: '🌾' },
+  { id: 'oil', name: '25L Pure Vegetable Cooking Oil', description: 'Heart-friendly refined cooking oil', icon: '🛢️' },
 ]
 
 export function FoodCardRulesModal({ isOpen, onClose, onAccept }: FoodCardRulesModalProps) {
   const [hasAgreed, setHasAgreed] = useState(false)
+
+  const { data: items } = useQuery({
+    queryKey: ['food-package-items'],
+    queryFn: async () => {
+      const { data } = await api.get<PackageItem[]>('/food-collections/package-items')
+      return data
+    },
+    enabled: isOpen,
+    staleTime: 1000 * 60 * 10,
+  })
+  const condimentItems = items && items.length > 0 ? items : FALLBACK_ITEMS
 
   if (!isOpen) return null
 
@@ -72,12 +92,12 @@ export function FoodCardRulesModal({ isOpen, onClose, onAccept }: FoodCardRulesM
               The food condiments distributed by MonieKing for this calendar year are as listed below:
             </p>
             <div className="space-y-2">
-              {CONDIMENT_ITEMS.map((item, idx) => (
-                <div key={idx} className="flex items-start gap-2.5 bg-white dark:bg-night-700 p-2.5 rounded-xl border border-green-100/80 dark:border-night-600">
-                  <span className="text-lg">{item.icon}</span>
+              {condimentItems.map((item) => (
+                <div key={item.id} className="flex items-start gap-2.5 bg-white dark:bg-night-700 p-2.5 rounded-xl border border-green-100/80 dark:border-night-600">
+                  <span className="text-lg">{item.icon || '🍽️'}</span>
                   <div>
                     <p className="text-green-900 dark:text-white font-bold text-xs">{item.name}</p>
-                    <p className="text-green-600 dark:text-night-300 text-[11px]">{item.desc}</p>
+                    {item.description && <p className="text-green-600 dark:text-night-300 text-[11px]">{item.description}</p>}
                   </div>
                 </div>
               ))}
