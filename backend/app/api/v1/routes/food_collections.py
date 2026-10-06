@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, contains_eager
 
 from app.core.database import get_db
 from app.core.dependencies import CurrentUser, CustomerOnly, OfficerOnly, DirectorOrAdmin
@@ -16,6 +16,7 @@ from app.models.food_entitlement import (
     FoodEntitlement, FoodCollectionPoint, FoodCollectionAudit, EntitlementStatus,
 )
 from app.models.user import User
+from app.services.food_entitlement_service import create_missing_entitlements
 
 router = APIRouter(prefix="/food-collections", tags=["Food Collections"])
 
@@ -64,8 +65,25 @@ class RevokeEntitlementRequest(BaseModel):
     reason: str
 
 
+class FoodPassItem(BaseModel):
+    """One food pass = one completed food card = one QR token + PIN."""
+    entitlement_id: str
+    card_id: str
+    card_number: int | None = None
+    qr_token: str
+    collection_pin: str
+    package_name: str
+    status: str
+    collected_at: datetime | None = None
+
+
 class CustomerEntitlementResponse(BaseModel):
     has_entitlement: bool
+    # Every food pass the customer holds this year, ordered by card number.
+    # A customer may own several food cards; each is its own pass.
+    passes: list[FoodPassItem] = []
+    # Legacy single-pass fields — kept so an older frontend keeps working.
+    # They mirror the first pass that is still uncollected (else the first).
     qr_token: str | None = None
     collection_pin: str | None = None
     package_name: str | None = None
@@ -75,40 +93,53 @@ class CustomerEntitlementResponse(BaseModel):
     distribution_date: str = "December 10"
 
 
+def build_entitlement_response(entitlements: list) -> CustomerEntitlementResponse:
+    """Pure function: turn this year's entitlements (already ordered) into the
+    /me response. No database access, so it is unit-testable on its own."""
+    if not entitlements:
+        return CustomerEntitlementResponse(has_entitlement=False)
+
+    passes = [
+        FoodPassItem(
+            entitlement_id=str(e.id),
+            card_id=str(e.card_id),
+            card_number=e.card.card_number if e.card else None,
+            qr_token=e.qr_token,
+            collection_pin=e.collection_pin,
+            package_name=e.package_name,
+            status=e.status.value,
+            collected_at=e.collected_at,
+        )
+        for e in entitlements
+    ]
+    primary = next((p for p in passes if p.status == EntitlementStatus.ACTIVE.value), passes[0])
+    return CustomerEntitlementResponse(
+        has_entitlement=True,
+        passes=passes,
+        qr_token=primary.qr_token,
+        collection_pin=primary.collection_pin,
+        package_name=primary.package_name,
+        status=primary.status,
+        card_number=primary.card_number,
+        collected_at=primary.collected_at,
+    )
+
+
 # ── Customer: View my QR & PIN ───────────────────────────────────
 @router.get("/me", response_model=CustomerEntitlementResponse)
 async def get_my_food_entitlement(
     current_user: CustomerOnly,
     db: AsyncSession = Depends(get_db),
 ):
+    """Return one food pass per completed food card the customer owns.
+
+    A customer may hold several food cards (MAX_FOOD_CARDS_PER_CUSTOMER) and
+    each is an independent entitlement with its own QR token and PIN, so this
+    must never assume there is only one row per customer.
+    """
     current_year = datetime.now(timezone.utc).year
 
-    # Check if user already has an active entitlement for this year
-    stmt = (
-        select(FoodEntitlement)
-        .options(selectinload(FoodEntitlement.card))
-        .where(
-            and_(
-                FoodEntitlement.customer_id == current_user.id,
-                FoodEntitlement.year == current_year,
-            )
-        )
-    )
-    res = await db.execute(stmt)
-    entitlement = res.scalar_one_or_none()
-
-    if entitlement:
-        return CustomerEntitlementResponse(
-            has_entitlement=True,
-            qr_token=entitlement.qr_token,
-            collection_pin=entitlement.collection_pin,
-            package_name=entitlement.package_name,
-            status=entitlement.status.value,
-            card_number=entitlement.card.card_number if entitlement.card else None,
-            collected_at=entitlement.collected_at,
-        )
-
-    # Check if customer has a completed Food Card for this year (all 372 days completed)
+    # Every food card this customer has fully completed (all 372 days).
     card_stmt = select(ContributionCard).where(
         and_(
             ContributionCard.owner_id == current_user.id,
@@ -116,36 +147,30 @@ async def get_my_food_entitlement(
             ContributionCard.total_days_contributed >= 372,
         )
     )
-    c_res = await db.execute(card_stmt)
-    completed_card = c_res.scalars().first()
+    completed_cards = (await db.execute(card_stmt)).scalars().all()
 
-    if not completed_card:
-        return CustomerEntitlementResponse(has_entitlement=False)
+    async def _load_entitlements() -> list[FoodEntitlement]:
+        stmt = (
+            select(FoodEntitlement)
+            .join(ContributionCard, ContributionCard.id == FoodEntitlement.card_id)
+            .options(contains_eager(FoodEntitlement.card))
+            .where(FoodEntitlement.customer_id == current_user.id)
+            .order_by(ContributionCard.card_number)
+        )
+        return list((await db.execute(stmt)).scalars().all())
 
-    # Generate secure token & 4-digit PIN
-    token_str = "MKF_" + secrets.token_urlsafe(16)
-    pin_str = "".join(secrets.choice(string.digits) for _ in range(4))
+    entitlements = await _load_entitlements()
 
-    entitlement = FoodEntitlement(
-        card_id=completed_card.id,
-        customer_id=current_user.id,
-        qr_token=token_str,
-        collection_pin=pin_str,
-        package_name="Standard Holiday Food Package",
-        year=current_year,
-        status=EntitlementStatus.ACTIVE,
-    )
-    db.add(entitlement)
-    await db.flush()
+    # Lazily create a pass for each completed card that doesn't have one yet.
+    # card_id is UNIQUE, so look at every entitlement the customer has ever
+    # had (not just this year's) to know which cards are already covered.
+    covered_card_ids = {e.card_id for e in entitlements}
+    missing_cards = [c for c in completed_cards if c.id not in covered_card_ids]
+    if missing_cards:
+        await create_missing_entitlements(db, missing_cards, current_year)
+        entitlements = await _load_entitlements()
 
-    return CustomerEntitlementResponse(
-        has_entitlement=True,
-        qr_token=entitlement.qr_token,
-        collection_pin=entitlement.collection_pin,
-        package_name=entitlement.package_name,
-        status=entitlement.status.value,
-        card_number=completed_card.card_number,
-    )
+    return build_entitlement_response([e for e in entitlements if e.year == current_year])
 
 
 # ── Officer: Step 1 - Scan & Verify QR Token ──────────────────────

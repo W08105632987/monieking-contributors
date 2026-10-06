@@ -14,8 +14,6 @@ Three roles touch this file:
   - Any authenticated user: reads the active package-item list (what the
     customer-facing rules modal renders).
 """
-import secrets
-import string
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -32,6 +30,7 @@ from app.models.food_entitlement import FoodEntitlement, EntitlementStatus
 from app.models.food_ledger import FoodPackageItem, FoodCollectionYearArchive, FoodCollectionYearArchiveCost
 from app.services.settings_service import get_config_value, set_config_value
 from app.services.notification_service import send_notification
+from app.services.food_entitlement_service import create_missing_entitlements
 from app.models.notification import NotificationType
 from app.utils.audit import log_action
 
@@ -70,22 +69,12 @@ async def _backfill_entitlements(db: AsyncSession) -> None:
     existing_stmt = select(FoodEntitlement.card_id)
     existing_card_ids = {row for row in (await db.execute(existing_stmt)).scalars().all()}
 
-    current_year = datetime.now(timezone.utc).year
-    for card in qualified_cards:
-        if card.id in existing_card_ids:
-            continue
-        token_str = "MKF_" + secrets.token_urlsafe(16)
-        pin_str = "".join(secrets.choice(string.digits) for _ in range(4))
-        db.add(FoodEntitlement(
-            card_id=card.id,
-            customer_id=card.owner_id,
-            qr_token=token_str,
-            collection_pin=pin_str,
-            package_name="Standard Holiday Food Package",
-            year=current_year,
-            status=EntitlementStatus.ACTIVE,
-        ))
-    await db.flush()
+    missing_cards = [card for card in qualified_cards if card.id not in existing_card_ids]
+    # One entitlement per qualified CARD (a customer can hold several food
+    # cards, each its own pass). The insert is ON CONFLICT DO NOTHING, so a
+    # customer opening their food page at the same moment can't make this
+    # request fail on the UNIQUE(card_id) constraint.
+    await create_missing_entitlements(db, missing_cards, datetime.now(timezone.utc).year)
 
 
 def _entitlement_owner_zone_id(user: User | None) -> uuid.UUID | None:

@@ -432,11 +432,18 @@ export default function CardsPage() {
   const [foodPassData, setFoodPassData] = useState<any | null>(null)
   const [showFoodPass, setShowFoodPass] = useState(false)
 
-  const handleOpenFoodPass = async (_card: ContributionCard) => {
+  const handleOpenFoodPass = async (card: ContributionCard) => {
     try {
       const { data } = await api.get('/food-collections/me')
-      if (data.has_entitlement) {
-        setFoodPassData(data)
+      // A customer can hold several food cards, and each one is its own pass
+      // with its own QR code — open the pass that belongs to the card that was
+      // tapped. If the backend predates the `passes` list, fall back to its
+      // single pass so this page keeps working during a staggered deploy.
+      const pass = Array.isArray(data.passes)
+        ? data.passes.find((p: { card_id: string }) => p.card_id === card.id)
+        : (data.has_entitlement ? data : undefined)
+      if (pass) {
+        setFoodPassData(pass)
         setShowFoodPass(true)
       } else {
         toast.error('Food Collection Pass is unlocked upon completing all 372 contribution days before November 30.')
