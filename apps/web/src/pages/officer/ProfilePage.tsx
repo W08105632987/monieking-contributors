@@ -15,6 +15,7 @@ import { BiometricSection } from '@/components/settings/BiometricSection'
 import { KycSection } from '@/components/settings/KycSection'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
+import { PushNotificationsRow } from '@/components/settings/PushNotificationsRow'
 
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { formatNaira, maskAccount, formatDate } from '@/lib/utils'
@@ -338,6 +339,7 @@ export default function OfficerProfilePage() {
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4 mb-4">
           <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-widest pt-4 pb-2">Preferences</p>
           <DarkModeToggle />
+          <PushNotificationsRow />
           <MenuRow
             icon={Bell}
             label="Notification settings"

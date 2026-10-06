@@ -18,6 +18,7 @@ import { BankDetailsEditor } from '@/components/settings/BankDetailsEditor'
 import { KycSection } from '@/components/settings/KycSection'
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
+import { PushNotificationsRow } from '@/components/settings/PushNotificationsRow'
 
 import { formatNaira, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -428,6 +429,8 @@ export default function ProfilePage() {
               />
             </button>
           </div>
+
+          <PushNotificationsRow />
 
           <MenuRow
             icon={Bell}

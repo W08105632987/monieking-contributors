@@ -6,6 +6,7 @@ import { MaintenancePage } from '@/components/layout/MaintenancePage'
 import { useServerHealthStore } from '@/store/serverHealth.store'
 import { InstantMessageTicker } from '@/components/layout/InstantMessageTicker'
 import { InstallPrompt } from '@/components/layout/InstallPrompt'
+import { PushPermissionPrompt } from '@/components/layout/PushPermissionPrompt'
 import { AnalyticsTracker } from '@/components/analytics/AnalyticsTracker'
 import { useAuth } from '@/hooks/useAuth'
 import { useNotificationsPoll } from '@/hooks/useNotificationsPoll'
@@ -309,6 +310,7 @@ export default function App() {
       {/* Scrolling ticker — pinned above the bottom nav on every authenticated page, every role */}
       {isAuthenticated && <InstantMessageTicker />}
       {isAuthenticated && <InstallPrompt />}
+      {isAuthenticated && <PushPermissionPrompt />}
     </>
   )
 }

@@ -9,6 +9,7 @@ import { BiometricSection } from '@/components/settings/BiometricSection'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
 
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
+import { PushNotificationsRow } from '@/components/settings/PushNotificationsRow'
 import { useState } from 'react'
 
 // ── Sign out confirmation sheet ───────────────────────────────────
@@ -117,6 +118,7 @@ export default function DirectorProfilePage() {
 
         <div className="mb-4">
           <DarkModeToggle />
+          <PushNotificationsRow />
         </div>
 
         <button

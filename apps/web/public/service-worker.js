@@ -4,7 +4,7 @@
 // under /api/) always goes straight to the network — financial data
 // must never be served stale or offline.
 
-const CACHE_NAME = 'monieking-shell-v5'
+const CACHE_NAME = 'monieking-shell-v6'
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/favicon.png']
 
 self.addEventListener('install', (event) => {
@@ -21,6 +21,45 @@ self.addEventListener('activate', (event) => {
     )
   )
   self.clients.claim()
+})
+
+// ── Real push notifications (Web Push / VAPID) ───────────────────────────
+// Payload shape sent by backend/app/services/push_service.py:
+// { title, body, deep_link_url, icon }
+self.addEventListener('push', (event) => {
+  let data = {}
+  try {
+    data = event.data ? event.data.json() : {}
+  } catch (_) {
+    data = { title: 'MonieKing', body: event.data ? event.data.text() : '' }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'MonieKing', {
+      body: data.body || '',
+      icon: data.icon || '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: { url: data.deep_link_url || '/' },
+    })
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const url = event.notification.data && event.notification.data.url ? event.notification.data.url : '/'
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Prefer an already-open tab — navigate it rather than opening a
+      // new one, same as tapping a notification on a native app does.
+      const existing = clientList.find((c) => c.url.includes(self.location.origin))
+      if (existing) {
+        if ('navigate' in existing) existing.navigate(url)
+        return existing.focus()
+      }
+      return self.clients.openWindow(url)
+    })
+  )
 })
 
 self.addEventListener('fetch', (event) => {

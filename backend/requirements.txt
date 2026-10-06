@@ -53,3 +53,10 @@ httpx==0.24.1
 # (unlike weasyprint/wkhtmltopdf), which matters since this runs in the
 # same request path as a customer-facing download.
 reportlab==4.2.5
+
+# Web Push (VAPID) — real OS-level push notifications, no Firebase/APNs
+# account needed. py-vapid signs with our own key pair; pywebpush sends
+# the request to whichever push service the subscription's endpoint
+# belongs to (transparently, per-browser).
+py-vapid==1.9.1
+pywebpush==2.0.1

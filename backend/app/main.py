@@ -155,6 +155,7 @@ from app.api.v1.routes import (
     customer_stats, auth_admin, admin_crm, analytics, system_health,
     food_collections,
     food_ledger,
+    push,
 )
 from app.api.v1.routes.webhooks import router as webhook_router
 from app.api.v1.routes.worker import router as worker_router
@@ -184,6 +185,7 @@ app.include_router(analytics.router,         prefix=PREFIX)
 app.include_router(system_health.router,     prefix=PREFIX)
 app.include_router(food_collections.router,  prefix=PREFIX)
 app.include_router(food_ledger.router,       prefix=PREFIX)
+app.include_router(push.router,              prefix=PREFIX)
 app.include_router(worker_router,            prefix=PREFIX)
 app.include_router(manual_services_router,   prefix=PREFIX)
 app.include_router(webhook_router)

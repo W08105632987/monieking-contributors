@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     # ── CORS ──────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:3001"
 
+    # ── Web Push / VAPID ──────────────────────────────────────────
+    # Free, open standard — no Firebase/APNs account needed. Generate a
+    # real pair for production with: python backend/scripts/generate_vapid_keys.py
+    # (see that script's own docstring). The PEM below is throwaway test
+    # data for local dev only; never ship it to production.
+    VAPID_PRIVATE_KEY_PEM: str = ""
+    VAPID_PUBLIC_KEY_B64: str = ""
+    VAPID_SUBJECT: str = "mailto:support@monieking.com"
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",")]
