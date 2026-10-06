@@ -27,8 +27,11 @@ export function PushPermissionPrompt() {
   }, [supported, subscribed, permission, isIosNeedsInstall])
 
   const handleEnable = async () => {
-    await subscribe()
-    setVisible(false)
+    // Hide only when it worked. If it failed, the hook has already shown why
+    // (toast) and the banner stays so the user can retry — before, it vanished
+    // either way, which looked like success.
+    const ok = await subscribe()
+    if (ok) setVisible(false)
   }
 
   const handleDismiss = () => {

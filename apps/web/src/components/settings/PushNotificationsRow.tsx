@@ -44,6 +44,9 @@ export function PushNotificationsRow() {
         <button
           type="button"
           disabled={loading}
+          role="switch"
+          aria-checked={subscribed}
+          aria-label="Push notifications"
           onClick={() => (subscribed ? unsubscribe() : subscribe())}
           className={cn(
             'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
