@@ -63,6 +63,36 @@ function explain(e: unknown): string {
   return 'Could not turn on notifications on this device. Please try again.'
 }
 
+/**
+ * Register THIS device with the server. Needs permission already granted.
+ * Safe to call repeatedly: the server upserts by endpoint.
+ */
+async function enrollDevice(): Promise<void> {
+  const { data } = await api.get<{ public_key: string }>('/push/vapid-public-key')
+  const serverKey = urlBase64ToUint8Array(data.public_key)
+  const reg = await serviceWorkerReady()
+
+  let sub = await reg.pushManager.getSubscription()
+  // A subscription made with a different server key can never receive our
+  // pushes (e.g. keys were rotated). Drop it and make a fresh one.
+  if (sub && !sameKey(sub.options?.applicationServerKey, serverKey)) {
+    await sub.unsubscribe()
+    sub = null
+  }
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      // Cast needed: TS's DOM lib types Uint8Array as generic over
+      // ArrayBufferLike (which includes SharedArrayBuffer) in newer
+      // lib versions, which isn't directly assignable to the stricter
+      // BufferSource the Push API expects — the value itself is a
+      // perfectly normal ArrayBuffer-backed Uint8Array at runtime.
+      applicationServerKey: serverKey as BufferSource,
+    })
+  }
+  await api.post('/push/subscribe', sub.toJSON())
+}
+
 export function usePushSubscription() {
   const [supported, setSupported] = useState(false)
   const [permission, setPermission] = useState<NotificationPermission>('default')
@@ -76,24 +106,15 @@ export function usePushSubscription() {
     setSupported(ok)
     if (!ok) return
     setPermission(Notification.permission)
+    if (Notification.permission !== 'granted') return
+    // Push is compulsory: once the browser permission is granted, quietly
+    // (re)register this device with the server on every app load. This repairs
+    // a missing server record and covers keys that were rotated. No prompt, no
+    // toast: the permission was already given.
     let cancelled = false
-    ;(async () => {
-      try {
-        const reg = await serviceWorkerReady()
-        const existing = await reg.pushManager.getSubscription()
-        if (cancelled) return
-        if (!existing) { setSubscribed(false); return }
-        // The browser can hold a subscription the server never received (the
-        // earlier POST failed) — showing "On" then is a lie. Re-send it; the
-        // endpoint is an idempotent upsert, so this also repairs the record.
-        try {
-          await api.post('/push/subscribe', existing.toJSON())
-          if (!cancelled) setSubscribed(true)
-        } catch {
-          if (!cancelled) setSubscribed(false)
-        }
-      } catch { /* no service worker yet: stay Off */ }
-    })()
+    enrollDevice()
+      .then(() => { if (!cancelled) setSubscribed(true) })
+      .catch((e) => console.warn('Push auto-enroll failed', e))
     return () => { cancelled = true }
   }, [])
 
@@ -108,30 +129,7 @@ export function usePushSubscription() {
         return false
       }
 
-      const { data } = await api.get<{ public_key: string }>('/push/vapid-public-key')
-      const serverKey = urlBase64ToUint8Array(data.public_key)
-      const reg = await serviceWorkerReady()
-
-      let sub = await reg.pushManager.getSubscription()
-      // A subscription made with a different server key can never receive our
-      // pushes (e.g. keys were rotated). Drop it and make a fresh one.
-      if (sub && !sameKey(sub.options?.applicationServerKey, serverKey)) {
-        await sub.unsubscribe()
-        sub = null
-      }
-      if (!sub) {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          // Cast needed: TS's DOM lib types Uint8Array as generic over
-          // ArrayBufferLike (which includes SharedArrayBuffer) in newer
-          // lib versions, which isn't directly assignable to the stricter
-          // BufferSource the Push API expects — the value itself is a
-          // perfectly normal ArrayBuffer-backed Uint8Array at runtime.
-          applicationServerKey: serverKey as BufferSource,
-        })
-      }
-
-      await api.post('/push/subscribe', sub.toJSON())
+      await enrollDevice()
       setSubscribed(true)
       toast.success('Notifications are on for this device')
       return true
@@ -144,23 +142,5 @@ export function usePushSubscription() {
     }
   }, [supported, isIosNeedsInstall])
 
-  const unsubscribe = useCallback(async () => {
-    setLoading(true)
-    try {
-      const reg = await serviceWorkerReady()
-      const sub = await reg.pushManager.getSubscription()
-      if (sub) {
-        await api.post('/push/unsubscribe', { endpoint: sub.endpoint })
-        await sub.unsubscribe()
-      }
-      setSubscribed(false)
-    } catch (e) {
-      console.warn('Push unsubscribe failed', e)
-      toast.error(explain(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  return { supported, permission, subscribed, loading, isIosNeedsInstall, subscribe, unsubscribe }
+  return { supported, permission, subscribed, loading, isIosNeedsInstall, subscribe }
 }
