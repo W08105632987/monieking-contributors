@@ -1,6 +1,6 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 
@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.dependencies import CurrentUser
 from app.core.config import settings
 from app.models.push_subscription import PushSubscription
+from app.services.push_service import push_is_configured, send_push
 
 router = APIRouter(prefix="/push", tags=["push"])
 
@@ -19,6 +20,38 @@ async def get_vapid_public_key():
     if not settings.VAPID_PUBLIC_KEY_B64:
         raise HTTPException(status_code=503, detail="Push notifications are not configured on this server")
     return {"public_key": settings.VAPID_PUBLIC_KEY_B64}
+
+
+@router.get("/status")
+async def push_status(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Lets the app (and you, when debugging) see what's actually true:
+    is the server configured to send, and does the server have a record of
+    this user's device(s)? The browser can say "subscribed" while the server
+    has nothing, and that mismatch is invisible without this."""
+    count = await db.scalar(
+        select(func.count()).select_from(PushSubscription).where(PushSubscription.user_id == current_user.id)
+    )
+    return {"configured": push_is_configured(), "device_count": int(count or 0)}
+
+
+@router.post("/test")
+async def send_test_push(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Sends a real push to the caller's own devices so 'is it working?'
+    has a one-click answer instead of waiting for a business event."""
+    if not push_is_configured():
+        raise HTTPException(status_code=503, detail="Push notifications are not configured on this server")
+    delivered = await send_push(
+        db, user_id=current_user.id,
+        title="MonieKing test notification",
+        body="Push notifications are working on this device.",
+        deep_link_url="/",
+    )
+    if delivered == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="No device accepted the test push. Turn notifications off and on again in Settings, then retry.",
+        )
+    return {"delivered": delivered}
 
 
 @router.post("/subscribe", status_code=201)
