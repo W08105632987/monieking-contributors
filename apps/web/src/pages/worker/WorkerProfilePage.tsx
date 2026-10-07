@@ -17,6 +17,7 @@ import { ChangePasswordSection } from '@/components/settings/ChangePasswordSecti
 import { BankDetailsEditor } from '@/components/settings/BankDetailsEditor'
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
+import { NotificationSoundRow } from '@/components/settings/NotificationSoundRow'
 
 import { formatNaira, maskAccount, formatDate, copyToClipboard, cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -598,6 +599,7 @@ export default function WorkerProfilePage() {
             Preferences & Support
           </p>
           <DarkModeToggle />
+          <NotificationSoundRow />
           <MenuRow
             icon={Bell}
             label="Notification settings"

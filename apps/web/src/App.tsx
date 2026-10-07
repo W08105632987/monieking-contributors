@@ -7,6 +7,7 @@ import { useServerHealthStore } from '@/store/serverHealth.store'
 import { InstantMessageTicker } from '@/components/layout/InstantMessageTicker'
 import { InstallPrompt } from '@/components/layout/InstallPrompt'
 import { PushPermissionPrompt } from '@/components/layout/PushPermissionPrompt'
+import { InAppNotificationBanner } from '@/components/layout/InAppNotificationBanner'
 import { AnalyticsTracker } from '@/components/analytics/AnalyticsTracker'
 import { useAuth } from '@/hooks/useAuth'
 import { useNotificationsPoll } from '@/hooks/useNotificationsPoll'
@@ -311,6 +312,7 @@ export default function App() {
       {isAuthenticated && <InstantMessageTicker />}
       {isAuthenticated && <InstallPrompt />}
       {isAuthenticated && <PushPermissionPrompt />}
+      {isAuthenticated && <InAppNotificationBanner />}
     </>
   )
 }

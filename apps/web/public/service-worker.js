@@ -4,7 +4,7 @@
 // under /api/) always goes straight to the network — financial data
 // must never be served stale or offline.
 
-const CACHE_NAME = 'monieking-shell-v6'
+const CACHE_NAME = 'monieking-shell-v7'
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/favicon.png']
 
 self.addEventListener('install', (event) => {
@@ -34,14 +34,35 @@ self.addEventListener('push', (event) => {
     data = { title: 'MonieKing', body: event.data ? event.data.text() : '' }
   }
 
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'MonieKing', {
+  event.waitUntil((async () => {
+    const title = data.title || 'MonieKing'
+    const url = data.deep_link_url || '/'
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    const visible = windows.filter((c) => c.visibilityState === 'visible')
+
+    // App is open on screen: hand the message to the page, which shows its own
+    // drop-down banner with chime + vibration and refreshes the list. Showing a
+    // second system notification on top would be a duplicate. (Browsers allow
+    // skipping the system notification when a window of the site is visible.)
+    if (visible.length > 0) {
+      visible.forEach((c) => c.postMessage({ type: 'push-received', title, body: data.body || '', url }))
+      return
+    }
+
+    // App closed / in the background: a real system notification. The vibration
+    // pattern and a non-silent flag make Android far more likely to pop it as a
+    // heads-up banner before it settles into the notification shade. Whether it
+    // pops is finally the phone's call (its notification settings for the app).
+    await self.registration.showNotification(title, {
       body: data.body || '',
       icon: data.icon || '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
-      data: { url: data.deep_link_url || '/' },
+      vibrate: [200, 100, 200],
+      silent: false,
+      timestamp: Date.now(),
+      data: { url },
     })
-  )
+  })())
 })
 
 self.addEventListener('notificationclick', (event) => {

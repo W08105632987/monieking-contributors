@@ -465,7 +465,10 @@ export default function CardsPage() {
       return data
     },
     enabled: cards.length > 0,
-    staleTime: 30_000,
+    // Always re-check when the page opens: this grid is cheap and must never
+    // show a day as unmarked after the customer has marked it.
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
   const gridsByCardId: Record<string, CardGrid> = {}
   for (const g of allGrids ?? []) gridsByCardId[g.card_id] = g.grid
