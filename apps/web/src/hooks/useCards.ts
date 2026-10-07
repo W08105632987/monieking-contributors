@@ -75,6 +75,10 @@ export function useCards() {
       // as the only way any of this ever updates.
       qc.invalidateQueries({ queryKey: ['wallet-transactions'] })
       qc.invalidateQueries({ queryKey: ['card-grid', form.card_id] })
+      // The My Cards page reads ONE combined grid request, a different cache
+      // key from the per-card grid above. It was never refreshed here, so My
+      // Cards kept showing the old grid until a full page reload.
+      qc.invalidateQueries({ queryKey: ['card-grids'] })
     },
     onError: (e) => showFeedback.error('Contribution failed', getErrorMessage(e)),
   })

@@ -54,8 +54,10 @@ export default function ContributePage() {
       qc.invalidateQueries({ queryKey: ['wallet'] })
       qc.invalidateQueries({ queryKey: ['card', cardId] })
       qc.invalidateQueries({ queryKey: ['card-grid', cardId] })
+      qc.invalidateQueries({ queryKey: ['card-grids'] })
       qc.invalidateQueries({ queryKey: ['contributions', cardId] })
-      navigate('/customer/cards')
+      // land on the card that was just marked (its grid is already refreshed)
+      navigate(`/customer/cards/${card.id}`, { replace: true })
     } catch (err) {
       toast.error(getErrorMessage(err))
     } finally {
