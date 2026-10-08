@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion, type Variants } from 'framer-motion'
 import { Avatar } from '@/components/ui/Avatar'
 import { Plus, ArrowUpRight, ArrowDownLeft, TrendingUp, Copy, Eye, EyeOff, CheckCircle2, Bell, FileText, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -18,7 +18,7 @@ import { SkeletonCard, Skeleton } from '@/components/ui/Skeleton'
 import { formatNaira, formatDate, copyToClipboard } from '@/lib/utils'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 16 },
   show: (i: number) => ({
     opacity: 1, y: 0,

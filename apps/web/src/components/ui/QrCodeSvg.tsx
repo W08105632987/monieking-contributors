@@ -39,14 +39,24 @@ export function QrCodeSvg({ value, size = 180, className = '' }: QrCodeSvgProps)
   const cellSize = size / totalModules
   const offset = 4 * cellSize // quiet zone offset
 
-  const cells: { r: number; c: number }[] = []
-  for (let r = 0; r < moduleCount; r++) {
-    for (let c = 0; c < moduleCount; c++) {
-      if (qr.modules.get(r, c)) {
-        cells.push({ r, c })
+  // Merge each horizontal run of dark modules into ONE rectangle inside a
+  // single <path>. The old version emitted one <rect> per dark module (~440
+  // DOM nodes), which made the modal's first paint heavy while it was
+  // animating in. Same picture, a fraction of the nodes, and no hairline
+  // seams between neighbouring modules.
+  const pathD = React.useMemo(() => {
+    let d = ''
+    for (let r = 0; r < moduleCount; r++) {
+      let c = 0
+      while (c < moduleCount) {
+        if (!qr.modules.get(r, c)) { c++; continue }
+        const start = c
+        while (c < moduleCount && qr.modules.get(r, c)) c++
+        d += `M${offset + start * cellSize} ${offset + r * cellSize}h${(c - start) * cellSize}v${cellSize}h${-(c - start) * cellSize}z`
       }
     }
-  }
+    return d
+  }, [qr, moduleCount, cellSize, offset])
 
   return (
     <svg
@@ -57,19 +67,11 @@ export function QrCodeSvg({ value, size = 180, className = '' }: QrCodeSvgProps)
       xmlns="http://www.w3.org/2000/svg"
       role="img"
       aria-label="QR Code"
+      shapeRendering="crispEdges"
     >
       {/* White quiet zone background */}
       <rect width={size} height={size} fill="white" rx={12} />
-      {cells.map(({ r, c }) => (
-        <rect
-          key={`${r}-${c}`}
-          x={offset + c * cellSize}
-          y={offset + r * cellSize}
-          width={cellSize + 0.3}
-          height={cellSize + 0.3}
-          fill="#062F16"
-        />
-      ))}
+      <path d={pathD} fill="#062F16" />
     </svg>
   )
 }

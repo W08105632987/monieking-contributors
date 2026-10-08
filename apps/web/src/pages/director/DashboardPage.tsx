@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, type Variants } from 'framer-motion'
 import {
   Clock, CheckCircle, XCircle, TrendingUp,
   ArrowUpRight, AlertTriangle, ChevronRight, ChevronDown,
@@ -55,7 +55,7 @@ function useRecentMonthOptions() {
   }, [])
 }
 
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 14 },
   show: (i: number) => ({
     opacity: 1, y: 0,

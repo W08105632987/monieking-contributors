@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import {
   Users, Wallet, ArrowUpRight, ArrowDownLeft,
   TrendingUp, UserPlus, ClipboardList,
@@ -157,7 +157,7 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
   )
 }
 
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 14 },
   show: (i: number) => ({
     opacity: 1, y: 0,

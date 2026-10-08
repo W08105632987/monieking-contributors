@@ -6,6 +6,8 @@ import { QrCodeSvg } from '@/components/ui/QrCodeSvg'
 interface FoodQrDisplayModalProps {
   isOpen: boolean
   onClose: () => void
+  /** true while the pass data is still being fetched: the modal opens at once and shows a placeholder */
+  loading?: boolean
   qrToken: string
   collectionPin: string
   cardNumber: number | null
@@ -16,6 +18,7 @@ interface FoodQrDisplayModalProps {
 export function FoodQrDisplayModal({
   isOpen,
   onClose,
+  loading = false,
   qrToken,
   collectionPin,
   cardNumber,
@@ -34,7 +37,10 @@ export function FoodQrDisplayModal({
           onClick={onClose}
         >
           <motion.div
-            className="absolute inset-0 bg-green-950/75 backdrop-blur-sm"
+            // No backdrop-blur here: blurring the whole screen behind a sheet that is
+            // animating in forces the GPU to re-blur every frame, which is a big
+            // part of why this modal stuttered and flickered on phones.
+            className="absolute inset-0 bg-green-950/80"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -42,10 +48,12 @@ export function FoodQrDisplayModal({
           />
 
           <motion.div
-            initial={{ y: '100%', opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: '100%', opacity: 0 }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300, mass: 0.8 }}
+            // Slide only. Animating opacity as well made the sheet blink at the end
+            // of the animation, and it is not needed: the sheet slides up from off-screen.
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 32, stiffness: 320, mass: 0.8 }}
             style={{ willChange: 'transform' }}
             className="relative bg-white dark:bg-night-700 rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-center"
             onClick={e => e.stopPropagation()}
@@ -85,10 +93,14 @@ export function FoodQrDisplayModal({
           {/* QR Code Container */}
           <div className="flex flex-col items-center justify-center">
             <div className="p-4 bg-green-50 dark:bg-night-800 rounded-3xl border-2 border-green-200 dark:border-night-500 shadow-inner inline-block">
-              <QrCodeSvg value={qrToken} size={190} />
+              {loading || !qrToken ? (
+                <div className="rounded-2xl bg-green-100 dark:bg-night-600 animate-pulse" style={{ width: 190, height: 190 }} />
+              ) : (
+                <QrCodeSvg value={qrToken} size={190} />
+              )}
             </div>
-            <p className="text-green-500 dark:text-night-300 font-mono text-xs tracking-wider mt-3">
-              PASS ID: {qrToken.slice(0, 14)}•••
+            <p className="text-green-500 dark:text-night-300 font-mono text-xs tracking-wider mt-3 min-h-[1rem]">
+              {qrToken ? <>PASS ID: {qrToken.slice(0, 14)}•••</> : null}
             </p>
             {cardNumber && (
               <p className="text-green-800 dark:text-white font-bold text-xs mt-0.5">
@@ -113,7 +125,7 @@ export function FoodQrDisplayModal({
             </div>
             <div className="flex items-center justify-center py-2">
               <span className="font-mono text-3xl font-extrabold tracking-[0.4em] text-green-950 dark:text-white">
-                {showPin ? collectionPin : '••••'}
+                {showPin && collectionPin ? collectionPin : '••••'}
               </span>
             </div>
             <p className="text-green-600 dark:text-night-300 text-[11px] leading-relaxed text-center">

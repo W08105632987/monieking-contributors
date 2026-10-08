@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, CreditCard, ChevronRight, RotateCcw, Lock, CheckCircle, Clock } from 'lucide-react'
@@ -429,29 +429,47 @@ export default function CardsPage() {
   const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'completed' ? 'completed' : 'active')
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [foodPassData, setFoodPassData] = useState<any | null>(null)
-  const [showFoodPass, setShowFoodPass] = useState(false)
+  // Which food card's pass is open (null = closed). The modal opens the moment
+  // the button is tapped; it never waits for the network.
+  const [openPassCardId, setOpenPassCardId] = useState<string | null>(null)
 
-  const handleOpenFoodPass = async (card: ContributionCard) => {
-    try {
-      const { data } = await api.get('/food-collections/me')
-      // A customer can hold several food cards, and each one is its own pass
-      // with its own QR code — open the pass that belongs to the card that was
-      // tapped. If the backend predates the `passes` list, fall back to its
-      // single pass so this page keeps working during a staggered deploy.
-      const pass = Array.isArray(data.passes)
-        ? data.passes.find((p: { card_id: string }) => p.card_id === card.id)
-        : (data.has_entitlement ? data : undefined)
-      if (pass) {
-        setFoodPassData(pass)
-        setShowFoodPass(true)
-      } else {
-        toast.error('Food Collection Pass is unlocked upon completing all 372 contribution days before November 30.')
-      }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Could not load food collection pass.')
+  const hasCompletedFoodCard = cards.some(
+    (c) => c.card_type === 'food' && (c.status === 'completed' || c.status === 'archived'),
+  )
+  // Fetched in the background as soon as the page knows a completed food card
+  // exists, so by the time the button is tapped the data is already here.
+  const { data: foodCollection, isFetching: foodPassFetching, isError: foodPassError } = useQuery({
+    queryKey: ['food-collections-me'],
+    queryFn: async () => (await api.get('/food-collections/me')).data,
+    enabled: hasCompletedFoodCard,
+    staleTime: 60_000,
+    retry: 1,
+  })
+
+  // A customer can hold several food cards, and each one is its own pass with
+  // its own QR code: pick the pass that belongs to the card that was tapped. If
+  // the backend predates the `passes` list, fall back to its single pass so this
+  // page keeps working during a staggered deploy.
+  const foodPassData = openPassCardId && foodCollection
+    ? (Array.isArray(foodCollection.passes)
+        ? foodCollection.passes.find((p: { card_id: string }) => p.card_id === openPassCardId)
+        : (foodCollection.has_entitlement ? foodCollection : undefined))
+    : undefined
+  const foodPassLoading = !!openPassCardId && !foodCollection && foodPassFetching
+
+  const handleOpenFoodPass = (card: ContributionCard) => setOpenPassCardId(card.id)
+
+  // Data arrived (or failed) and there is no pass for this card: close and say why.
+  useEffect(() => {
+    if (!openPassCardId) return
+    if (foodCollection && !foodPassData) {
+      setOpenPassCardId(null)
+      toast.error('Food Collection Pass is unlocked upon completing all 372 contribution days before November 30.')
+    } else if (foodPassError && !foodCollection) {
+      setOpenPassCardId(null)
+      toast.error('Could not load food collection pass.')
     }
-  }
+  }, [openPassCardId, foodCollection, foodPassData, foodPassError])
 
   const activeCards    = cards.filter(c => c.status === 'active')
   const completedCards = cards.filter(c => c.status === 'completed' || c.status === 'archived')
@@ -599,8 +617,9 @@ export default function CardsPage() {
       </AnimatePresence>
 
       <FoodQrDisplayModal
-        isOpen={showFoodPass && !!foodPassData}
-        onClose={() => setShowFoodPass(false)}
+        isOpen={!!openPassCardId}
+        loading={foodPassLoading}
+        onClose={() => setOpenPassCardId(null)}
         qrToken={foodPassData?.qr_token || ''}
         collectionPin={foodPassData?.collection_pin || ''}
         cardNumber={foodPassData?.card_number ?? null}
