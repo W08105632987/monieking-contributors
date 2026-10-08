@@ -280,6 +280,51 @@ class ComputePriceTests(unittest.TestCase):
             eng.compute_price([{"when": {"service_type": ["a"]}, "price_kobo": 1}], {"service_type": "b"})
 
 
+class PriceMatrixTests(unittest.TestCase):
+    def _lookup(self, matrix, **sel):
+        hits = [m["price_kobo"] for m in matrix if all(m["selections"].get(k) == v for k, v in sel.items())]
+        return hits
+
+    def test_bvn_matrix_matches_the_charge_function_for_every_combination(self):
+        t = next(x for x in seeds.build_seed_templates(LIVE) if x.service_code == "bvn_modification")
+        matrix = eng.price_matrix(t.schema, t.price_rules)
+        self.assertEqual(len(matrix), 8 * 8)
+        for m in matrix:
+            want = mp.get_price("bvn_modification", m["selections"]["service_type"],
+                                enrollment_bank=m["selections"]["enrollment_bank"], custom_map=LIVE)
+            self.assertEqual(m["price_kobo"], want, m)
+        self.assertEqual(self._lookup(matrix, service_type="update_name", enrollment_bank="jaiz_bank"), [1_000_000])
+        self.assertEqual(self._lookup(matrix, service_type="update_name_dob", enrollment_bank="jaiz_bank"), [900_000])
+
+    def test_simple_service(self):
+        t = next(x for x in seeds.build_seed_templates(LIVE) if x.service_code == "nin_modification")
+        matrix = eng.price_matrix(t.schema, t.price_rules)
+        self.assertEqual(self._lookup(matrix, service_type="update_name"), [5_000_000])
+        self.assertEqual(self._lookup(matrix, service_type="update_phone"), [500_000])
+
+    def test_no_selectors_no_matrix(self):
+        t = next(x for x in seeds.build_seed_templates(LIVE) if x.service_code == "nin_attestation")
+        self.assertEqual(eng.price_matrix(t.schema, t.price_rules), [])
+
+    def test_unpriced_combinations_are_left_out(self):
+        schema = {"selectors": [{"key": "service_type", "label": "T", "options": [{"value": "a", "label": "A"}, {"value": "b", "label": "B"}]}]}
+        rules = [{"when": {"service_type": ["a"]}, "price_kobo": 10}]
+        self.assertEqual(eng.price_matrix(schema, rules), [{"selections": {"service_type": "a"}, "price_kobo": 10}])
+
+
+class VectorFreshnessTests(unittest.TestCase):
+    def test_saved_typescript_vectors_match_the_python_engine(self):
+        from app.services.service_template_vectors import build_vectors
+        fixture = Path(__file__).resolve().parents[3] / "apps" / "web" / "src" / "lib" / "__fixtures__" / "templateRules.vectors.json"
+        if not fixture.exists():
+            self.skipTest("frontend fixture not present in this checkout")
+        saved = json.loads(fixture.read_text(encoding="utf-8"))
+        fresh = json.loads(json.dumps(build_vectors(LIVE), sort_keys=True))
+        self.assertEqual(saved, fresh,
+                         "templateRules.vectors.json is stale: run `python -m scripts.generate_template_rule_vectors` "
+                         "and re-run the frontend tests")
+
+
 class FormRulesTests(unittest.TestCase):
     def setUp(self):
         self.schema = next(t for t in seeds.build_seed_templates(LIVE) if t.service_code == "bvn_modification").schema

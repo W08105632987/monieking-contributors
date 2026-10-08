@@ -30,9 +30,13 @@ from app.services.manual_pricing import (
     get_price,
     merge_price_map,
     is_known_category,
+    resolve_category,
     effective_cover_labels,
     normalize_pricing_update,
 )
+from app.models.service_template import ServiceTemplate, ServiceTemplateVersion
+from app.services import service_template_engine as tpl_engine
+from app.services.service_template_submit import prepare_submission
 from app.services.wallet_service import get_or_create_wallet, debit_wallet
 from app.services.withdrawal_auth_service import check_withdrawal_password
 from app.utils.supabase_admin_client import supabase_admin_request
@@ -52,6 +56,38 @@ async def _get_current_price_map(db: AsyncSession) -> dict[str, dict[str, int]]:
     return merge_price_map(await get_config_value(db, "manual_services_pricing"))
 
 
+LIVE_TEMPLATES_KEY = "service_templates_live"
+
+
+async def _live_template_codes(db: AsyncSession) -> set[str]:
+    """Services the director/ops have switched to the template flow (empty = none, i.e. today's behaviour)."""
+    raw = await get_config_value(db, LIVE_TEMPLATES_KEY)
+    if not raw:
+        return set()
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return set()
+    return {str(c) for c in data} if isinstance(data, list) else set()
+
+
+async def _get_template(
+    db: AsyncSession, category: str,
+) -> tuple[ServiceTemplate, ServiceTemplateVersion] | None:
+    """The template (and its published version) for a service, if one exists. Read straight from the
+    database every time, so the director's on/off switch takes effect immediately."""
+    tpl = await db.scalar(select(ServiceTemplate).where(ServiceTemplate.service_code == category))
+    if not tpl or not tpl.current_version_id:
+        return None
+    ver = await db.get(ServiceTemplateVersion, tpl.current_version_id)
+    return (tpl, ver) if ver else None
+
+
+def _assert_available(tpl: ServiceTemplate) -> None:
+    if tpl.archived_at is not None or not tpl.is_enabled:
+        raise HTTPException(status_code=400, detail="This service is switched off right now. Please check back later.")
+
+
 async def _quote_price(
     db: AsyncSession,
     category: str,
@@ -61,8 +97,25 @@ async def _quote_price(
 ) -> int:
     """The ONE place that decides what a request costs. Used by the charge and
     by the quote endpoint, so the amount a customer is shown is the amount they
-    are charged. Refuses unknown services and non-positive prices instead of
-    silently treating them as free."""
+    are charged. Refuses unknown services, switched-off services and non-positive
+    prices instead of silently treating them as free."""
+    category = resolve_category(category)
+    found = await _get_template(db, category)
+    if found:
+        _assert_available(found[0])
+    if found and category in await _live_template_codes(db):
+        selections = {"service_type": service_type, "enrollment_bank": enrollment_bank}
+        fixed = found[1].schema.get("fixed_service_type")
+        if fixed:
+            selections["service_type"] = fixed
+        try:
+            price_kobo = tpl_engine.compute_price(found[1].price_rules, selections, bulk_count)
+        except tpl_engine.NoPriceError:
+            raise HTTPException(status_code=400, detail="This option has no price set yet, so it can't be ordered.")
+        if price_kobo <= 0:
+            raise HTTPException(status_code=400, detail="This service has no price set yet, so it can't be ordered. Please try again later.")
+        return price_kobo
+
     price_map = await _get_current_price_map(db)
     if not is_known_category(category, price_map):
         raise HTTPException(status_code=400, detail="This service isn't available right now.")
@@ -99,6 +152,7 @@ class SubmitServiceRequest(BaseModel):
     withdrawal_password: str | None = Field(None, description="User withdrawal password")
     enrollment_bank:    str | None = Field(None, description="Bank for BVN modification")
     bulk_count:         int = Field(1, description="Number of items for bulk services")
+    template_version_id: str | None = Field(None, description="Version of the service template the customer was shown")
 
 
 class FileUploadRequest(BaseModel):
@@ -219,15 +273,54 @@ async def submit_service_request(
         await check_withdrawal_password(db, user_row, pwd)
 
     # Guards run BEFORE any money moves.
-    if not _has_content(body.form_data) and not body.uploaded_files:
-        raise HTTPException(status_code=400, detail="Please fill in the form before submitting.")
-    price_kobo = await _quote_price(
-        db,
-        body.service_category,
-        body.service_type,
-        enrollment_bank=body.enrollment_bank,
-        bulk_count=body.bulk_count,
-    )
+    category = resolve_category(body.service_category)
+    found = await _get_template(db, category)
+    live = bool(found) and category in await _live_template_codes(db)
+    template_version_id: uuid.UUID | None = None
+    prepared_form: dict | None = None
+    service_type = body.service_type
+    enrollment_bank = body.enrollment_bank
+    uploaded_files = body.uploaded_files
+
+    if live:
+        tpl, ver = found
+        _assert_available(tpl)
+        if body.template_version_id and body.template_version_id != str(ver.id):
+            raise HTTPException(
+                status_code=409,
+                detail="This service was just updated. Please reload the page and fill it in again.",
+            )
+        # referral info is added by the app next to the form's own fields; keep it out of validation
+        carried = {k: v for k, v in (body.form_data or {}).items() if k in ("referral_code", "referred_worker")}
+        prepared = prepare_submission(
+            ver.schema, ver.price_rules,
+            service_type=body.service_type, enrollment_bank=body.enrollment_bank,
+            form_data={k: v for k, v in (body.form_data or {}).items() if k not in carried},
+        )
+        if prepared.errors:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Please correct the form: " + " ".join(prepared.errors[:6]),
+                    "errors": prepared.errors,
+                },
+            )
+        price_kobo = prepared.price_kobo
+        prepared_form = {**prepared.form_data, **carried}
+        service_type = prepared.service_type
+        enrollment_bank = prepared.enrollment_bank
+        uploaded_files = prepared.uploaded_files
+        template_version_id = ver.id
+    else:
+        if not _has_content(body.form_data) and not body.uploaded_files:
+            raise HTTPException(status_code=400, detail="Please fill in the form before submitting.")
+        price_kobo = await _quote_price(
+            db,
+            body.service_category,
+            body.service_type,
+            enrollment_bank=body.enrollment_bank,
+            bulk_count=body.bulk_count,
+        )
 
     # Wallet balance verification & atomic debit
     # req_id generated up front (not after the ManualServiceRequest insert
@@ -274,7 +367,7 @@ async def submit_service_request(
         if worker:
             referred_worker_id = worker.id
 
-    req_form_data = dict(body.form_data or {})
+    req_form_data = dict(prepared_form if prepared_form is not None else (body.form_data or {}))
     if customer_id and current_user.role == UserRole.OFFICER:
         req_form_data["submitted_by_officer_id"] = str(current_user.id)
 
@@ -282,9 +375,10 @@ async def submit_service_request(
         id=req_id,
         user_id=target_user_id,
         service_category=body.service_category,
-        service_type=body.service_type,
+        service_type=service_type,
         form_data=req_form_data,
-        uploaded_files=body.uploaded_files,
+        uploaded_files=uploaded_files,
+        template_version_id=template_version_id,
         price_kobo=price_kobo,
         consent_given=body.consent_given,
         referred_worker_id=referred_worker_id,

@@ -86,6 +86,20 @@ export default function ServicesPage() {
     },
   })
 
+  // The director's on/off switch for manual services lives on the service template.
+  // If this can't be loaded we fall back to the old behaviour (cards open), never to "all off".
+  const { data: templateList } = useQuery({
+    queryKey: ['service-templates', 'list'],
+    retry: false,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const { data } = await api.get<Array<{ service_code: string; is_enabled: boolean }>>('/service-templates')
+      return data
+    },
+  })
+  const templateEnabled = (code: string): boolean | undefined =>
+    templateList?.find((t) => t.service_code === resolveManualKey(code))?.is_enabled
+
   // Normalize services:
   // 1. Collapse separate BVN retrieval cards into a single "BVN retrieval" card
   // 2. Add CAC registration if not in the catalog
@@ -105,7 +119,7 @@ export default function ServicesPage() {
             ...s,
             code: 'bvn_retrieval',
             name: 'BVN retrieval',
-            is_active: true,
+            is_active: templateEnabled('bvn_retrieval') ?? true,
           })
           seenBvnRetrieval = true
         }
@@ -125,7 +139,11 @@ export default function ServicesPage() {
       if (s.code === 'nin_delinking') hasNinDelinking = true
 
       // Activate all manual services
-      if (ALWAYS_OPEN.has(s.code)) {
+      const switched = templateEnabled(s.code)
+      if (switched !== undefined) {
+        // a service template exists: the director's switch decides
+        list.push({ ...s, is_active: switched })
+      } else if (ALWAYS_OPEN.has(s.code)) {
         list.push({ ...s, is_active: true })
       } else {
         list.push(s)
@@ -143,7 +161,7 @@ export default function ServicesPage() {
         provider: 'manual',
         provider_endpoint: null,
         price_kobo: 0,
-        is_active: true,
+        is_active: templateEnabled('cac_registration') ?? true,
         required_fields: [],
         updated_at: new Date().toISOString(),
       })
@@ -160,14 +178,14 @@ export default function ServicesPage() {
         provider: 'manual',
         provider_endpoint: null,
         price_kobo: 0,
-        is_active: true,
+        is_active: templateEnabled('nin_delinking') ?? true,
         required_fields: [],
         updated_at: new Date().toISOString(),
       })
     }
 
     return list
-  }, [rawServices])
+  }, [rawServices, templateList])
 
   const grouped = CATEGORY_ORDER
     .map(cat => ({ category: cat, services: services.filter(s => s.category === cat) }))
@@ -253,7 +271,7 @@ export default function ServicesPage() {
                       forceActive={
                         group.category === 'airtime' ||
                         group.category === 'bills' ||
-                        ALWAYS_OPEN.has(s.code)
+                        templateEnabled(s.code) === undefined && ALWAYS_OPEN.has(s.code)
                       }
                       onOpen={() => openService(group.category, s)}
                     />

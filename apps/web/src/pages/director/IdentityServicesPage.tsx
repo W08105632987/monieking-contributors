@@ -183,14 +183,20 @@ function ChildPricingModal({
   )
 }
 
+interface TemplateSummary { service_code: string; is_enabled: boolean; live: boolean }
+
 function ServiceRow({
   service,
   coverLabel,
   allPricing,
+  template,
+  liveCodes,
 }: {
   service: IdentityService
   coverLabel?: string
   allPricing?: Record<string, Record<string, number>>
+  template?: TemplateSummary
+  liveCodes: string[]
 }) {
   const qc = useQueryClient()
   const [editingCard, setEditingCard] = useState(false)
@@ -202,11 +208,33 @@ function ServiceRow({
   // Normal price update on IdentityService table
   const [basePrice, setBasePrice] = useState(String(koboToNaira(service.price_kobo)))
 
+  // Manual services that have a template: the on/off switch is the template's (what customers
+  // actually see). Everything else keeps using the catalog switch.
+  const isOn = template ? template.is_enabled : service.is_active
+
   const activeMutation = useMutation({
-    mutationFn: (is_active: boolean) => api.patch(`/identity-services/${service.id}/active`, { is_active }),
+    mutationFn: (next: boolean) =>
+      template
+        ? api.patch(`/service-templates/${template.service_code}/enabled`, { is_enabled: next })
+        : api.patch(`/identity-services/${service.id}/active`, { is_active: next }),
     onSuccess: () => {
-      toast.success(service.is_active ? 'Service turned off' : 'Service turned on')
+      toast.success(isOn ? 'Service turned off' : 'Service turned on')
       qc.invalidateQueries({ queryKey: ['identity-services'] })
+      qc.invalidateQueries({ queryKey: ['service-templates'] })
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  })
+
+  // Rollback switch: send this one service back to its original form (or forward to the template form).
+  const liveMutation = useMutation({
+    mutationFn: (next: boolean) => {
+      const code = template!.service_code
+      const codes = next ? [...new Set([...liveCodes, code])] : liveCodes.filter((c) => c !== code)
+      return api.patch('/service-templates/admin/live', { codes })
+    },
+    onSuccess: () => {
+      toast.success('Form setting updated')
+      qc.invalidateQueries({ queryKey: ['service-templates'] })
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   })
@@ -254,13 +282,13 @@ function ServiceRow({
 
         {/* on/off toggle */}
         <button
-          onClick={() => activeMutation.mutate(!service.is_active)}
+          onClick={() => activeMutation.mutate(!isOn)}
           disabled={activeMutation.isPending}
-          aria-pressed={service.is_active}
+          aria-pressed={isOn}
           className={cn(
             'flex-shrink-0 w-12 h-7 rounded-full relative transition-colors duration-200 ease-out',
             'disabled:opacity-50',
-            service.is_active ? 'bg-green-700 dark:bg-copper-500 shadow-copper' : 'bg-green-100 dark:bg-night-500',
+            isOn ? 'bg-green-700 dark:bg-copper-500 shadow-copper' : 'bg-green-100 dark:bg-night-500',
           )}
         >
           <span
@@ -268,11 +296,35 @@ function ServiceRow({
               'absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md',
               'transition-transform duration-200 ease-out',
               activeMutation.isPending && 'animate-pulse',
-              service.is_active ? 'translate-x-5' : 'translate-x-0',
+              isOn ? 'translate-x-5' : 'translate-x-0',
             )}
           />
         </button>
       </div>
+
+      {template && (
+        <div className="flex items-center justify-between gap-2 mb-2 text-xs">
+          <span className="text-green-700 dark:text-night-300">
+            Order form:{' '}
+            <strong className="text-green-900 dark:text-white">
+              {template.live ? 'New template form' : 'Original form'}
+            </strong>
+          </span>
+          <button
+            disabled={liveMutation.isPending}
+            onClick={() => {
+              const next = !template.live
+              const msg = next
+                ? `Switch ${service.name} to the new template form? Customers will see the new form straight away. You can switch back here at any time.`
+                : `Switch ${service.name} back to the original form?`
+              if (window.confirm(msg)) liveMutation.mutate(next)
+            }}
+            className="px-3 py-1 rounded-xl border border-green-200 dark:border-night-500 text-green-800 dark:text-night-100 font-bold disabled:opacity-50"
+          >
+            {template.live ? 'Use original form' : 'Use template form'}
+          </button>
+        </div>
+      )}
 
       {editingCard ? (
         <div className="space-y-2 mt-2 pt-2 border-t border-green-100 dark:border-night-600">
@@ -379,6 +431,16 @@ export default function IdentityServicesPage() {
     },
   })
 
+  const { data: templates = [] } = useQuery<TemplateSummary[]>({
+    queryKey: ['service-templates', 'list'],
+    retry: false,
+    queryFn: async () => {
+      const { data } = await api.get<TemplateSummary[]>('/service-templates')
+      return data
+    },
+  })
+  const liveCodes = templates.filter((t) => t.live).map((t) => t.service_code)
+
   const grouped = CATEGORY_ORDER.map((cat) => ({
     category: cat,
     services: services.filter((s) => s.category === cat),
@@ -431,6 +493,8 @@ export default function IdentityServicesPage() {
                     service={s}
                     coverLabel={pricingConfig?.cover_labels?.[s.code]}
                     allPricing={pricingConfig?.pricing}
+                    template={templates.find((t) => t.service_code === resolveManualKey(s.code))}
+                    liveCodes={liveCodes}
                   />
                 ))}
               </div>

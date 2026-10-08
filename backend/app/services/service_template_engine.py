@@ -353,3 +353,24 @@ def option_label(schema: dict, selector_key: str, value: str) -> str | None:
                 if str(o.get("value")) == str(value):
                     return o.get("label")
     return None
+
+
+def price_matrix(schema: dict, rules: list[dict], limit: int = 2000) -> list[dict]:
+    """Every combination of the selectors' options with the unit price the engine gives it, so a
+    screen can show the exact price of each option without having a price function of its own.
+    Combinations no rule prices are left out (a price is never guessed)."""
+    from itertools import product
+
+    selectors = [s for s in schema.get("selectors", []) if s.get("options")]
+    if not selectors:
+        return []
+    out: list[dict] = []
+    for combo in product(*[[(s["key"], str(o["value"])) for o in s["options"]] for s in selectors]):
+        selections = dict(combo)
+        try:
+            out.append({"selections": selections, "price_kobo": compute_price(rules, selections, 1)})
+        except NoPriceError:
+            continue
+        if len(out) >= limit:
+            break
+    return out

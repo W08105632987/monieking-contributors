@@ -18,6 +18,7 @@ import { TinRegistrationForm } from '@/components/manual-services/TinRegistratio
 import { AttestationForm } from '@/components/manual-services/AttestationForm'
 import { CacRegistrationForm } from '@/components/manual-services/CacRegistrationForm'
 import { SelfServiceModificationForm } from '@/components/manual-services/SelfServiceModificationForm'
+import { TemplateForm, type TemplateData, type TemplatePayload } from '@/components/manual-services/TemplateForm'
 
 // ─── Service metadata ────────────────────────────────────────────────────────
 export const MANUAL_SERVICE_META: Record<string, {
@@ -95,6 +96,9 @@ interface FormPayload {
   form_data: Record<string, any>
   uploaded_files: string[]
   bulk_count?: number
+  // only sent by the template form (Phase 3)
+  missing?: string[]
+  template_version_id?: string
 }
 
 export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?: string }) {
@@ -133,6 +137,23 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
     setFormPayload(payload)
   }, [])
 
+  // Does this service use the director's template form, or the original hardcoded form?
+  // Any failure to load the template falls back to the original form, so a template problem
+  // can never block ordering.
+  const templateQuery = useQuery({
+    queryKey: ['service-template', effectiveKey],
+    enabled: !!meta,
+    retry: false,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const { data } = await api.get<TemplateData>(`/service-templates/${effectiveKey}`)
+      return data
+    },
+  })
+  const template = templateQuery.data
+  const switchedOff = !!template && !template.is_enabled
+  const useTemplate = !!template && template.live && template.is_enabled
+
   const submitMutation = useMutation({
     mutationFn: async () => {
       if (!formPayload) throw new Error('Form not ready')
@@ -150,6 +171,7 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
         transaction_pin: withdrawalPassword || null,
         enrollment_bank: formPayload.enrollment_bank || null,
         bulk_count: formPayload.bulk_count ?? 1,
+        template_version_id: formPayload.template_version_id ?? null,
       }
       const { data } = await api.post('/manual-services', body, {
         params: customerId ? { customer_id: customerId } : {},
@@ -192,7 +214,9 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
   })
   const priceKobo = quoteQuery.data ?? 0
   const quoteFailed = quoteQuery.isError
-  const canSubmit = consentGiven && formPayload && !submitMutation.isPending && withdrawalPassword.trim().length > 0
+  const stillNeeded = formPayload?.missing ?? []
+  const canSubmit =
+    consentGiven && formPayload && stillNeeded.length === 0 && !submitMutation.isPending && withdrawalPassword.trim().length > 0
 
   if (!meta) {
     return (
@@ -210,7 +234,36 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
     )
   }
 
+  if (switchedOff) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center bg-green-50 dark:bg-night-800 px-6 text-center">
+        <AlertCircle className="w-12 h-12 text-amber-500 mb-3" />
+        <h1 className="text-green-900 dark:text-white font-bold text-xl mb-2">{meta.title} is switched off</h1>
+        <p className="text-green-500 dark:text-night-300 text-sm mb-6">This service isn't available right now. Please check back later.</p>
+        <button onClick={() => navigate(-1)} className="bg-green-600 text-white font-bold px-6 py-2.5 rounded-full text-sm">
+          Go Back
+        </button>
+      </div>
+    )
+  }
+
   const renderForm = () => {
+    if (templateQuery.isLoading) {
+      return (
+        <div className="flex items-center justify-center py-16">
+          <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )
+    }
+    if (useTemplate && template) {
+      return (
+        <TemplateForm
+          key={template.version_id}
+          template={template}
+          onChange={(p: TemplatePayload) => handleFormChange(p)}
+        />
+      )
+    }
     switch (effectiveKey) {
       case 'nin_modification':
         return <NinModificationForm onChange={handleFormChange} />
@@ -325,6 +378,11 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
 
       {/* Bottom Action Bar (fixed above BottomNav) */}
       <div className="fixed left-0 right-0 z-30 bg-white dark:bg-night-900 border-t border-green-100 dark:border-night-600 px-4 py-4 space-y-3 max-w-lg mx-auto" style={{ bottom: 'var(--bottom-nav-height, 4.5rem)' }}>
+        {stillNeeded.length > 0 && (
+          <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+            Still needed: {stillNeeded.slice(0, 4).join(', ')}{stillNeeded.length > 4 ? ` and ${stillNeeded.length - 4} more` : ''}
+          </p>
+        )}
         {/* Consent */}
         <button
           type="button"

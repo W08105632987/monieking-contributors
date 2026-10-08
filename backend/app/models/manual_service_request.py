@@ -43,6 +43,12 @@ class ManualServiceRequest(Base):
     form_data:      Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     uploaded_files: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
+    # Which published service template version this request was submitted under (NULL = legacy form).
+    # Column added by migration 044.
+    template_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("service_template_versions.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Pricing & consent
     price_kobo:    Mapped[int]  = mapped_column(BigInteger, nullable=False, default=0)
     consent_given: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
