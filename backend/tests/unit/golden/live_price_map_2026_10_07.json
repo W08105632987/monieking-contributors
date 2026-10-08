@@ -1,0 +1,82 @@
+{
+ "bvn_license": {
+  "default": 700000
+ },
+ "bvn_modification": {
+  "access_bank": 950000,
+  "agency": 600000,
+  "boa_bank": 700000,
+  "default": 700000,
+  "first_bank": 750000,
+  "gtbank": 800000,
+  "heritage_bank": 700000,
+  "jaiz_bank": 1000000,
+  "keystone_bank": 700000,
+  "update_dob_phone": 900000,
+  "update_name_address": 900000,
+  "update_name_dob": 900000,
+  "update_name_phone": 900000
+ },
+ "bvn_retrieval": {
+  "crm_investigation": 200000,
+  "default": 70000,
+  "phone_number": 70000
+ },
+ "cac_registration": {
+  "business_name": 3500000,
+  "company": 5000000,
+  "default": 3500000
+ },
+ "modification_after_delinking": {
+  "default": 450000,
+  "update_address": 450000,
+  "update_dob": 450000,
+  "update_name": 450000,
+  "update_name_dob": 450000,
+  "update_name_phone": 450000,
+  "update_phone": 450000
+ },
+ "nin_attestation": {
+  "default": 1500000
+ },
+ "nin_delinking": {
+  "default": 350000,
+  "email_retrieval": 350000,
+  "self_service_delinking": 350000
+ },
+ "nin_modification": {
+  "default": 500000,
+  "update_address": 500000,
+  "update_dob": 500000,
+  "update_name": 5000000,
+  "update_name_dob": 500000,
+  "update_name_phone": 500000,
+  "update_phone": 500000
+ },
+ "nin_validation": {
+  "bank_validation": 100000,
+  "bulk_10": 550000,
+  "bulk_5": 300000,
+  "default": 100000,
+  "modification_validation": 120000,
+  "no_record": 100000,
+  "photographic_error": 120000,
+  "sim_validation": 100000,
+  "single": 1000000,
+  "update_records": 100000,
+  "vnin_validation": 120000
+ },
+ "self_service_modification": {
+  "default": 450000,
+  "update_address": 450000,
+  "update_name": 450000,
+  "update_name_dob": 500000,
+  "update_name_phone": 90000,
+  "update_phone": 450000
+ },
+ "tin_registration": {
+  "company": 450000,
+  "default": 150000,
+  "individual": 150000
+ }
+}

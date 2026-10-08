@@ -160,6 +160,7 @@ from app.api.v1.routes import (
 from app.api.v1.routes.webhooks import router as webhook_router
 from app.api.v1.routes.worker import router as worker_router
 from app.api.v1.routes.manual_services import router as manual_services_router
+from app.api.v1.routes.service_templates import router as service_templates_router
 
 PREFIX = "/api/v1"
 
@@ -188,6 +189,7 @@ app.include_router(food_ledger.router,       prefix=PREFIX)
 app.include_router(push.router,              prefix=PREFIX)
 app.include_router(worker_router,            prefix=PREFIX)
 app.include_router(manual_services_router,   prefix=PREFIX)
+app.include_router(service_templates_router, prefix=PREFIX)
 app.include_router(webhook_router)
 app.include_router(webhook_router,           prefix=PREFIX)
 
