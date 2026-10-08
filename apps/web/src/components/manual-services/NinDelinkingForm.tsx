@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useManualPricing, priceLabel } from '@/lib/manualServices'
 import { FileUploadField } from './FileUploadField'
 
 interface Props {
@@ -6,7 +7,6 @@ interface Props {
     service_type: string
     form_data: Record<string, any>
     uploaded_files: string[]
-    price_kobo: number
   }) => void
 }
 
@@ -14,20 +14,17 @@ const DELINKING_TYPES = [
   {
     id: 'self_service_delinking',
     label: 'Self-Service Delinking',
-    priceKobo: 350_000,
-    priceDisplay: '₦3,500.00',
     description: 'Delink your SIM or account from NIN through self-service',
   },
   {
     id: 'email_retrieval',
     label: 'Email Retrieval Delinking',
-    priceKobo: 350_000,
-    priceDisplay: '₦3,500.00',
     description: 'Delink using email retrieval process',
   },
 ]
 
 export function NinDelinkingForm({ onChange }: Props) {
+  const { priceOf } = useManualPricing()
   const [delinkType, setDelinkType] = useState('self_service_delinking')
   const [data, setData] = useState<Record<string, any>>({
     nin: '',
@@ -51,7 +48,6 @@ export function NinDelinkingForm({ onChange }: Props) {
       service_type: delinkType,
       form_data: { ...data, delinking_type: delinkType, delinking_label: activeType.label },
       uploaded_files: data.supporting_doc_url ? [data.supporting_doc_url] : [],
-      price_kobo: activeType.priceKobo,
     })
   }, [delinkType, data])
 
@@ -85,7 +81,7 @@ export function NinDelinkingForm({ onChange }: Props) {
                 <p className="text-xs text-green-500 dark:text-night-300">{dt.description}</p>
               </div>
             </div>
-            <span className="text-sm font-extrabold text-green-700 dark:text-night-200 shrink-0 ml-2">{dt.priceDisplay}</span>
+            <span className="text-sm font-extrabold text-green-700 dark:text-night-200 shrink-0 ml-2">{priceLabel(priceOf('nin_delinking', dt.id))}</span>
           </button>
         ))}
       </div>

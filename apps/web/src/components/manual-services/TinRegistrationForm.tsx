@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useManualPricing, priceLabel } from '@/lib/manualServices'
 import { NIGERIAN_STATES } from './constants'
 import { FileUploadField } from './FileUploadField'
 
@@ -7,7 +8,6 @@ interface Props {
     service_type: string
     form_data: Record<string, any>
     uploaded_files: string[]
-    price_kobo: number
   }) => void
 }
 
@@ -15,15 +15,11 @@ const TIN_TYPES = [
   {
     id: 'individual',
     label: 'Individual TIN Registration',
-    priceKobo: 150_000,
-    priceDisplay: '₦1,500.00',
     description: 'Register a TIN for a private individual',
   },
   {
     id: 'company',
     label: 'Company / Business TIN Registration',
-    priceKobo: 450_000,
-    priceDisplay: '₦4,500.00',
     description: 'Register a TIN for a company or business entity',
   },
 ]
@@ -32,6 +28,7 @@ const TITLE_OPTIONS = ['Mr.', 'Mrs.', 'Miss', 'Dr.', 'Prof.', 'Chief', 'Alhaji',
 const BUSINESS_TYPES = ['Sole Proprietorship', 'Partnership', 'Limited Liability Company (LLC)', 'Public Limited Company (PLC)', 'NGO / Non-Profit', 'Other']
 
 export function TinRegistrationForm({ onChange }: Props) {
+  const { priceOf } = useManualPricing()
   const [tinType, setTinType] = useState('individual')
   const [data, setData] = useState<Record<string, any>>({
     // Individual fields
@@ -74,7 +71,6 @@ export function TinRegistrationForm({ onChange }: Props) {
       service_type: tinType,
       form_data: { ...data, tin_type: tinType, tin_type_label: activeType.label },
       uploaded_files: uploadedFiles,
-      price_kobo: activeType.priceKobo,
     })
   }, [tinType, data])
 
@@ -109,7 +105,7 @@ export function TinRegistrationForm({ onChange }: Props) {
                 <p className="text-xs text-green-500 dark:text-night-300">{tt.description}</p>
               </div>
             </div>
-            <span className="text-sm font-extrabold text-green-700 dark:text-night-200 shrink-0 ml-2">{tt.priceDisplay}</span>
+            <span className="text-sm font-extrabold text-green-700 dark:text-night-200 shrink-0 ml-2">{priceLabel(priceOf('tin_registration', tt.id))}</span>
           </button>
         ))}
       </div>

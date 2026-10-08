@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useManualPricing, priceLabel } from '@/lib/manualServices'
 import { FileUploadField } from './FileUploadField'
 
 interface Props {
@@ -6,14 +7,12 @@ interface Props {
     service_type: string
     form_data: Record<string, any>
     uploaded_files: string[]
-    price_kobo: number
   }) => void
 }
 
-// Fixed price ₦15,000
-const PRICE_KOBO = 1_500_000
-
 export function AttestationForm({ onChange }: Props) {
+  const { priceOf } = useManualPricing()
+  const price = priceLabel(priceOf('nin_attestation', 'default'))
   const [data, setData] = useState<Record<string, any>>({
     nin: '',
     first_name: '',
@@ -50,7 +49,6 @@ export function AttestationForm({ onChange }: Props) {
       service_type: 'nin_attestation',
       form_data: data,
       uploaded_files: uploadedFiles,
-      price_kobo: PRICE_KOBO,
     })
   }, [data])
 
@@ -63,7 +61,7 @@ export function AttestationForm({ onChange }: Props) {
       {/* Info Banner */}
       <div className="bg-amber-50 dark:bg-night-700 border border-amber-200 dark:border-night-500 rounded-2xl p-4">
         <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-          NIN Attestation is a fixed ₦15,000 service. Your NIN details will be officially attested and stamped for use abroad or for official purposes.
+          NIN Attestation is a fixed-price service{price ? ` (${price})` : ''}. Your NIN details will be officially attested and stamped for use abroad or for official purposes.
         </p>
       </div>
 

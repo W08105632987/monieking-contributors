@@ -7,7 +7,6 @@ interface Props {
     service_type: string
     form_data: Record<string, any>
     uploaded_files: string[]
-    price_kobo: number
   }) => void
 }
 
@@ -66,22 +65,34 @@ export function NinModificationForm({ onChange }: Props) {
     setData(prev => ({ ...prev, [key]: val }))
   }
 
+  const showNameFields = ['update_name', 'update_name_dob', 'update_name_phone'].includes(modType)
+  const showPhoneField = ['update_phone', 'update_name_phone'].includes(modType)
+  const showAddressFields = modType === 'update_address'
+  const showDobAndFamilyFields = ['update_dob', 'update_name_dob'].includes(modType)
+
+  // Only send fields that are actually on screen for the chosen modification. Anything typed
+  // earlier for a different option (and now hidden) must not be submitted.
+  const NAME_KEYS = ['first_name', 'middle_name', 'last_name']
+  const PHONE_KEYS = ['phone_number']
+  const ADDRESS_KEYS = ['address_line_1', 'address_line_2', 'town_city', 'postal_code', 'state']
+  const ALWAYS_KEYS = ['nin', 'supporting_document']
+  const isVisibleKey = (k: string) =>
+    ALWAYS_KEYS.includes(k) ||
+    (NAME_KEYS.includes(k) && showNameFields) ||
+    (PHONE_KEYS.includes(k) && showPhoneField) ||
+    (ADDRESS_KEYS.includes(k) && showAddressFields) ||
+    (![...NAME_KEYS, ...PHONE_KEYS, ...ADDRESS_KEYS].includes(k) && showDobAndFamilyFields)
+
   useEffect(() => {
     const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
+      Object.entries(data).filter(([k, v]) => isVisibleKey(k) && v !== '' && v !== null && v !== undefined)
     )
     onChange({
       service_type: modType,
       form_data: { ...cleanData, selected_modification: modType },
       uploaded_files: data.supporting_document ? [data.supporting_document] : [],
-      price_kobo: 500000, // ₦5,000.00
     })
   }, [modType, data])
-
-  const showNameFields = ['update_name', 'update_name_dob', 'update_name_phone'].includes(modType)
-  const showPhoneField = ['update_phone', 'update_name_phone'].includes(modType)
-  const showAddressFields = modType === 'update_address'
-  const showDobAndFamilyFields = ['update_dob', 'update_name_dob'].includes(modType)
 
   return (
     <div className="space-y-6">

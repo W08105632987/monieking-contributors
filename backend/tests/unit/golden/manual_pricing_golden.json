@@ -1,0 +1,3548 @@
+{
+ "cases": [
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 77700,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "no_record"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 55000,
+   "service_type": "no_record"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "sim_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "sim_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "vnin_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "vnin_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "update_records"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "update_records"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "bank_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "bank_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "modification_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "modification_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "photographic_error"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "photographic_error"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "single"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "single"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 600000,
+   "service_type": "agency"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 600000,
+   "service_type": "agency"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 950000,
+   "service_type": "access_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 950000,
+   "service_type": "access_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "boa_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "boa_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 750000,
+   "service_type": "first_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 750000,
+   "service_type": "first_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 800000,
+   "service_type": "gtbank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 123000,
+   "service_type": "gtbank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "heritage_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "heritage_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "jaiz_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "jaiz_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "keystone_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "keystone_bank"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_retrieval",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 70000,
+   "service_type": "phone_number"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_retrieval",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 70000,
+   "service_type": "phone_number"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_retrieval",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "crm_investigation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_retrieval",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "crm_investigation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_retrieval",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 70000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_retrieval",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 70000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_retrieval",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 70000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_retrieval",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 70000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_retrieval",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 70000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_retrieval",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 70000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_license",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_license",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_license",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_license",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_license",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_license",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 350000,
+   "service_type": "self_service_delinking"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 350000,
+   "service_type": "self_service_delinking"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 350000,
+   "service_type": "email_retrieval"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 350000,
+   "service_type": "email_retrieval"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 350000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 350000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 350000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 350000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 350000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 350000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 90000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 90000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "self_service_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "modification_after_delinking",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "tin_registration",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 150000,
+   "service_type": "individual"
+  },
+  {
+   "bulk_count": 1,
+   "category": "tin_registration",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 150000,
+   "service_type": "individual"
+  },
+  {
+   "bulk_count": 1,
+   "category": "tin_registration",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "company"
+  },
+  {
+   "bulk_count": 1,
+   "category": "tin_registration",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 450000,
+   "service_type": "company"
+  },
+  {
+   "bulk_count": 1,
+   "category": "tin_registration",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 150000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "tin_registration",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 150000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "tin_registration",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 150000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "tin_registration",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 150000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "tin_registration",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 150000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "tin_registration",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 150000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_attestation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1500000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_attestation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1500000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_attestation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1500000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_attestation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1500000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_attestation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1500000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_attestation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1500000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "cac_registration",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 3500000,
+   "service_type": "business_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "cac_registration",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 3500000,
+   "service_type": "business_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "cac_registration",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 5000000,
+   "service_type": "company"
+  },
+  {
+   "bulk_count": 1,
+   "category": "cac_registration",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 5000000,
+   "service_type": "company"
+  },
+  {
+   "bulk_count": 1,
+   "category": "cac_registration",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 3500000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "cac_registration",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 3500000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "cac_registration",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 3500000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "cac_registration",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 3500000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "cac_registration",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 3500000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "cac_registration",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 3500000,
+   "service_type": ""
+  },
+  {
+   "bulk_count": 1,
+   "category": "not_a_category",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 0,
+   "service_type": "anything"
+  },
+  {
+   "bulk_count": 1,
+   "category": "not_a_category",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 0,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "brand_new_service",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 10000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "brand_new_service",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 10000,
+   "service_type": "x"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "agency",
+   "expected": 600000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "agency",
+   "expected": 600000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "agency",
+   "expected": 600000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "agency",
+   "expected": 600000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "agency",
+   "expected": 600000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "agency",
+   "expected": 600000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "agency",
+   "expected": 600000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "agency",
+   "expected": 600000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "agency",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "agency",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "agency",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "agency",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "agency",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "agency",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "agency",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "agency",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "access_bank",
+   "expected": 950000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "access_bank",
+   "expected": 950000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "access_bank",
+   "expected": 950000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "access_bank",
+   "expected": 950000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "access_bank",
+   "expected": 950000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "access_bank",
+   "expected": 950000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "access_bank",
+   "expected": 950000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "access_bank",
+   "expected": 950000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "access_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "access_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "access_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "access_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "access_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "access_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "access_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "access_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "boa_bank",
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "boa_bank",
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "boa_bank",
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "boa_bank",
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "boa_bank",
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "boa_bank",
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "boa_bank",
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "boa_bank",
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "boa_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "boa_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "boa_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "boa_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "boa_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "boa_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "boa_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "boa_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "first_bank",
+   "expected": 750000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "first_bank",
+   "expected": 750000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "first_bank",
+   "expected": 750000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "first_bank",
+   "expected": 750000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "first_bank",
+   "expected": 750000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "first_bank",
+   "expected": 750000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "first_bank",
+   "expected": 750000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "first_bank",
+   "expected": 750000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "first_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "first_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "first_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "first_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "first_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "first_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "first_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "first_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "gtbank",
+   "expected": 800000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "gtbank",
+   "expected": 123000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "gtbank",
+   "expected": 800000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "gtbank",
+   "expected": 123000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "gtbank",
+   "expected": 800000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "gtbank",
+   "expected": 123000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "gtbank",
+   "expected": 800000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "gtbank",
+   "expected": 123000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "gtbank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "gtbank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "gtbank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "gtbank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "gtbank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "gtbank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "gtbank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "gtbank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "heritage_bank",
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "heritage_bank",
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "heritage_bank",
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "heritage_bank",
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "heritage_bank",
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "heritage_bank",
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "heritage_bank",
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "heritage_bank",
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "heritage_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "heritage_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "heritage_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "heritage_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "heritage_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "heritage_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "heritage_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "heritage_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 1000000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 1000000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 1000000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 1000000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 1000000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 1000000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 1000000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 1000000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "jaiz_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "keystone_bank",
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "keystone_bank",
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "keystone_bank",
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "keystone_bank",
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "keystone_bank",
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "keystone_bank",
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "keystone_bank",
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "keystone_bank",
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "keystone_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "keystone_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "keystone_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "keystone_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "keystone_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "keystone_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "keystone_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "keystone_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "First Bank",
+   "expected": 750000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "First Bank",
+   "expected": 750000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "First Bank",
+   "expected": 750000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "First Bank",
+   "expected": 750000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "First Bank",
+   "expected": 750000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "First Bank",
+   "expected": 750000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "First Bank",
+   "expected": 750000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "First Bank",
+   "expected": 750000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "First Bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "First Bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "First Bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "First Bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "First Bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "First Bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "First Bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "First Bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "GT Bank",
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "GT Bank",
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "GT Bank",
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "GT Bank",
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "GT Bank",
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "GT Bank",
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "GT Bank",
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "GT Bank",
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "GT Bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "GT Bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "GT Bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "GT Bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "GT Bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "GT Bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "GT Bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "GT Bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "unknown_bank",
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "unknown_bank",
+   "expected": 700000,
+   "service_type": "update_name"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "unknown_bank",
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "unknown_bank",
+   "expected": 700000,
+   "service_type": "update_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "unknown_bank",
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "unknown_bank",
+   "expected": 700000,
+   "service_type": "update_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "unknown_bank",
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "unknown_bank",
+   "expected": 700000,
+   "service_type": "update_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "unknown_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "unknown_bank",
+   "expected": 900000,
+   "service_type": "update_name_dob"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "unknown_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "unknown_bank",
+   "expected": 900000,
+   "service_type": "update_name_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "unknown_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "unknown_bank",
+   "expected": 900000,
+   "service_type": "update_name_address"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "none",
+   "enrollment_bank": "unknown_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "bvn_modification",
+   "custom": "override",
+   "enrollment_bank": "unknown_bank",
+   "expected": 900000,
+   "service_type": "update_dob_phone"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "no_record"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 55000,
+   "service_type": "no_record"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "no_record"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 110000,
+   "service_type": "no_record"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "no_record"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 275000,
+   "service_type": "no_record"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "no_record"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 550000,
+   "service_type": "no_record"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "sim_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "sim_validation"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "sim_validation"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "sim_validation"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "sim_validation"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "sim_validation"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "sim_validation"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "sim_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "vnin_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "vnin_validation"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 240000,
+   "service_type": "vnin_validation"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 240000,
+   "service_type": "vnin_validation"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 600000,
+   "service_type": "vnin_validation"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 600000,
+   "service_type": "vnin_validation"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1200000,
+   "service_type": "vnin_validation"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1200000,
+   "service_type": "vnin_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "update_records"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "update_records"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "update_records"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "update_records"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_records"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_records"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "update_records"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "update_records"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "bank_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "bank_validation"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "bank_validation"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "bank_validation"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "bank_validation"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "bank_validation"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "bank_validation"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "bank_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "modification_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "modification_validation"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 240000,
+   "service_type": "modification_validation"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 240000,
+   "service_type": "modification_validation"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 600000,
+   "service_type": "modification_validation"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 600000,
+   "service_type": "modification_validation"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1200000,
+   "service_type": "modification_validation"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1200000,
+   "service_type": "modification_validation"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "photographic_error"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 120000,
+   "service_type": "photographic_error"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 240000,
+   "service_type": "photographic_error"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 240000,
+   "service_type": "photographic_error"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 600000,
+   "service_type": "photographic_error"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 600000,
+   "service_type": "photographic_error"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1200000,
+   "service_type": "photographic_error"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1200000,
+   "service_type": "photographic_error"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "single"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "single"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "single"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "single"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "single"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "single"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "single"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "single"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "default"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 100000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 2,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 200000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 5,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "none",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 10,
+   "category": "nin_validation",
+   "custom": "override",
+   "enrollment_bank": null,
+   "expected": 1000000,
+   "service_type": "not_a_real_type"
+  },
+  {
+   "bulk_count": 1,
+   "category": "nin_modification",
+   "custom": "empty",
+   "enrollment_bank": null,
+   "expected": 500000,
+   "service_type": "update_name"
+  }
+ ],
+ "price_map": {
+  "bvn_license": {
+   "default": 700000
+  },
+  "bvn_modification": {
+   "access_bank": 950000,
+   "agency": 600000,
+   "boa_bank": 700000,
+   "default": 700000,
+   "first_bank": 750000,
+   "gtbank": 800000,
+   "heritage_bank": 700000,
+   "jaiz_bank": 1000000,
+   "keystone_bank": 700000,
+   "update_dob_phone": 900000,
+   "update_name_address": 900000,
+   "update_name_dob": 900000,
+   "update_name_phone": 900000
+  },
+  "bvn_retrieval": {
+   "crm_investigation": 200000,
+   "default": 70000,
+   "phone_number": 70000
+  },
+  "cac_registration": {
+   "business_name": 3500000,
+   "company": 5000000,
+   "default": 3500000
+  },
+  "modification_after_delinking": {
+   "default": 450000,
+   "update_address": 450000,
+   "update_dob": 450000,
+   "update_name": 450000,
+   "update_name_dob": 450000,
+   "update_name_phone": 450000,
+   "update_phone": 450000
+  },
+  "nin_attestation": {
+   "default": 1500000
+  },
+  "nin_delinking": {
+   "default": 350000,
+   "email_retrieval": 350000,
+   "self_service_delinking": 350000
+  },
+  "nin_modification": {
+   "default": 500000,
+   "update_address": 500000,
+   "update_dob": 500000,
+   "update_name": 500000,
+   "update_name_dob": 500000,
+   "update_name_phone": 500000,
+   "update_phone": 500000
+  },
+  "nin_validation": {
+   "bank_validation": 100000,
+   "default": 100000,
+   "modification_validation": 120000,
+   "no_record": 100000,
+   "photographic_error": 120000,
+   "sim_validation": 100000,
+   "single": 100000,
+   "update_records": 100000,
+   "vnin_validation": 120000
+  },
+  "self_service_modification": {
+   "default": 450000,
+   "update_address": 450000,
+   "update_name": 450000,
+   "update_name_dob": 500000,
+   "update_name_phone": 90000,
+   "update_phone": 450000
+  },
+  "tin_registration": {
+   "company": 450000,
+   "default": 150000,
+   "individual": 150000
+  }
+ }
+}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useManualPricing, priceLabel } from '@/lib/manualServices'
 import { ENROLLMENT_BANKS } from './constants'
 import { FileUploadField } from './FileUploadField'
 
@@ -8,14 +9,12 @@ interface Props {
     enrollment_bank?: string
     form_data: Record<string, any>
     uploaded_files: string[]
-    price_kobo: number
   }) => void
 }
 
-// ₦7,000 fixed regardless of bank
-const PRICE_KOBO = 700_000
-
 export function BvnLicenseForm({ onChange }: Props) {
+  const { priceOf } = useManualPricing()
+  const price = priceLabel(priceOf('bvn_license', 'default'))
   const [enrollmentBank, setEnrollmentBank] = useState('agency')
   const [data, setData] = useState<Record<string, any>>({
     bvn: '',
@@ -41,7 +40,6 @@ export function BvnLicenseForm({ onChange }: Props) {
         enrollment_bank: selectedBankObj.label,
       },
       uploaded_files: data.screenshot_url ? [data.screenshot_url] : [],
-      price_kobo: PRICE_KOBO,
     })
   }, [enrollmentBank, data])
 
@@ -53,7 +51,7 @@ export function BvnLicenseForm({ onChange }: Props) {
       {/* Info Banner */}
       <div className="bg-amber-50 dark:bg-night-700 border border-amber-200 dark:border-night-500 rounded-2xl p-4">
         <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-          BVN License Creation is a fixed ₦7,000 service. A new BVN will be created and registered with your selected enrollment bank.
+          BVN License Creation is a fixed-price service{price ? ` (${price}, same for every bank)` : ''}. A new BVN will be created and registered with your selected enrollment bank.
         </p>
       </div>
 

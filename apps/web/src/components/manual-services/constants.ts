@@ -7,14 +7,14 @@ export const NIGERIAN_STATES = [
 ]
 
 export const ENROLLMENT_BANKS = [
-  { id: 'agency', label: 'Agency', priceKobo: 600000 },
-  { id: 'access_bank', label: 'Access Bank', priceKobo: 950000 },
-  { id: 'boa_bank', label: 'BOA Bank', priceKobo: 700000 },
-  { id: 'first_bank', label: 'First Bank', priceKobo: 750000 },
-  { id: 'gtbank', label: 'GT Bank', priceKobo: 800000 },
-  { id: 'heritage_bank', label: 'Heritage Bank', priceKobo: 700000 },
-  { id: 'jaiz_bank', label: 'JAIZ Bank', priceKobo: 1000000 },
-  { id: 'keystone_bank', label: 'Keystone Bank', priceKobo: 700000 },
+  { id: 'agency', label: 'Agency' },
+  { id: 'access_bank', label: 'Access Bank' },
+  { id: 'boa_bank', label: 'BOA Bank' },
+  { id: 'first_bank', label: 'First Bank' },
+  { id: 'gtbank', label: 'GT Bank' },
+  { id: 'heritage_bank', label: 'Heritage Bank' },
+  { id: 'jaiz_bank', label: 'JAIZ Bank' },
+  { id: 'keystone_bank', label: 'Keystone Bank' },
 ]
 
 export const GEOPOLITICAL_ZONES = [

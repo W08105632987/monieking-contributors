@@ -43,3 +43,4 @@ supabase/.temp/
 
 # Celery beat runtime state — regenerated automatically, never commit
 celerybeat-schedule*
+keyenv/

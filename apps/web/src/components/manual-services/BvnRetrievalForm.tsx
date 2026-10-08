@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useManualPricing, priceLabel } from '@/lib/manualServices'
 
 interface Props {
   onChange: (payload: {
     service_type: string
     form_data: Record<string, any>
     uploaded_files: string[]
-    price_kobo: number
   }) => void
 }
 
@@ -13,20 +13,17 @@ const RETRIEVAL_TYPES = [
   {
     id: 'phone_number',
     label: 'Phone Number Retrieval',
-    priceKobo: 70_000,
-    priceDisplay: '₦700.00',
     description: 'Retrieve a lost BVN using a phone number',
   },
   {
     id: 'crm_investigation',
     label: 'CRM Investigation',
-    priceKobo: 200_000,
-    priceDisplay: '₦2,000.00',
     description: 'Deep investigation of BVN records via CRM',
   },
 ]
 
 export function BvnRetrievalForm({ onChange }: Props) {
+  const { priceOf } = useManualPricing()
   const [retrievalType, setRetrievalType] = useState('phone_number')
   const [data, setData] = useState<Record<string, any>>({
     bvn: '',
@@ -49,7 +46,6 @@ export function BvnRetrievalForm({ onChange }: Props) {
       service_type: retrievalType,
       form_data: { ...data, retrieval_type: retrievalType, retrieval_label: activeType.label },
       uploaded_files: [],
-      price_kobo: activeType.priceKobo,
     })
   }, [retrievalType, data])
 
@@ -83,7 +79,7 @@ export function BvnRetrievalForm({ onChange }: Props) {
                 <p className="text-xs text-green-500 dark:text-night-300">{rt.description}</p>
               </div>
             </div>
-            <span className="text-sm font-extrabold text-green-700 dark:text-night-200 shrink-0 ml-2">{rt.priceDisplay}</span>
+            <span className="text-sm font-extrabold text-green-700 dark:text-night-200 shrink-0 ml-2">{priceLabel(priceOf('bvn_retrieval', rt.id))}</span>
           </button>
         ))}
       </div>

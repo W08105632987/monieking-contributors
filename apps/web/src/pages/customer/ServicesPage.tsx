@@ -5,22 +5,17 @@ import { ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
+import { isManualService, resolveManualKey } from '@/lib/manualServices'
 import type { IdentityService, IdentityServiceCategory } from '@/types'
 import { CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_ORDER } from '@/lib/identityServices'
 import { FallbackError } from '@/components/ui/FallbackError'
 
-// Base starting prices for manual services (in kobo)
-const MANUAL_BASE_PRICES: Record<string, number> = {
-  nin_modification: 500_000,   // From ₦5,000
-  nin_validation:   100_000,   // From ₦1,000
-  nin_delinking:    350_000,   // From ₦3,500
-  bvn_retrieval:    70_000,    // From ₦700
-  bvn_modification: 600_000,   // From ₦6,000
-  bvn_license_onboarding: 700_000, // From ₦7,000
-  tin_registration: 300_000,   // From ₦3,000
-  attestation:      350_000,   // From ₦3,500
-  cac_registration: 1_500_000, // From ₦15,000
-}
+// Phase 1 keeps the existing behaviour: these cards are always shown as open.
+// (The director's on/off switch takes over in the template-engine phase.)
+const ALWAYS_OPEN = new Set([
+  'nin_modification', 'nin_validation', 'nin_delinking', 'bvn_retrieval', 'bvn_modification',
+  'bvn_license_onboarding', 'tin_registration', 'attestation', 'cac_registration',
+])
 
 function ServiceCard({
   service,
@@ -39,11 +34,12 @@ function ServiceCard({
 
   // Display price: if director set custom alphanumeric label, show it; else fallback
   const priceDisplay = (() => {
+    // Manual services: the label comes from the backend (director's text, or the live "From ₦X").
     if (coverLabel) {
       return coverLabel
     }
-    if (MANUAL_BASE_PRICES[service.code]) {
-      return `From ${formatNaira(MANUAL_BASE_PRICES[service.code])}`
+    if (isManualService(service.code)) {
+      return ''
     }
     if (service.price_kobo > 0) {
       return formatNaira(service.price_kobo)
@@ -110,7 +106,6 @@ export default function ServicesPage() {
             code: 'bvn_retrieval',
             name: 'BVN retrieval',
             is_active: true,
-            price_kobo: 70000,
           })
           seenBvnRetrieval = true
         }
@@ -130,7 +125,7 @@ export default function ServicesPage() {
       if (s.code === 'nin_delinking') hasNinDelinking = true
 
       // Activate all manual services
-      if (MANUAL_BASE_PRICES[s.code]) {
+      if (ALWAYS_OPEN.has(s.code)) {
         list.push({ ...s, is_active: true })
       } else {
         list.push(s)
@@ -147,7 +142,7 @@ export default function ServicesPage() {
         description: 'Business name and company registration',
         provider: 'manual',
         provider_endpoint: null,
-        price_kobo: 1500000,
+        price_kobo: 0,
         is_active: true,
         required_fields: [],
         updated_at: new Date().toISOString(),
@@ -164,7 +159,7 @@ export default function ServicesPage() {
         description: 'Delink phone or SIM from NIN',
         provider: 'manual',
         provider_endpoint: null,
-        price_kobo: 350000,
+        price_kobo: 0,
         is_active: true,
         required_fields: [],
         updated_at: new Date().toISOString(),
@@ -195,13 +190,7 @@ export default function ServicesPage() {
 
     // Direct routing for manual services to avoid intermediate re-renders
     const code = service.code === 'bvn_retrieval_phone' || service.code === 'bvn_retrieval_crm' ? 'bvn_retrieval' : service.code
-    const MANUAL_KEYS = new Set([
-      'nin_modification', 'nin_validation', 'nin_delinking',
-      'bvn_modification', 'bvn_retrieval', 'bvn_license_onboarding', 'bvn_license',
-      'bvn_self_service_delinking', 'tin_registration', 'attestation', 'nin_attestation',
-      'cac_registration', 'self_service_modification'
-    ])
-    if (MANUAL_KEYS.has(code)) {
+    if (isManualService(code)) {
       navigate(
         customerId
           ? `/officer/customers/${customerId}/manual-services/${code}`
@@ -260,11 +249,11 @@ export default function ServicesPage() {
                       key={s.id || s.code}
                       service={s}
                       categoryIcon={CategoryIcon}
-                      coverLabel={pricingConfig?.cover_labels?.[s.code]}
+                      coverLabel={pricingConfig?.cover_labels?.[s.code] || pricingConfig?.cover_labels?.[resolveManualKey(s.code)]}
                       forceActive={
                         group.category === 'airtime' ||
                         group.category === 'bills' ||
-                        !!MANUAL_BASE_PRICES[s.code]
+                        ALWAYS_OPEN.has(s.code)
                       }
                       onOpen={() => openService(group.category, s)}
                     />

@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ShieldCheck, AlertCircle, Eye, EyeOff, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
+import { SERVICE_KEY_ALIASES } from '@/lib/manualServices'
 
 // Form components
 import { NinModificationForm } from '@/components/manual-services/NinModificationForm'
@@ -93,16 +94,7 @@ interface FormPayload {
   enrollment_bank?: string
   form_data: Record<string, any>
   uploaded_files: string[]
-  price_kobo: number
   bulk_count?: number
-}
-
-const SERVICE_KEY_ALIASES: Record<string, string> = {
-  attestation: 'nin_attestation',
-  bvn_license_onboarding: 'bvn_license',
-  bvn_retrieval_phone: 'bvn_retrieval',
-  bvn_retrieval_crm: 'bvn_retrieval',
-  bvn_self_service_delinking: 'nin_delinking',
 }
 
 export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?: string }) {
@@ -176,7 +168,30 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
-  const priceKobo = formPayload?.price_kobo ?? 0
+  // The amount shown is asked from the backend, which uses the very same function
+  // as the charge. The screen never calculates or remembers a price of its own.
+  const quoteQuery = useQuery({
+    queryKey: [
+      'manual-service-quote', meta?.category, formPayload?.service_type,
+      formPayload?.enrollment_bank ?? null, formPayload?.bulk_count ?? 1,
+    ],
+    enabled: !!meta && !!formPayload?.service_type,
+    retry: 1,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const { data } = await api.get<{ price_kobo: number }>('/manual-services/quote', {
+        params: {
+          service_category: meta!.category,
+          service_type: formPayload!.service_type,
+          enrollment_bank: formPayload!.enrollment_bank || undefined,
+          bulk_count: formPayload!.bulk_count ?? 1,
+        },
+      })
+      return data.price_kobo
+    },
+  })
+  const priceKobo = quoteQuery.data ?? 0
+  const quoteFailed = quoteQuery.isError
   const canSubmit = consentGiven && formPayload && !submitMutation.isPending && withdrawalPassword.trim().length > 0
 
   if (!meta) {
@@ -325,12 +340,16 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
         {/* Price + Submit */}
         <div className="flex items-center gap-3">
           <div className="flex-1">
-            {priceKobo > 0 && (
+            {priceKobo > 0 ? (
               <>
                 <p className="text-xs text-green-500 dark:text-night-300 font-semibold">Amount to pay</p>
                 <p className="text-green-900 dark:text-white font-extrabold text-xl leading-tight">{formatNaira(priceKobo)}</p>
               </>
-            )}
+            ) : quoteFailed ? (
+              <p className="text-xs text-green-600 dark:text-night-300 font-semibold">
+                Price couldn't be loaded. The exact amount is confirmed when you submit.
+              </p>
+            ) : null}
           </div>
           <button
             onClick={() => submitMutation.mutate()}

@@ -8,58 +8,40 @@ import { formatNaira, nairaToKobo, koboToNaira, cn } from '@/lib/utils'
 import type { IdentityService, IdentityServiceCategory } from '@/types'
 import { CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_ORDER } from '@/lib/identityServices'
 import { FallbackError } from '@/components/ui/FallbackError'
+import { resolveManualKey } from '@/lib/manualServices'
+import { ENROLLMENT_BANKS } from '@/components/manual-services/constants'
 
-export const SERVICE_CHILD_CATEGORIES: Record<string, { key: string; label: string; defaultKobo: number }[]> = {
-  nin_modification: [
-    { key: 'update_name', label: 'Update Name', defaultKobo: 500_000 },
-    { key: 'update_phone', label: 'Update Phone Number', defaultKobo: 500_000 },
-    { key: 'update_dob', label: 'Update Date of Birth', defaultKobo: 500_000 },
-    { key: 'update_address', label: 'Update Address', defaultKobo: 500_000 },
-  ],
-  nin_validation: [
-    { key: 'single', label: 'Single NIN Validation', defaultKobo: 70_000 },
-    { key: 'bulk_5', label: 'Bulk Validation (up to 5)', defaultKobo: 300_000 },
-    { key: 'bulk_10', label: 'Bulk Validation (up to 10)', defaultKobo: 550_000 },
-  ],
-  nin_delinking: [
-    { key: 'standard', label: 'Standard Delinking', defaultKobo: 350_000 },
-  ],
-  bvn_modification: [
-    { key: 'update_name', label: 'Update Name', defaultKobo: 600_000 },
-    { key: 'update_phone', label: 'Update Phone Number', defaultKobo: 600_000 },
-    { key: 'update_dob', label: 'Update Date of Birth', defaultKobo: 600_000 },
-  ],
-  bvn_retrieval: [
-    { key: 'retrieval', label: 'BVN Retrieval (Phone / CRM)', defaultKobo: 70_000 },
-  ],
-  bvn_license_onboarding: [
-    { key: 'agent', label: 'Agent Tier', defaultKobo: 1_500_000 },
-    { key: 'sub_partner', label: 'Sub-Partner Tier', defaultKobo: 3_500_000 },
-    { key: 'partner', label: 'Partner Tier', defaultKobo: 7_000_000 },
-  ],
-  bvn_license: [
-    { key: 'agent', label: 'Agent Tier', defaultKobo: 1_500_000 },
-    { key: 'sub_partner', label: 'Sub-Partner Tier', defaultKobo: 3_500_000 },
-    { key: 'partner', label: 'Partner Tier', defaultKobo: 7_000_000 },
-  ],
-  tin_registration: [
-    { key: 'individual', label: 'Individual TIN', defaultKobo: 200_000 },
-    { key: 'corporate', label: 'Corporate / Business TIN', defaultKobo: 500_000 },
-  ],
-  attestation: [
-    { key: 'standard', label: 'Standard Attestation', defaultKobo: 300_000 },
-  ],
-  nin_attestation: [
-    { key: 'standard', label: 'Standard Attestation', defaultKobo: 300_000 },
-  ],
-  cac_registration: [
-    { key: 'business_name', label: 'Business Name (BN)', defaultKobo: 1_500_000 },
-    { key: 'company_ltd', label: 'Company Limited (LTD)', defaultKobo: 3_500_000 },
-    { key: 'incorporated_trustees', label: 'Incorporated Trustees (NGO)', defaultKobo: 5_000_000 },
-  ],
-  self_service_modification: [
-    { key: 'standard', label: 'Self-Service Modification', defaultKobo: 500_000 },
-  ],
+// Human names for the price tiers the backend charges. The TIERS THEMSELVES come from the
+// backend price table (so a tier that is charged can never be missing from this screen);
+// this only supplies friendly labels. Unknown keys fall back to a prettified key.
+const TIER_LABELS: Record<string, string> = {
+  update_name: 'Update Name', update_phone: 'Update Phone Number', update_dob: 'Update Date of Birth',
+  update_address: 'Update Address', update_name_dob: 'Update Name & DOB', update_name_phone: 'Update Name & Phone',
+  update_name_address: 'Update Name & Address', update_dob_phone: 'Update DOB & Phone',
+  no_record: 'No Record Found', sim_validation: 'SIM Validation', vnin_validation: 'v.nin Validation',
+  update_records: 'Update Records Validation', bank_validation: 'Bank Validation',
+  modification_validation: 'Modification Validation', photographic_error: 'Photographic Error',
+  single: 'Single (fallback)', phone_number: 'Phone Number Retrieval', crm_investigation: 'CRM Investigation',
+  self_service_delinking: 'Self-Service Delinking', email_retrieval: 'Email Retrieval',
+  individual: 'Individual TIN', company: 'Company TIN', business_name: 'Business Name (BN)',
+  default: 'Standard price',
+}
+for (const b of ENROLLMENT_BANKS) TIER_LABELS[b.id] = `${b.label} (single update)`
+
+export interface ChildTier { key: string; label: string }
+
+function prettyKey(key: string): string {
+  return key.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
+}
+
+/** Every tier the backend actually charges for this service. */
+export function tiersFor(serviceCode: string, pricing?: Record<string, Record<string, number>>): ChildTier[] {
+  const map = pricing?.[resolveManualKey(serviceCode)]
+  if (!map) return []
+  const keys = Object.keys(map)
+  // "default" is only a fallback; show it on its own only when it is the sole price.
+  const shown = keys.length === 1 ? keys : keys.filter((k) => k !== 'default')
+  return shown.map((key) => ({ key, label: TIER_LABELS[key] || prettyKey(key) }))
 }
 
 interface PricingConfigData {
@@ -78,7 +60,7 @@ function ChildPricingModal({
 }: {
   service: IdentityService
   coverLabel: string
-  childTiers: { key: string; label: string; defaultKobo: number }[]
+  childTiers: ChildTier[]
   currentPrices: Record<string, number>
   onClose: () => void
   onSaved: () => void
@@ -87,8 +69,7 @@ function ChildPricingModal({
   const [prices, setPrices] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {}
     for (const tier of childTiers) {
-      const kobo = currentPrices[tier.key] ?? tier.defaultKobo
-      init[tier.key] = String(koboToNaira(kobo))
+      init[tier.key] = String(koboToNaira(currentPrices[tier.key] ?? 0))
     }
     return init
   })
@@ -97,16 +78,17 @@ function ChildPricingModal({
     mutationFn: async () => {
       const pricingPayload: Record<string, number> = {}
       for (const [key, val] of Object.entries(prices)) {
-        pricingPayload[key] = nairaToKobo(val || '0')
+        const kobo = nairaToKobo(val || '0')
+        if (!(kobo > 0)) throw new Error('Every price must be greater than ₦0.')
+        pricingPayload[key] = kobo
       }
 
+      // Only send the label if the director actually changed it. Otherwise the card keeps
+      // following the live "From ₦X" instead of freezing today's text in place.
+      const labelChanged = label.trim() !== (coverLabel || '').trim()
       await api.patch('/manual-services/pricing', {
-        pricing: {
-          [service.code]: pricingPayload,
-        },
-        cover_labels: {
-          [service.code]: label.trim(),
-        },
+        pricing: { [resolveManualKey(service.code)]: pricingPayload },
+        ...(labelChanged ? { cover_labels: { [service.code]: label.trim() } } : {}),
       })
     },
     onSuccess: () => {
@@ -204,18 +186,18 @@ function ChildPricingModal({
 function ServiceRow({
   service,
   coverLabel,
-  pricingMap,
+  allPricing,
 }: {
   service: IdentityService
   coverLabel?: string
-  pricingMap?: Record<string, number>
+  allPricing?: Record<string, Record<string, number>>
 }) {
   const qc = useQueryClient()
   const [editingCard, setEditingCard] = useState(false)
   const [customCover, setCustomCover] = useState(coverLabel || '')
   const [childModalOpen, setChildModalOpen] = useState(false)
 
-  const childTiers = SERVICE_CHILD_CATEGORIES[service.code] || []
+  const childTiers = tiersFor(service.code, allPricing)
 
   // Normal price update on IdentityService table
   const [basePrice, setBasePrice] = useState(String(koboToNaira(service.price_kobo)))
@@ -231,6 +213,7 @@ function ServiceRow({
 
   const saveCoverMutation = useMutation({
     mutationFn: async () => {
+      if (customCover.trim() === (coverLabel || '').trim()) return
       await api.patch('/manual-services/pricing', {
         cover_labels: {
           [service.code]: customCover.trim(),
@@ -365,7 +348,7 @@ function ServiceRow({
           service={service}
           coverLabel={coverLabel || effectiveDisplay}
           childTiers={childTiers}
-          currentPrices={pricingMap || {}}
+          currentPrices={allPricing?.[resolveManualKey(service.code)] || {}}
           onClose={() => setChildModalOpen(false)}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ['manual-services-pricing'] })
@@ -447,7 +430,7 @@ export default function IdentityServicesPage() {
                     key={s.id}
                     service={s}
                     coverLabel={pricingConfig?.cover_labels?.[s.code]}
-                    pricingMap={pricingConfig?.pricing?.[s.code]}
+                    allPricing={pricingConfig?.pricing}
                   />
                 ))}
               </div>

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +26,13 @@ from app.models.settings import SystemConfig
 from app.models.notification import NotificationType
 from app.services.notification_service import send_notification
 from app.services.settings_service import get_config_value, invalidate_config_cache
+from app.services.manual_pricing import (
+    get_price,
+    merge_price_map,
+    is_known_category,
+    effective_cover_labels,
+    normalize_pricing_update,
+)
 from app.services.wallet_service import get_or_create_wallet, debit_wallet
 from app.services.withdrawal_auth_service import check_withdrawal_password
 from app.utils.supabase_admin_client import supabase_admin_request
@@ -34,136 +41,49 @@ settings = get_settings()
 router = APIRouter(prefix="/manual-services", tags=["manual-services"])
 
 
-# ─── Pricing constants (in kobo) ──────────────────────────────────────────────
-PRICE_MAP: dict[str, dict[str, int]] = {
-    "nin_modification": {
-        "update_name":       500_000,  # ₦5,000
-        "update_phone":      500_000,  # ₦5,000
-        "update_dob":        500_000,  # ₦5,000
-        "update_address":    500_000,  # ₦5,000
-        "update_name_dob":   500_000,  # ₦5,000
-        "update_name_phone": 500_000,  # ₦5,000
-        "default":           500_000,
-    },
-    "nin_validation": {
-        "no_record":               100_000,  # ₦1,000
-        "sim_validation":          100_000,  # ₦1,000
-        "vnin_validation":         120_000,  # ₦1,200
-        "update_records":          100_000,  # ₦1,000
-        "bank_validation":         100_000,  # ₦1,000
-        "modification_validation": 120_000,  # ₦1,200
-        "photographic_error":      120_000,  # ₦1,200
-        "single":                  100_000,  # ₦1,000
-        "default":                 100_000,
-    },
-    "bvn_modification": {
-        # Bank-specific prices for single modifications (name, phone, dob, address)
-        "agency":        600_000,    # ₦6,000
-        "access_bank":   950_000,    # ₦9,500
-        "boa_bank":      700_000,    # ₦7,000
-        "first_bank":    750_000,    # ₦7,500
-        "gtbank":        800_000,    # ₦8,000
-        "heritage_bank": 700_000,    # ₦7,000
-        "jaiz_bank":     1_000_000,  # ₦10,000
-        "keystone_bank": 700_000,    # ₦7,000
-        # Combination updates are fixed ₦9,000
-        "update_name_dob":     900_000,
-        "update_name_phone":   900_000,
-        "update_name_address": 900_000,
-        "update_dob_phone":    900_000,
-        "default":             700_000,
-    },
-    "bvn_retrieval": {
-        "phone_number":      70_000,   # ₦700
-        "crm_investigation": 200_000,  # ₦2,000
-        "default":           70_000,
-    },
-    "bvn_license": {
-        "default": 700_000,  # ₦7,000
-    },
-    "nin_delinking": {
-        "self_service_delinking": 350_000,  # ₦3,500
-        "email_retrieval":        350_000,  # ₦3,500
-        "default":                350_000,
-    },
-    "self_service_modification": {
-        "update_name":       450_000,  # ₦4,500
-        "update_phone":      450_000,  # ₦4,500
-        "update_address":    450_000,  # ₦4,500
-        "update_name_phone": 90_000,   # ₦900
-        "update_name_dob":   500_000,  # ₦5,000
-        "default":           450_000,
-    },
-    "modification_after_delinking": {
-        "update_name":       450_000,  # ₦4,500
-        "update_phone":      450_000,  # ₦4,500
-        "update_dob":        450_000,  # ₦4,500
-        "update_address":    450_000,  # ₦4,500
-        "update_name_dob":   450_000,  # ₦4,500
-        "update_name_phone": 450_000,  # ₦4,500
-        "default":           450_000,
-    },
-    "tin_registration": {
-        "individual": 150_000,  # ₦1,500
-        "company":    450_000,  # ₦4,500
-        "default":    150_000,
-    },
-    "nin_attestation": {
-        "default": 1_500_000,  # ₦15,000
-    },
-    "cac_registration": {
-        "business_name": 3_500_000,  # ₦35,000
-        "company":       5_000_000,  # ₦50,000
-        "default":       3_500_000,
-    },
-}
+# ─── Pricing ──────────────────────────────────────────────────────────────────
+# The price table and the price lookup now live in app/services/manual_pricing.py
+# so the charge, the quote endpoint and the director screen all use one source.
+# (_get_price is kept as an alias for any code that still imports the old name.)
+_get_price = get_price
 
 
 async def _get_current_price_map(db: AsyncSession) -> dict[str, dict[str, int]]:
-    val = await get_config_value(db, "manual_services_pricing")
-    if val:
-        try:
-            custom = json.loads(val)
-            merged = {**PRICE_MAP}
-            for cat, sub in custom.items():
-                if cat in merged:
-                    merged[cat] = {**merged[cat], **sub}
-                else:
-                    merged[cat] = sub
-            return merged
-        except Exception:
-            pass
-    return PRICE_MAP
+    return merge_price_map(await get_config_value(db, "manual_services_pricing"))
 
 
-def _get_price(
+async def _quote_price(
+    db: AsyncSession,
     category: str,
     service_type: str,
     enrollment_bank: str | None = None,
     bulk_count: int = 1,
-    custom_map: dict | None = None,
 ) -> int:
-    source_map = custom_map or PRICE_MAP
-    category_map = source_map.get(category, {})
+    """The ONE place that decides what a request costs. Used by the charge and
+    by the quote endpoint, so the amount a customer is shown is the amount they
+    are charged. Refuses unknown services and non-positive prices instead of
+    silently treating them as free."""
+    price_map = await _get_current_price_map(db)
+    if not is_known_category(category, price_map):
+        raise HTTPException(status_code=400, detail="This service isn't available right now.")
+    price_kobo = get_price(
+        category,
+        service_type,
+        enrollment_bank=enrollment_bank,
+        bulk_count=bulk_count,
+        custom_map=price_map,
+    )
+    if price_kobo <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="This service has no price set yet, so it can't be ordered. Please try again later.",
+        )
+    return price_kobo
 
-    # NIN Validation Bulk mode
-    if category == "nin_validation" and bulk_count > 1:
-        unit_price = category_map.get(service_type, category_map.get("default", 100_000))
-        return unit_price * bulk_count
 
-    # BVN Modification dynamic pricing by enrollment bank
-    if category == "bvn_modification":
-        # Check if combination update
-        if service_type in ["update_name_dob", "update_name_phone", "update_name_address", "update_dob_phone"]:
-            return category_map.get(service_type, 900_000)
-        # Single update: use enrollment_bank if provided
-        if enrollment_bank:
-            bank_key = enrollment_bank.lower().replace(" ", "_")
-            if bank_key in category_map:
-                return category_map[bank_key]
-        return category_map.get(service_type, category_map.get("default", 700_000))
-
-    return category_map.get(service_type, category_map.get("default", 0))
+def _has_content(form_data: dict | None) -> bool:
+    """True if at least one field actually holds a value."""
+    return any(v not in (None, "", [], {}) for v in (form_data or {}).values())
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -298,13 +218,15 @@ async def submit_service_request(
             )
         await check_withdrawal_password(db, user_row, pwd)
 
-    current_price_map = await _get_current_price_map(db)
-    price_kobo = _get_price(
+    # Guards run BEFORE any money moves.
+    if not _has_content(body.form_data) and not body.uploaded_files:
+        raise HTTPException(status_code=400, detail="Please fill in the form before submitting.")
+    price_kobo = await _quote_price(
+        db,
         body.service_category,
         body.service_type,
         enrollment_bank=body.enrollment_bank,
         bulk_count=body.bulk_count,
-        custom_map=current_price_map,
     )
 
     # Wallet balance verification & atomic debit
@@ -510,33 +432,36 @@ async def validate_referral_code(
     }
 
 
-DEFAULT_COVER_LABELS: dict[str, str] = {
-    "nin_modification": "From ₦5,000",
-    "nin_validation": "From ₦700",
-    "nin_delinking": "From ₦3,500",
-    "bvn_modification": "From ₦6,000",
-    "bvn_retrieval": "From ₦700",
-    "bvn_license_onboarding": "From ₦15,000",
-    "bvn_license": "From ₦15,000",
-    "tin_registration": "From ₦2,000",
-    "attestation": "From ₦3,000",
-    "nin_attestation": "From ₦3,000",
-    "cac_registration": "From ₦15,000",
-    "self_service_modification": "From ₦5,000",
-}
-
-
-async def _get_current_cover_labels(db: AsyncSession) -> dict[str, str]:
+async def _get_stored_cover_labels(db: AsyncSession) -> dict[str, str]:
+    """Only labels a director explicitly typed (may be empty)."""
     val = await get_config_value(db, "manual_services_cover_labels")
-    labels = dict(DEFAULT_COVER_LABELS)
-    if val:
-        try:
-            custom = json.loads(val)
-            if isinstance(custom, dict):
-                labels.update(custom)
-        except Exception:
-            pass
-    return labels
+    if not val:
+        return {}
+    try:
+        custom = json.loads(val) if isinstance(val, str) else val
+    except Exception:
+        return {}
+    return {k: v for k, v in custom.items() if isinstance(v, str)} if isinstance(custom, dict) else {}
+
+
+# ─── Quote ────────────────────────────────────────────────────────────────────
+
+@router.get("/quote")
+async def quote_manual_service(
+    current_user: CurrentUser,
+    service_category: str,
+    service_type: str,
+    enrollment_bank: str | None = None,
+    bulk_count: int = Query(1, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+):
+    """The exact amount that would be charged right now. Uses the same function
+    as the charge, so what the screen shows is what the wallet is debited."""
+    price_kobo = await _quote_price(
+        db, service_category, service_type,
+        enrollment_bank=enrollment_bank, bulk_count=bulk_count,
+    )
+    return {"price_kobo": price_kobo}
 
 
 # ─── Director Pricing Oversight ───────────────────────────────────────────────
@@ -548,8 +473,8 @@ async def get_manual_services_pricing(
 ):
     """Return all manual service categories and their child category prices and cover card labels."""
     price_map = await _get_current_price_map(db)
-    cover_labels = await _get_current_cover_labels(db)
-    return {"pricing": price_map, "cover_labels": cover_labels}
+    stored = await _get_stored_cover_labels(db)
+    return {"pricing": price_map, "cover_labels": effective_cover_labels(price_map, stored)}
 
 
 @router.patch("/pricing")
@@ -559,23 +484,24 @@ async def update_manual_services_pricing(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Director updates child category prices and/or cover card alphanumeric labels.
+    Director updates child category prices and/or cover card labels.
     Accepts:
       { "pricing": { "nin_modification": { "update_name": 500000 } },
         "cover_labels": { "nin_modification": "From ₦7,000" } }
       or direct { "nin_modification": { ... } }
+    An empty label removes the override (the card then shows the live "From ₦X").
     """
     incoming_pricing = body.get("pricing") if "pricing" in body or "cover_labels" in body else body
     incoming_labels = body.get("cover_labels")
 
     current_pricing = await _get_current_price_map(db)
     if incoming_pricing and isinstance(incoming_pricing, dict):
-        for cat, sub in incoming_pricing.items():
-            if isinstance(sub, dict):
-                if cat in current_pricing:
-                    current_pricing[cat].update(sub)
-                else:
-                    current_pricing[cat] = sub
+        try:
+            clean = normalize_pricing_update(incoming_pricing)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        for cat, sub in clean.items():
+            current_pricing.setdefault(cat, {}).update(sub)
 
         cfg = await db.get(SystemConfig, "manual_services_pricing")
         if not cfg:
@@ -591,20 +517,24 @@ async def update_manual_services_pricing(
             cfg.updated_at = datetime.now(timezone.utc)
             cfg.updated_by = current_user.id
 
-    current_labels = await _get_current_cover_labels(db)
+    stored_labels = await _get_stored_cover_labels(db)
     if incoming_labels and isinstance(incoming_labels, dict):
-        current_labels.update(incoming_labels)
+        for k, v in incoming_labels.items():
+            if isinstance(v, str) and v.strip():
+                stored_labels[k] = v.strip()
+            else:
+                stored_labels.pop(k, None)
         label_cfg = await db.get(SystemConfig, "manual_services_cover_labels")
         if not label_cfg:
             label_cfg = SystemConfig(
                 key="manual_services_cover_labels",
-                value=json.dumps(current_labels),
+                value=json.dumps(stored_labels),
                 description="Manual services cover card labels",
                 updated_by=current_user.id,
             )
             db.add(label_cfg)
         else:
-            label_cfg.value = json.dumps(current_labels)
+            label_cfg.value = json.dumps(stored_labels)
             label_cfg.updated_at = datetime.now(timezone.utc)
             label_cfg.updated_by = current_user.id
 
@@ -613,6 +543,6 @@ async def update_manual_services_pricing(
     invalidate_config_cache("manual_services_cover_labels")
     return {
         "pricing": current_pricing,
-        "cover_labels": current_labels,
+        "cover_labels": effective_cover_labels(current_pricing, stored_labels),
         "message": "Pricing tiers and cover card labels updated successfully.",
     }

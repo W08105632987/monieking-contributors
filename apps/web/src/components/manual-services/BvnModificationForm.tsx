@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useManualPricing, priceLabel } from '@/lib/manualServices'
 import { ENROLLMENT_BANKS, NIGERIAN_STATES } from './constants'
 
 interface Props {
@@ -7,7 +8,6 @@ interface Props {
     enrollment_bank?: string
     form_data: Record<string, any>
     uploaded_files: string[]
-    price_kobo: number
   }) => void
 }
 
@@ -23,6 +23,7 @@ const MOD_OPTIONS = [
 ]
 
 export function BvnModificationForm({ onChange }: Props) {
+  const { priceOf } = useManualPricing()
   const [modType, setModType] = useState('update_name')
   const [enrollmentBank, setEnrollmentBank] = useState('agency')
   const [data, setData] = useState<Record<string, any>>({
@@ -47,12 +48,30 @@ export function BvnModificationForm({ onChange }: Props) {
   const selectedMod = MOD_OPTIONS.find(m => m.id === modType) || MOD_OPTIONS[0]
   const selectedBankObj = ENROLLMENT_BANKS.find(b => b.id === enrollmentBank) || ENROLLMENT_BANKS[0]
 
-  // Pricing: Combinations are fixed ₦9,000 (900,000 kobo). Singles depend on Bank.
-  const priceKobo = selectedMod.isCombo ? 900000 : selectedBankObj.priceKobo
+  // Combinations have their own price; singles depend on the enrollment bank.
+  // Both come from the backend price table (the same one the charge uses).
+  const priceKobo = priceOf('bvn_modification', selectedMod.isCombo ? modType : enrollmentBank)
+
+  const showNameFields = ['update_name', 'update_name_dob', 'update_name_phone', 'update_name_address'].includes(modType)
+  const showPhoneFields = ['update_phone', 'update_name_phone', 'update_dob_phone'].includes(modType)
+  const showDobField = ['update_dob', 'update_name_dob', 'update_dob_phone'].includes(modType)
+  const showAddressFields = ['update_address', 'update_name_address'].includes(modType)
+
+  // Only send fields that are on screen for the chosen modification (see NinModificationForm).
+  const GROUPS: Record<string, { keys: string[]; shown: boolean }> = {
+    name: { keys: ['first_name', 'middle_name', 'last_name'], shown: showNameFields },
+    phone: { keys: ['phone_number', 'second_phone_number'], shown: showPhoneFields },
+    dob: { keys: ['dob'], shown: showDobField },
+    address: { keys: ['address_line_1', 'address_line_2', 'town_city', 'lga', 'postal_code', 'state'], shown: showAddressFields },
+  }
+  const isVisibleKey = (k: string) => {
+    const g = Object.values(GROUPS).find(gr => gr.keys.includes(k))
+    return g ? g.shown : true
+  }
 
   useEffect(() => {
     const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
+      Object.entries(data).filter(([k, v]) => isVisibleKey(k) && v !== '' && v !== null && v !== undefined)
     )
     onChange({
       service_type: modType,
@@ -63,14 +82,8 @@ export function BvnModificationForm({ onChange }: Props) {
         enrollment_bank: selectedBankObj.label,
       },
       uploaded_files: [],
-      price_kobo: priceKobo,
     })
-  }, [modType, enrollmentBank, data, priceKobo])
-
-  const showNameFields = ['update_name', 'update_name_dob', 'update_name_phone', 'update_name_address'].includes(modType)
-  const showPhoneFields = ['update_phone', 'update_name_phone', 'update_dob_phone'].includes(modType)
-  const showDobField = ['update_dob', 'update_name_dob', 'update_dob_phone'].includes(modType)
-  const showAddressFields = ['update_address', 'update_name_address'].includes(modType)
+  }, [modType, enrollmentBank, data])
 
   return (
     <div className="space-y-6">
@@ -111,7 +124,7 @@ export function BvnModificationForm({ onChange }: Props) {
             Enrollment Type (Bank) <span className="text-red-500">*</span>
           </label>
           <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
-            {selectedMod.isCombo ? 'Fixed Combo Rate ₦9,000' : `Bank Rate: ₦${(selectedBankObj.priceKobo / 100).toLocaleString()}`}
+            {priceKobo ? `${selectedMod.isCombo ? 'Combo Rate' : 'Bank Rate'}: ${priceLabel(priceKobo)}` : ''}
           </span>
         </div>
         <select
@@ -121,13 +134,13 @@ export function BvnModificationForm({ onChange }: Props) {
         >
           {ENROLLMENT_BANKS.map(b => (
             <option key={b.id} value={b.id}>
-              {b.label} {!selectedMod.isCombo && `— ₦${(b.priceKobo / 100).toLocaleString()}`}
+              {b.label} {!selectedMod.isCombo && priceOf('bvn_modification', b.id) ? `— ${priceLabel(priceOf('bvn_modification', b.id))}` : ''}
             </option>
           ))}
         </select>
         <p className="text-[11px] text-green-600/80 dark:text-night-400">
           {selectedMod.isCombo
-            ? 'Combination modifications (2 fields at once) are charged at a flat rate of ₦9,000.00.'
+            ? `Combination modifications (2 fields at once) are charged at a flat rate${priceKobo ? ` of ${priceLabel(priceKobo)}` : ''}.`
             : 'Single field modification fee is determined by your original enrollment bank.'}
         </p>
       </div>

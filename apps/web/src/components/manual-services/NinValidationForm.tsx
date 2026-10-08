@@ -1,26 +1,27 @@
 import { useState, useEffect } from 'react'
+import { useManualPricing, priceLabel } from '@/lib/manualServices'
 
 interface Props {
   onChange: (payload: {
     service_type: string
     form_data: Record<string, any>
     uploaded_files: string[]
-    price_kobo: number
     bulk_count?: number
   }) => void
 }
 
 const VALIDATION_TYPES = [
-  { id: 'no_record', label: 'No Record Found', priceKobo: 100000, priceDisplay: '₦1,000.00' },
-  { id: 'sim_validation', label: 'SIM Validation', priceKobo: 100000, priceDisplay: '₦1,000.00' },
-  { id: 'vnin_validation', label: 'v.nin validation', priceKobo: 120000, priceDisplay: '₦1,200.00' },
-  { id: 'update_records', label: 'Update Records Validation', priceKobo: 100000, priceDisplay: '₦1,000.00' },
-  { id: 'bank_validation', label: 'Bank Validation', priceKobo: 100000, priceDisplay: '₦1,000.00' },
-  { id: 'modification_validation', label: 'Modification Validation', priceKobo: 120000, priceDisplay: '₦1,200.00' },
-  { id: 'photographic_error', label: 'Photographic Error', priceKobo: 120000, priceDisplay: '₦1,200.00' },
+  { id: 'no_record', label: 'No Record Found' },
+  { id: 'sim_validation', label: 'SIM Validation' },
+  { id: 'vnin_validation', label: 'v.nin validation' },
+  { id: 'update_records', label: 'Update Records Validation' },
+  { id: 'bank_validation', label: 'Bank Validation' },
+  { id: 'modification_validation', label: 'Modification Validation' },
+  { id: 'photographic_error', label: 'Photographic Error' },
 ]
 
 export function NinValidationForm({ onChange }: Props) {
+  const { priceOf } = useManualPricing()
   const [submitMode, setSubmitMode] = useState<'single' | 'bulk'>('single')
   const [selectedType, setSelectedType] = useState('no_record')
   const [singleNin, setSingleNin] = useState('')
@@ -34,11 +35,7 @@ export function NinValidationForm({ onChange }: Props) {
     .slice(0, 50)
 
   const activeTypeObj = VALIDATION_TYPES.find(v => v.id === selectedType) || VALIDATION_TYPES[0]
-  const unitPriceKobo = activeTypeObj.priceKobo
-
-  const totalPriceKobo = submitMode === 'single'
-    ? unitPriceKobo
-    : unitPriceKobo * Math.max(1, validNins.length)
+  const unitPriceKobo = priceOf('nin_validation', activeTypeObj.id)
 
   useEffect(() => {
     onChange({
@@ -52,7 +49,6 @@ export function NinValidationForm({ onChange }: Props) {
         count: submitMode === 'bulk' ? validNins.length : 1,
       },
       uploaded_files: [],
-      price_kobo: totalPriceKobo,
       bulk_count: submitMode === 'bulk' ? Math.max(1, validNins.length) : 1,
     })
   }, [submitMode, selectedType, singleNin, bulkNinsText, validNins.length])
@@ -110,7 +106,7 @@ export function NinValidationForm({ onChange }: Props) {
                 <span className="text-xs font-semibold text-green-950 dark:text-white">{vt.label}</span>
               </div>
               <span className="text-xs font-mono font-bold text-green-700 dark:text-night-200">
-                {vt.priceDisplay}
+                {priceLabel(priceOf('nin_validation', vt.id))}
               </span>
             </label>
           ))}
@@ -150,9 +146,9 @@ export function NinValidationForm({ onChange }: Props) {
             className="w-full rounded-xl border border-green-200 dark:border-night-500 bg-green-50/20 dark:bg-night-800 p-3 text-xs font-mono text-green-950 dark:text-white outline-none focus:border-green-500"
           />
           <div className="flex justify-between items-center pt-1 border-t dark:border-night-600 text-xs">
-            <span className="text-gray-500 dark:text-night-300">Rate per NIN: {activeTypeObj.priceDisplay}</span>
+            <span className="text-gray-500 dark:text-night-300">Rate per NIN: {priceLabel(unitPriceKobo)}</span>
             <span className="font-bold text-green-900 dark:text-white">
-              Calculated Total: ₦{((unitPriceKobo * validNins.length) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+              Calculated Total: {unitPriceKobo ? priceLabel(unitPriceKobo * validNins.length) : '—'}
             </span>
           </div>
         </div>

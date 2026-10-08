@@ -7,24 +7,7 @@ import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
 import type { IdentityService, IdentityServiceRequest } from '@/types'
 import { FallbackError } from '@/components/ui/FallbackError'
-
-const MANUAL_SERVICE_CODES = new Set([
-  'nin_modification',
-  'nin_validation',
-  'nin_delinking',
-  'bvn_modification',
-  'bvn_retrieval',
-  'bvn_retrieval_phone',
-  'bvn_retrieval_crm',
-  'bvn_license',
-  'bvn_license_onboarding',
-  'bvn_self_service_delinking',
-  'tin_registration',
-  'nin_attestation',
-  'attestation',
-  'cac_registration',
-  'self_service_modification',
-])
+import { isManualService } from '@/lib/manualServices'
 
 export default function ServiceRequestFormPage() {
   const navigate = useNavigate()
@@ -69,9 +52,9 @@ export default function ServiceRequestFormPage() {
   // Clean redirect if this route was reached with a manual service
   useEffect(() => {
     const targetCode =
-      serviceId && MANUAL_SERVICE_CODES.has(serviceId)
+      serviceId && isManualService(serviceId)
         ? serviceId
-        : service && MANUAL_SERVICE_CODES.has(service.code)
+        : service && isManualService(service.code)
         ? (service.code === 'bvn_retrieval_phone' || service.code === 'bvn_retrieval_crm' ? 'bvn_retrieval' : service.code)
         : null
 
@@ -112,8 +95,8 @@ export default function ServiceRequestFormPage() {
   const missingRequired = service?.required_fields.some(f => f.required && !values[f.key])
 
   const isRedirecting =
-    Boolean(serviceId && MANUAL_SERVICE_CODES.has(serviceId)) ||
-    Boolean(service && MANUAL_SERVICE_CODES.has(service.code))
+    Boolean(serviceId && isManualService(serviceId)) ||
+    Boolean(service && isManualService(service.code))
 
   if (isRedirecting) {
     return (

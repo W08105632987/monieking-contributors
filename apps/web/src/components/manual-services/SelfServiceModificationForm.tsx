@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useManualPricing, priceLabel } from '@/lib/manualServices'
 import { NIGERIAN_STATES } from './constants'
 import { FileUploadField } from './FileUploadField'
 
@@ -7,19 +8,19 @@ interface Props {
     service_type: string
     form_data: Record<string, any>
     uploaded_files: string[]
-    price_kobo: number
   }) => void
 }
 
 const MOD_OPTIONS = [
-  { id: 'update_name', label: 'Update Name', priceKobo: 450_000, priceDisplay: '₦4,500.00', isCombo: false },
-  { id: 'update_phone', label: 'Update Phone Number', priceKobo: 450_000, priceDisplay: '₦4,500.00', isCombo: false },
-  { id: 'update_address', label: 'Update Address', priceKobo: 450_000, priceDisplay: '₦4,500.00', isCombo: false },
-  { id: 'update_name_phone', label: 'Update Name & Phone', priceKobo: 90_000, priceDisplay: '₦900.00', isCombo: true },
-  { id: 'update_name_dob', label: 'Update Name & DOB', priceKobo: 500_000, priceDisplay: '₦5,000.00', isCombo: true },
+  { id: 'update_name', label: 'Update Name', isCombo: false },
+  { id: 'update_phone', label: 'Update Phone Number', isCombo: false },
+  { id: 'update_address', label: 'Update Address', isCombo: false },
+  { id: 'update_name_phone', label: 'Update Name & Phone', isCombo: true },
+  { id: 'update_name_dob', label: 'Update Name & DOB', isCombo: true },
 ]
 
 export function SelfServiceModificationForm({ onChange }: Props) {
+  const { priceOf } = useManualPricing()
   const [modType, setModType] = useState('update_name')
   const [data, setData] = useState<Record<string, any>>({
     nin: '',
@@ -54,7 +55,6 @@ export function SelfServiceModificationForm({ onChange }: Props) {
       service_type: modType,
       form_data: { ...data, modification_type: modType, modification_label: activeOpt.label },
       uploaded_files: uploadedFiles,
-      price_kobo: activeOpt.priceKobo,
     })
   }, [modType, data])
 
@@ -94,7 +94,7 @@ export function SelfServiceModificationForm({ onChange }: Props) {
                 </span>
                 <span className="text-xs font-bold text-green-950 dark:text-white">{opt.label}</span>
               </div>
-              <span className="text-xs font-extrabold text-green-700 dark:text-night-200">{opt.priceDisplay}</span>
+              <span className="text-xs font-extrabold text-green-700 dark:text-night-200">{priceLabel(priceOf('self_service_modification', opt.id))}</span>
             </button>
           ))}
         </div>

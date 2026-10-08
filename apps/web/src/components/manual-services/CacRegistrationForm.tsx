@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useManualPricing, priceLabel } from '@/lib/manualServices'
 import { NIGERIAN_STATES } from './constants'
 import { FileUploadField } from './FileUploadField'
 
@@ -7,7 +8,6 @@ interface Props {
     service_type: string
     form_data: Record<string, any>
     uploaded_files: string[]
-    price_kobo: number
   }) => void
 }
 
@@ -15,15 +15,11 @@ const CAC_TYPES = [
   {
     id: 'business_name',
     label: 'Business Name Registration',
-    priceKobo: 3_500_000,
-    priceDisplay: '₦35,000.00',
     description: 'Register a sole proprietorship or partnership business name (CAC BN)',
   },
   {
     id: 'company',
     label: 'Limited Liability Company',
-    priceKobo: 5_000_000,
-    priceDisplay: '₦50,000.00',
     description: 'Incorporate a private limited liability company (CAC RC)',
   },
 ]
@@ -47,6 +43,7 @@ const BUSINESS_NATURE = [
 ]
 
 export function CacRegistrationForm({ onChange }: Props) {
+  const { priceOf } = useManualPricing()
   const [cacType, setCacType] = useState('business_name')
   const [data, setData] = useState<Record<string, any>>({
     // Common fields
@@ -101,7 +98,6 @@ export function CacRegistrationForm({ onChange }: Props) {
       service_type: cacType,
       form_data: { ...data, cac_type: cacType, cac_type_label: activeType.label },
       uploaded_files: uploadedFiles,
-      price_kobo: activeType.priceKobo,
     })
   }, [cacType, data])
 
@@ -136,7 +132,7 @@ export function CacRegistrationForm({ onChange }: Props) {
                 <p className="text-xs text-green-500 dark:text-night-300">{ct.description}</p>
               </div>
             </div>
-            <span className="text-sm font-extrabold text-green-700 dark:text-night-200 shrink-0 ml-2">{ct.priceDisplay}</span>
+            <span className="text-sm font-extrabold text-green-700 dark:text-night-200 shrink-0 ml-2">{priceLabel(priceOf('cac_registration', ct.id))}</span>
           </button>
         ))}
       </div>
