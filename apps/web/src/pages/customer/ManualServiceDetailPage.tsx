@@ -138,8 +138,11 @@ export default function ManualServiceDetailPage() {
   }
 
   const formData = request.form_data || {}
+  // Uploaded files are shown as "Doc 1 / Doc 2" buttons below, not as raw link rows.
+  const uploadedUrls = new Set(request.uploaded_files || [])
   const formEntries = Object.entries(formData).filter(([k, v]) => {
     if (['submitted_by_officer_id', 'selected_modification'].includes(k)) return false
+    if (typeof v === 'string' && uploadedUrls.has(v)) return false
     if (v === null || v === undefined) return false
     if (typeof v === 'string' && v.trim() === '') return false
     if (Array.isArray(v) && v.length === 0) return false
