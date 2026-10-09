@@ -6,6 +6,7 @@ at a time. Publishing/editing endpoints arrive with the director builder (Phase 
 """
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -91,6 +92,23 @@ def _public_schema(schema: dict) -> dict:
 async def get_live_services(current_user: DirectorOrAdmin, db: AsyncSession = Depends(get_db)):
     """Which services currently use the template flow (everything else still uses the original forms)."""
     return {"codes": await _live_codes(db)}
+
+
+@router.get("/admin/all")
+async def list_all_templates(current_user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Director list for the builder: every service including archived ones."""
+    tpls = (await db.scalars(select(ServiceTemplate).order_by(ServiceTemplate.title))).all()
+    live = set(await _live_codes(db))
+    out = []
+    for t in tpls:
+        ver = await db.get(ServiceTemplateVersion, t.current_version_id) if t.current_version_id else None
+        out.append({
+            "service_code": t.service_code, "title": t.title, "kind": t.kind, "is_enabled": t.is_enabled,
+            "live": t.service_code in live, "archived": t.archived_at is not None,
+            "version": ver.version if ver else None,
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+        })
+    return out
 
 
 @router.patch("/admin/live")
@@ -248,7 +266,10 @@ async def preview_change(code: str, body: PublishBody, current_user: DirectorOnl
     tpl = await _tpl_for_edit(db, code)
     cur = await db.get(ServiceTemplateVersion, tpl.current_version_id)
     a = pub.analyse_change(cur.schema, cur.price_rules, body.form_schema, body.price_rules, kind=tpl.kind)
-    return {"current_version": cur.version, **_analysis_payload(a)}
+    matrix = []
+    if not a["errors"]:                       # same engine that charges; only meaningful for a valid draft
+        matrix = eng.price_matrix(a["normalized_schema"], body.price_rules)
+    return {"current_version": cur.version, "draft_price_matrix": matrix, **_analysis_payload(a)}
 
 
 @router.post("/{code}/admin/publish")
@@ -276,3 +297,37 @@ async def revert_template(code: str, body: RevertBody, current_user: DirectorOnl
         acknowledge_warnings=body.acknowledge_warnings, confirm_price_change=body.confirm_price_change,
         audit_action="service_template.reverted",
     )
+
+
+class ArchiveBody(BaseModel):
+    archived: bool
+
+
+@router.post("/{code}/admin/archive")
+async def archive_template(code: str, body: ArchiveBody, current_user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Archive (hide) or restore a service. Services are never deleted; orders and history stay."""
+    service_code = mp.resolve_category(code)
+    tpl = await db.scalar(select(ServiceTemplate).where(ServiceTemplate.service_code == service_code))
+    if not tpl:
+        raise HTTPException(status_code=404, detail="This service doesn't exist.")
+    if body.archived:
+        if tpl.is_enabled:
+            raise HTTPException(status_code=409, detail="Switch the service off first, then archive it.")
+        if service_code in set(await _live_codes(db)):
+            raise HTTPException(status_code=409, detail="Switch this service back to its original form first, then archive it.")
+        if tpl.archived_at is not None:
+            return {"service_code": service_code, "archived": True}
+        tpl.archived_at = datetime.now(timezone.utc)
+    else:
+        if tpl.archived_at is None:
+            return {"service_code": service_code, "archived": False}
+        tpl.archived_at = None
+    tpl.updated_by = current_user.id
+    await log_action(
+        db, actor_id=current_user.id, action="service_template.archived" if body.archived else "service_template.restored",
+        entity_type="service_template", entity_id=str(tpl.id),
+        old_value={"service_code": service_code, "archived": not body.archived},
+        new_value={"service_code": service_code, "archived": body.archived},
+    )
+    await db.commit()
+    return {"service_code": service_code, "archived": body.archived}
