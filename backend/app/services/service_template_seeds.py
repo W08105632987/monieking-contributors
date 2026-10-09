@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.services.manual_pricing import PRICE_MAP, resolve_category
+from app.services.service_template_placeholders import apply_placeholders
 
 # ─── Reference data (copied from the forms' constants) ───────────────────────
 NIGERIAN_STATES = [
@@ -548,6 +549,7 @@ def build_seed_templates(price_map: dict[str, dict[str, int]] | None = None) -> 
     out = []
     for code, builder in _BUILDERS.items():
         schema, meta = builder()
+        schema, _ = apply_placeholders(code, schema)
         out.append(SeedTemplate(
             service_code=code,
             title=meta["title"],

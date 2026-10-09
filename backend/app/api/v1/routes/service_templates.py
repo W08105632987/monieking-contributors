@@ -14,10 +14,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import CurrentUser, DirectorOrAdmin
+from app.core.dependencies import CurrentUser, DirectorOnly, DirectorOrAdmin
 from app.models.service_template import ServiceTemplate, ServiceTemplateVersion
 from app.services import manual_pricing as mp
 from app.services import service_template_engine as eng
+from app.services import service_template_publish as pub
+from app.services import service_template_store as store
 from app.services.service_template_parity import parity_report
 from app.services.settings_service import get_config_value, invalidate_config_cache, set_config_value
 from app.utils.audit import log_action
@@ -42,6 +44,23 @@ class LiveBody(BaseModel):
 
 class EnabledBody(BaseModel):
     is_enabled: bool
+
+
+class PublishBody(BaseModel):
+    form_schema: dict                        # the whole form (selectors + fields). Not named "schema": pydantic reserves that.
+    price_rules: list[dict]
+    note: str | None = None
+    base_version: int | None = None          # the version the director started from (stale-edit guard)
+    acknowledge_warnings: bool = False
+    confirm_price_change: bool = False
+
+
+class RevertBody(BaseModel):
+    version: int
+    note: str | None = None
+    base_version: int | None = None
+    acknowledge_warnings: bool = False
+    confirm_price_change: bool = False
 
 
 async def _load(db: AsyncSession, code: str) -> tuple[ServiceTemplate, ServiceTemplateVersion]:
@@ -173,7 +192,7 @@ async def get_template_admin(code: str, current_user: DirectorOrAdmin, db: Async
         .order_by(ServiceTemplateVersion.version.desc())
     )).all()
     return {
-        "service_code": tpl.service_code, "title": tpl.title, "is_enabled": tpl.is_enabled,
+        "service_code": tpl.service_code, "title": tpl.title, "kind": tpl.kind, "is_enabled": tpl.is_enabled,
         "version_id": str(ver.id), "version": ver.version,
         "schema": ver.schema, "price_rules": ver.price_rules,
         "schema_errors": eng.validate_schema(ver.schema),
@@ -181,3 +200,79 @@ async def get_template_admin(code: str, current_user: DirectorOrAdmin, db: Async
         "versions": [{"id": str(v.id), "version": v.version, "note": v.note,
                       "created_at": v.created_at.isoformat() if v.created_at else None} for v in versions],
     }
+
+
+def _analysis_payload(a: dict) -> dict:
+    return {k: a.get(k) for k in (
+        "errors", "warnings", "price_changes", "price_changes_total",
+        "added_fields", "removed_fields", "needs_price_confirmation",
+    )}
+
+
+async def _tpl_for_edit(db: AsyncSession, code: str) -> ServiceTemplate:
+    tpl = await db.scalar(select(ServiceTemplate).where(ServiceTemplate.service_code == mp.resolve_category(code)))
+    if not tpl or tpl.archived_at is not None or not tpl.current_version_id:
+        raise HTTPException(status_code=404, detail="This service isn't available.")
+    return tpl
+
+
+async def _run_publish(db: AsyncSession, tpl: ServiceTemplate, user_id, **kw) -> dict:
+    """Map the store's outcomes to clear HTTP answers. Nothing is saved unless this returns normally."""
+    try:
+        ver = await store.publish_version(db, tpl, user_id=user_id, **kw)
+    except store.PublishRejected as e:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail={
+            "code": "invalid", "message": e.errors[0] if e.errors else "Invalid.", **_analysis_payload({"errors": e.errors, **{k: v for k, v in e.analysis.items() if k != "errors"}}),
+        })
+    except store.PublishNeedsConfirmation as e:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "code": "confirm_required",
+            "message": "Please review and confirm the price changes / warnings before publishing.",
+            **_analysis_payload(e.analysis),
+        })
+    except store.PublishConflict as e:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "code": "stale_version", "current_version": e.current_version,
+            "message": "Someone else published a newer version. Reload the builder and redo your change.",
+        })
+    await db.commit()
+    return {"service_code": tpl.service_code, "version": ver.version, "version_id": str(ver.id)}
+
+
+@router.post("/{code}/admin/preview")
+async def preview_change(code: str, body: PublishBody, current_user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Dry run: what would publishing this do? Saves nothing."""
+    tpl = await _tpl_for_edit(db, code)
+    cur = await db.get(ServiceTemplateVersion, tpl.current_version_id)
+    a = pub.analyse_change(cur.schema, cur.price_rules, body.form_schema, body.price_rules, kind=tpl.kind)
+    return {"current_version": cur.version, **_analysis_payload(a)}
+
+
+@router.post("/{code}/admin/publish")
+async def publish_template(code: str, body: PublishBody, current_user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Publish a new version. Live for new orders immediately; existing orders keep the version they were placed on."""
+    tpl = await _tpl_for_edit(db, code)
+    return await _run_publish(
+        db, tpl, current_user.id, schema=body.form_schema, price_rules=body.price_rules, note=body.note,
+        base_version=body.base_version, acknowledge_warnings=body.acknowledge_warnings,
+        confirm_price_change=body.confirm_price_change,
+    )
+
+
+@router.post("/{code}/admin/revert")
+async def revert_template(code: str, body: RevertBody, current_user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Go back to an earlier version by publishing its content as a NEW version (history is never rewritten)."""
+    tpl = await _tpl_for_edit(db, code)
+    old = await db.scalar(select(ServiceTemplateVersion).where(
+        ServiceTemplateVersion.template_id == tpl.id, ServiceTemplateVersion.version == body.version))
+    if not old:
+        raise HTTPException(status_code=404, detail="That version doesn't exist.")
+    return await _run_publish(
+        db, tpl, current_user.id, schema=old.schema, price_rules=old.price_rules,
+        note=(body.note or f"Reverted to version {old.version}"), base_version=body.base_version,
+        acknowledge_warnings=body.acknowledge_warnings, confirm_price_change=body.confirm_price_change,
+        audit_action="service_template.reverted",
+    )
