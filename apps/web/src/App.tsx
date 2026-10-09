@@ -113,7 +113,10 @@ const ManualServiceHistoryPage  = lazy(() => import('@/pages/customer/ManualServ
 const ManualServiceDetailPage   = lazy(() => import('@/pages/customer/ManualServiceDetailPage'))
 
 export default function App() {
-  const { signOut } = useAuth()
+  // Called for its effects (boot-time session check, router registration
+  // for non-React logout paths) — App no longer needs signOut itself now
+  // that idle expiry goes through sessionLifecycle.endSession().
+  useAuth()
   useNotificationsPoll()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const authLoading = useAuthStore((s) => s.isLoading)
@@ -188,7 +191,7 @@ export default function App() {
       {!showFullSplash && !authLoading && showOnboarding && (
         <OnboardingCarousel />
       )}
-      <InactivityMonitor isAuthenticated={isAuthenticated} onLogout={signOut} />
+      <InactivityMonitor isAuthenticated={isAuthenticated} />
       {/* Active for every visitor, logged in or not — see the
           component's own docstring for why pre-auth pages matter here
           too. */}

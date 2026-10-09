@@ -9,6 +9,12 @@ import './index.css'
 import { queryClient } from '@/lib/queryClient'
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary'
 import { FeedbackModalHost } from '@/components/ui/FeedbackModalHost'
+import { initSessionLifecycle } from '@/lib/sessionLifecycle'
+
+// Before React renders anything: the resume handler, privacy shield and
+// durable-logout retry must be live from the first moment, independent of
+// any component mounting (or mounting late). See sessionLifecycle.ts.
+initSessionLifecycle()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

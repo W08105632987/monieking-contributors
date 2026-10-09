@@ -5,6 +5,8 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { preloadRoleRoutes } from '@/lib/preloadRoutes'
+import { getBootIdleExpired, hasPendingServerLogout } from '@/lib/activityTracker'
+import { endSession, flushPendingServerLogout, registerNavigator, getSessionEndedAt } from '@/lib/sessionLifecycle'
 import type { AuthUser, AppNotification } from '@/types'
 
 export function useAuth() {
@@ -17,18 +19,42 @@ export function useAuth() {
   const setNotifications = useNotificationsStore((s) => s.setNotifications)
   const navigate = useNavigate()
 
+  // Lets non-React code (the always-on resume handler, endSession) route
+  // through the real router instead of a hard reload. Deliberately no
+  // cleanup: useAuth is mounted in more than one place, and an unmounting
+  // instance must not null out the registration the app root depends on.
+  useEffect(() => {
+    registerNavigator((to) => navigate(to, { replace: true }))
+  }, [navigate])
+
   useEffect(() => {
     // The session lives in an httpOnly cookie now — there's no client-side
     // token to inspect, so "am I logged in" just means "does /users/me
     // succeed". The browser sends the cookie automatically (see
     // withCredentials in api.ts); if it's missing, expired, or invalid,
     // this 401s and fetchProfile's catch handles it below.
+    //
+    // EXCEPT when we have just ended this session for being idle (or an
+    // earlier idle logout never reached the server): the cookie is still
+    // valid for up to 30 days, so asking /users/me "am I logged in?" would
+    // answer yes and quietly resurrect the very session we closed — racing
+    // the logout request, which is why the old behaviour was random. In
+    // that case don't ask; finish the server-side logout instead.
+    if (!useAuthStore.getState().isAuthenticated && (getBootIdleExpired() || hasPendingServerLogout())) {
+      setLoading(false)
+      void flushPendingServerLogout()
+      return
+    }
     fetchProfile()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function fetchProfile(retriesLeft = 2) {
+  async function fetchProfile(retriesLeft = 2, startedAt = Date.now()) {
     try {
       const { data } = await api.get<AuthUser>('/users/me')
+      // The session was ended (idle logout) while this request — or one
+      // of its retries — was in flight. Its answer is about a session we
+      // already closed; applying it would resurrect it.
+      if (getSessionEndedAt() >= startedAt) return
       const role = typeof data.role === 'object'
         ? (data.role as any).value ?? 'customer'
         : data.role
@@ -68,7 +94,7 @@ export function useAuth() {
       }
 
       if (retriesLeft > 0) {
-        setTimeout(() => fetchProfile(retriesLeft - 1), 2000)
+        setTimeout(() => fetchProfile(retriesLeft - 1, startedAt), 2000)
         return
       }
 
@@ -88,11 +114,15 @@ export function useAuth() {
     }
   }
 
+  // Local state first, server second. The old version awaited the
+  // /auth/logout round trip BEFORE clearing anything, so on a slow
+  // connection the person kept looking at the app for seconds after
+  // choosing (or being forced) to leave it. endSession() flips the UI
+  // synchronously and finishes the server side in the background.
   const signOut = useCallback(async () => {
-    try { await api.post('/auth/logout') } catch { /* cookies get cleared server-side either way */ }
-    logout()
+    endSession()
     navigate('/auth/login')
-  }, [logout, navigate])
+  }, [navigate])
 
   return { user, isLoading, isAuthenticated, signOut }
 }
