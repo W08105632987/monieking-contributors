@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/Badge'
 import { SkeletonCard, Skeleton } from '@/components/ui/Skeleton'
 import { formatNaira, formatDate, copyToClipboard } from '@/lib/utils'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { CoopDashboardCard } from '@/features/coop/DashboardCard'
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 16 },
@@ -161,6 +162,8 @@ export default function DashboardPage() {
         </motion.div>
 
         {/* ── Promo banners ── */}
+        <CoopDashboardCard />
+
         <PromoBannerCarousel />
 
         {/* ── Quick actions ── */}

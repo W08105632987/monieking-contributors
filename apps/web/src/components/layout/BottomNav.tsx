@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, forwardRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Home, CreditCard, Wallet, Bell, User, UserCog, Grid2x2, LayoutGrid, Briefcase, ShieldAlert } from 'lucide-react'
+import { Home, CreditCard, Wallet, Bell, User, UserCog, Grid2x2, LayoutGrid, Briefcase, ShieldAlert, Coins, HeartHandshake, PiggyBank } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { useAuthStore } from '@/store/auth.store'
@@ -19,6 +19,16 @@ const customerNav: NavItem[] = [
   { label: 'Wallet',   icon: Wallet,     href: '/customer/wallet' },
   { label: 'Services', icon: LayoutGrid, href: '/customer/services' },
   { label: 'Profile',  icon: User,       href: '/customer/profile' },
+]
+
+// Shown instead of the customer nav while inside the cooperative section: it feels like its own app,
+// and the "MonieKing" button on its home screen takes the member back to the main app.
+const coopNav: NavItem[] = [
+  { label: 'Home',       icon: Home,       href: '/coop' },
+  { label: 'Loans',      icon: Coins,  href: '/coop/loans' },
+  { label: 'Guarantors', icon: HeartHandshake,  href: '/coop/pool' },
+  { label: 'Dividend',   icon: PiggyBank,  href: '/coop/dividend' },
+  { label: 'Me',         icon: User,       href: '/coop/me' },
 ]
 
 const officerNav: NavItem[] = [
@@ -59,13 +69,18 @@ export const BottomNav = forwardRef<HTMLElement>(function BottomNav(_props, ref)
   const user = useAuthStore((s) => s.user)
   const unreadCount = useNotificationsStore((s) => s.unreadCount)
 
-  const navItems = navByRole[user?.role ?? 'customer'] ?? customerNav
+  const inCoop = user?.role === 'customer' && (location.pathname === '/coop' || location.pathname.startsWith('/coop/'))
+  const navItems = inCoop ? coopNav : (navByRole[user?.role ?? 'customer'] ?? customerNav)
 
+  // Longest matching href wins, so "/coop/loans" lights up Loans rather than the shorter "/coop" (Home).
   const activeIdx = (() => {
-    const idx = navItems.findIndex(
-      (item) => location.pathname === item.href || location.pathname.startsWith(item.href + '/'),
-    )
-    return idx
+    let best = -1
+    let bestLen = -1
+    navItems.forEach((item, i) => {
+      const hit = location.pathname === item.href || location.pathname.startsWith(item.href + '/')
+      if (hit && item.href.length > bestLen) { best = i; bestLen = item.href.length }
+    })
+    return best
   })()
 
   // Refs for each tab button to measure position

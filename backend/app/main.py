@@ -47,6 +47,20 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+from fastapi.responses import JSONResponse as _CoopJSON  # noqa: E402
+from app.coop.errors import CoopError as _CoopError  # noqa: E402
+from app.coop.defs import SettingError as _CoopSettingError  # noqa: E402
+
+
+@app.exception_handler(_CoopError)
+async def _coop_error_handler(request, exc: _CoopError):
+    return _CoopJSON(status_code=exc.status, content={"detail": exc.message, "code": exc.code, **exc.data})
+
+
+@app.exception_handler(_CoopSettingError)
+async def _coop_setting_error_handler(request, exc):
+    return _CoopJSON(status_code=400, content={"detail": str(exc), "code": "setting_error"})
+
 # ── Timing instrumentation — remove once debugging is done ────────
 instrument_engine(engine)
 app.add_middleware(TimingMiddleware)
@@ -161,6 +175,8 @@ from app.api.v1.routes.webhooks import router as webhook_router
 from app.api.v1.routes.worker import router as worker_router
 from app.api.v1.routes.manual_services import router as manual_services_router
 from app.api.v1.routes.service_templates import router as service_templates_router
+from app.api.v1.routes.coop import router as coop_router
+from app.api.v1.routes.coop_admin import router as coop_admin_router
 
 PREFIX = "/api/v1"
 
@@ -190,6 +206,8 @@ app.include_router(push.router,              prefix=PREFIX)
 app.include_router(worker_router,            prefix=PREFIX)
 app.include_router(manual_services_router,   prefix=PREFIX)
 app.include_router(service_templates_router, prefix=PREFIX)
+app.include_router(coop_admin_router, prefix=PREFIX)  # before coop_router: fixed /coop/admin paths first
+app.include_router(coop_router, prefix=PREFIX)
 app.include_router(webhook_router)
 app.include_router(webhook_router,           prefix=PREFIX)
 
