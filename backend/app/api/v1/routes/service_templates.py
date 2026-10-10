@@ -12,12 +12,15 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import CurrentUser, DirectorOnly, DirectorOrAdmin
+from app.models.identity_service import IdentityService, IdentityServiceCategory
 from app.models.service_template import ServiceTemplate, ServiceTemplateVersion
 from app.services import manual_pricing as mp
+from app.services import service_template_create as create
 from app.services import service_template_engine as eng
 from app.services import service_template_publish as pub
 from app.services import service_template_store as store
@@ -64,6 +67,15 @@ class RevertBody(BaseModel):
     confirm_price_change: bool = False
 
 
+def _has_original_form(code: str) -> bool:
+    """Built-in services still have their original hardcoded form to go back to; builder-made ones never do."""
+    return code in mp.PRICE_MAP
+
+
+async def _version_of(db: AsyncSession, tpl: ServiceTemplate) -> ServiceTemplateVersion | None:
+    return await db.get(ServiceTemplateVersion, tpl.current_version_id) if tpl.current_version_id else None
+
+
 async def _load(db: AsyncSession, code: str) -> tuple[ServiceTemplate, ServiceTemplateVersion]:
     service_code = mp.resolve_category(code)
     tpl = await db.scalar(select(ServiceTemplate).where(ServiceTemplate.service_code == service_code))
@@ -106,9 +118,63 @@ async def list_all_templates(current_user: DirectorOnly, db: AsyncSession = Depe
             "service_code": t.service_code, "title": t.title, "kind": t.kind, "is_enabled": t.is_enabled,
             "live": t.service_code in live, "archived": t.archived_at is not None,
             "version": ver.version if ver else None,
+            "has_original_form": _has_original_form(t.service_code),
             "updated_at": t.updated_at.isoformat() if t.updated_at else None,
         })
     return out
+
+
+class CreateBody(BaseModel):
+    title: str
+    description: str | None = None
+    category: str                      # which section of the customer app: nimc | bvn | tin | attestation | cac
+    price_kobo: int
+    code: str | None = None            # optional; otherwise made from the title
+
+
+@router.post("/admin/create")
+async def create_service(body: CreateBody, current_user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """
+    Create a brand-new manual service from the builder. It is created SWITCHED OFF and hidden from customers;
+    the director edits the form, previews it, then switches it on. Nothing existing is touched.
+    """
+    taken = set((await db.scalars(select(ServiceTemplate.service_code))).all())
+    taken |= set((await db.scalars(select(IdentityService.code))).all())
+    taken |= set(mp.PRICE_MAP) | set(mp.CATEGORY_ALIASES)
+    built = create.build_new_service(body.title, body.description, body.category, body.price_kobo, taken, body.code)
+    if built["errors"]:
+        raise HTTPException(status_code=422, detail={"message": built["errors"][0], "errors": built["errors"]})
+    code = built["code"]
+    title = body.title.strip()
+    try:
+        tpl = ServiceTemplate(service_code=code, kind="manual", title=title, description=(body.description or None),
+                              is_enabled=False, updated_by=current_user.id)
+        db.add(tpl)
+        await db.flush()
+        ver = ServiceTemplateVersion(template_id=tpl.id, version=1, schema=built["schema"], price_rules=built["rules"],
+                                     note="Created in the Service Builder", created_by=current_user.id)
+        db.add(ver)
+        await db.flush()
+        tpl.current_version_id = ver.id
+        # the catalog card (inactive on purpose: the template's on/off switch is what customers see)
+        db.add(IdentityService(
+            category=IdentityServiceCategory(body.category), code=code, name=title, description=(body.description or None),
+            provider="manual", price_kobo=body.price_kobo, is_active=False, required_fields=[], updated_by=current_user.id,
+        ))
+        # no original form exists, so it always runs on the template flow
+        live = set(await _live_codes(db)) | {code}
+        await set_config_value(db, key=LIVE_KEY, value=json.dumps(sorted(live)), updated_by=current_user.id)
+        await log_action(
+            db, actor_id=current_user.id, action="service_template.created", entity_type="service_template",
+            entity_id=str(tpl.id), old_value=None,
+            new_value={"service_code": code, "title": title, "category": body.category, "price_kobo": body.price_kobo},
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="A service with that id was just created. Please try again.")
+    invalidate_config_cache(LIVE_KEY)
+    return {"service_code": code, "version": 1, "is_enabled": False}
 
 
 @router.patch("/admin/live")
@@ -124,6 +190,12 @@ async def set_live_services(body: LiveBody, current_user: DirectorOrAdmin, db: A
     if unknown:
         raise HTTPException(status_code=422, detail=f"No template exists for: {', '.join(unknown)}")
     before = await _live_codes(db)
+    stranded = [c for c in before if c not in wanted and not _has_original_form(c)]
+    if stranded:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{', '.join(stranded)} was built in the Service Builder and has no original form to go back to. Switch it off instead.",
+        )
     await set_config_value(db, key=LIVE_KEY, value=json.dumps(wanted), updated_by=current_user.id)
     await db.commit()
     invalidate_config_cache(LIVE_KEY)
@@ -178,11 +250,17 @@ async def list_templates(current_user: CurrentUser, db: AsyncSession = Depends(g
         select(ServiceTemplate).where(ServiceTemplate.archived_at.is_(None)).order_by(ServiceTemplate.title)
     )).all()
     live = set(await _live_codes(db))
-    return [
-        {"service_code": t.service_code, "title": t.title, "description": t.description,
-         "kind": t.kind, "is_enabled": t.is_enabled, "live": t.service_code in live}
-        for t in tpls
-    ]
+    out = []
+    for t in tpls:
+        ver = await _version_of(db, t)
+        out.append({
+            "service_code": t.service_code, "title": t.title, "description": t.description,
+            "kind": t.kind, "is_enabled": t.is_enabled, "live": t.service_code in live,
+            "has_original_form": _has_original_form(t.service_code),
+            # "From ₦X" for the service card: only for services running on the template, so it is the real charge
+            "from_price_kobo": create.from_price_kobo(ver.schema, ver.price_rules) if ver and t.service_code in live else None,
+        })
+    return out
 
 
 @router.get("/{code}")
@@ -313,7 +391,8 @@ async def archive_template(code: str, body: ArchiveBody, current_user: DirectorO
     if body.archived:
         if tpl.is_enabled:
             raise HTTPException(status_code=409, detail="Switch the service off first, then archive it.")
-        if service_code in set(await _live_codes(db)):
+        # built-in services must go back to their original form first; builder-made ones have none (always on the template flow)
+        if _has_original_form(service_code) and service_code in set(await _live_codes(db)):
             raise HTTPException(status_code=409, detail="Switch this service back to its original form first, then archive it.")
         if tpl.archived_at is not None:
             return {"service_code": service_code, "archived": True}

@@ -5,7 +5,7 @@ import { ArrowLeft, ShieldCheck, AlertCircle, Eye, EyeOff, Lock } from 'lucide-r
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
-import { SERVICE_KEY_ALIASES } from '@/lib/manualServices'
+import { SERVICE_KEY_ALIASES, useTemplateList } from '@/lib/manualServices'
 
 // Form components
 import { NinModificationForm } from '@/components/manual-services/NinModificationForm'
@@ -107,7 +107,13 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
 
   const rawKey = serviceKeyProp || routeKey || ''
   const effectiveKey = SERVICE_KEY_ALIASES[rawKey] || rawKey
-  const meta = MANUAL_SERVICE_META[effectiveKey]
+  // Built-in services use the hardcoded meta; services the director built come from the template list.
+  const listQuery = useTemplateList()
+  const listed = listQuery.data?.find((t) => t.service_code === effectiveKey)
+  const builtIn = MANUAL_SERVICE_META[effectiveKey]
+  const meta = builtIn ?? (listed
+    ? { title: listed.title, category: listed.service_code, description: listed.description ?? '', emoji: '🧾' }
+    : undefined)
 
   const [formPayload, setFormPayload] = useState<FormPayload | null>(null)
   const [referralCode, setReferralCode] = useState('')
@@ -217,6 +223,14 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
   const stillNeeded = formPayload?.missing ?? []
   const canSubmit =
     consentGiven && formPayload && stillNeeded.length === 0 && !submitMutation.isPending && withdrawalPassword.trim().length > 0
+
+  if (!meta && listQuery.isLoading) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-green-50 dark:bg-night-800">
+        <div className="w-8 h-8 rounded-full border-4 border-green-200 border-t-green-600 animate-spin" aria-label="Loading" />
+      </div>
+    )
+  }
 
   if (!meta) {
     return (

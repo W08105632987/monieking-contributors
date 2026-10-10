@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { ArrowUp, ArrowDown, Trash2, ChevronDown, ChevronUp, Lock, Plus } from 'lucide-react'
-import type { TemplateField, TemplateSchema } from '@/lib/templateRules'
+import type { TemplateField, TemplateSchema, VisibilityRule } from '@/lib/templateRules'
 import {
   ADDABLE_FIELD_TYPES, addField, removeField, updateField, moveField, dependents,
-  optionsFromText, optionsToText, hasPlainOptions,
+  optionsFromText, optionsToText, hasPlainOptions, conditionCandidates, setConditions,
 } from '@/lib/templateBuilder'
 import { inputCls, labelCls, cardCls, smallBtn } from './builderUi'
 
@@ -21,11 +21,84 @@ function conditionText(schema: TemplateSchema, f: TemplateField): string | null 
     .join(' and ')
 }
 
+
+/** "Show this field only when…": ties a field to a type question or a dropdown (rules are ANDed). */
+function ConditionsEditor({
+  field, schema, locked, onChange,
+}: { field: TemplateField; schema: TemplateSchema; locked: boolean; onChange: (conds: VisibilityRule[]) => void }) {
+  const conds = field.visible_when ?? []
+  const choices = conditionCandidates(schema, field.key)
+  if (locked) {
+    const text = conditionText(schema, field)
+    return text ? <p className="text-xs text-green-700 dark:text-night-200 bg-green-50 dark:bg-night-600 rounded-xl p-2">Shown only when: {text}</p> : null
+  }
+  if (!conds.length && !choices.length) return null
+  const update = (i: number, next: VisibilityRule) => onChange(conds.map((c, j) => (j === i ? next : c)))
+  const toggleValue = (i: number, c: VisibilityRule, v: string) => {
+    const mode: 'in' | 'not_in' = c.in ? 'in' : 'not_in'
+    const list = (c[mode] ?? []) as string[]
+    const next = list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
+    if (!next.length) return                       // keep at least one value; use "Remove rule" to drop the rule
+    update(i, { field: c.field, [mode]: next } as VisibilityRule)
+  }
+  return (
+    <div className="rounded-xl bg-green-50 dark:bg-night-600 p-3 space-y-2">
+      <p className={labelCls}>Show this field only when…</p>
+      {!conds.length && <p className="text-xs text-green-700 dark:text-night-200">Always shown.</p>}
+      {conds.map((c, i) => {
+        const choice = choices.find((x) => x.key === c.field)
+        const mode: 'in' | 'not_in' = c.in ? 'in' : 'not_in'
+        const chosen = (c[mode] ?? []) as string[]
+        return (
+          <div key={i} className="rounded-xl bg-white dark:bg-night-700 p-2 space-y-2">
+            <div className="flex gap-2">
+              <select className={inputCls} value={c.field}
+                onChange={(e) => {
+                  const first = choices.find((x) => x.key === e.target.value)?.options[0]?.value
+                  update(i, { field: e.target.value, [mode]: first ? [first] : [] } as VisibilityRule)
+                }}>
+                {!choice && <option value={c.field}>{c.field}</option>}
+                {choices.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+              </select>
+              <select className={`${inputCls} w-28`} value={mode}
+                onChange={(e) => update(i, { field: c.field, [e.target.value]: chosen } as VisibilityRule)}>
+                <option value="in">is</option><option value="not_in">is not</option>
+              </select>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(choice?.options ?? []).map((o) => {
+                const on = chosen.includes(o.value)
+                return (
+                  <button key={o.value} type="button" onClick={() => toggleValue(i, c, o.value)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold border ${on ? 'bg-green-700 text-white border-green-700' : 'border-green-200 dark:border-night-500 text-green-800 dark:text-night-100'}`}>
+                    {o.label}
+                  </button>
+                )
+              })}
+            </div>
+            <button type="button" className={`${smallBtn} text-red-600 border-red-200`} onClick={() => onChange(conds.filter((_, j) => j !== i))}>Remove rule</button>
+          </div>
+        )
+      })}
+      {choices.length > 0 && (
+        <button type="button" className={smallBtn}
+          onClick={() => {
+            const first = choices[0].options[0]?.value
+            if (first) onChange([...conds, { field: choices[0].key, in: [first] }])
+          }}>
+          <Plus className="inline w-3.5 h-3.5 mr-1" />Add a rule
+        </button>
+      )}
+    </div>
+  )
+}
+
 function FieldCard({
-  field, schema, locked, onChange, onMove, onRemove,
+  field, schema, locked, onChange, onConditions, onMove, onRemove,
 }: {
   field: TemplateField; schema: TemplateSchema; locked: boolean
   onChange: (key: string, patch: Parameters<typeof updateField>[2]) => void
+  onConditions: (key: string, conds: VisibilityRule[]) => void
   onMove: (key: string, dir: -1 | 1) => void
   onRemove: (key: string) => void
 }) {
@@ -94,7 +167,7 @@ function FieldCard({
               <p className="text-xs text-green-600 dark:text-night-300 flex items-center gap-1"><Lock className="w-3 h-3" /> The choices for this dropdown are managed by the system.</p>
             )
           )}
-          {cond && <p className="text-xs text-green-700 dark:text-night-200 bg-green-50 dark:bg-night-600 rounded-xl p-2">Shown only when: {cond}. (Changing conditions isn't available yet.)</p>}
+          <ConditionsEditor field={field} schema={schema} locked={locked} onChange={(c) => onConditions(field.key, c)} />
           <p className="text-[11px] text-green-500 dark:text-night-400 flex items-center gap-1"><Lock className="w-3 h-3" /> Permanent id: <code>{field.key}</code>{field.sensitive ? ' · private (masked for workers)' : ''}</p>
           <div className="flex items-center gap-2">
             <button type="button" className={smallBtn} onClick={() => onMove(field.key, -1)} aria-label="Move up"><ArrowUp className="w-3.5 h-3.5" /></button>
@@ -142,6 +215,7 @@ export function FieldsEditor({
           {g.fields.map((f) => (
             <FieldCard key={f.key} field={f} schema={schema} locked={locked}
               onChange={(k, p) => onChange(updateField(schema, k, p))}
+              onConditions={(k, c) => onChange(setConditions(schema, k, c))}
               onMove={(k, d) => onChange(moveField(schema, k, d))}
               onRemove={remove} />
           ))}

@@ -121,7 +121,7 @@ export default function ServiceBuilderEditPage() {
 
         {tab === 'prices' && (
           <>
-            <TypesEditor schema={schema} onChange={setSchema} locked={locked} />
+            <TypesEditor schema={schema} rules={rules} onChange={setSchema} onRules={setRules} locked={locked} />
             <PriceRulesEditor schema={schema} rules={rules} onChange={setRules} hasQuantity={!!schema.quantity_from} />
           </>
         )}

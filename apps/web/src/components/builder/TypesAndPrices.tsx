@@ -3,7 +3,7 @@ import { ArrowUp, ArrowDown, Trash2, Plus } from 'lucide-react'
 import type { TemplateSchema } from '@/lib/templateRules'
 import {
   updateSelectorLabel, updateSelectorOption, parseNaira, isDefaultRule, updateRule, deleteRule, moveRule,
-  addRule, describeRule, type PriceRule,
+  addRule, describeRule, addSelectorOption, removeSelectorOption, moveSelectorOption, type PriceRule,
 } from '@/lib/templateBuilder'
 import { koboToNaira } from '@/lib/utils'
 import { inputCls, labelCls, cardCls, smallBtn } from './builderUi'
@@ -37,10 +37,22 @@ function PriceInput({ kobo, onCommit }: { kobo: number; onCommit: (k: number) =>
   )
 }
 
-export function TypesEditor({ schema, onChange, locked }: { schema: TemplateSchema; onChange: (s: TemplateSchema) => void; locked: boolean }) {
-  void locked   // labels and descriptions stay editable even on provider-connected services
+export function TypesEditor({
+  schema, rules, onChange, onRules, locked,
+}: {
+  schema: TemplateSchema; rules: PriceRule[]; onChange: (s: TemplateSchema) => void; onRules: (r: PriceRule[]) => void; locked: boolean
+}) {
+  const [newLabel, setNewLabel] = useState<Record<string, string>>({})
   if (!schema.selectors.length) {
     return <p className="text-sm text-green-700 dark:text-night-200">This service has one form and one price. There are no types to choose between.</p>
+  }
+  const remove = (selKey: string, value: string, label: string) => {
+    const r = removeSelectorOption(schema, rules, selKey, value)
+    if (r.blockedReason) { window.alert(r.blockedReason); return }
+    const lines = [`Remove "${label}"? Customers will no longer be able to choose it. Older orders keep their answers.`]
+    if (r.droppedRules) lines.push(`${r.droppedRules} price rule(s) that were only for it will be removed.`)
+    if (r.droppedFields.length) lines.push(`These fields only showed for it and will be removed: ${r.droppedFields.join(', ')}.`)
+    if (window.confirm(lines.join('\n\n'))) { onChange(r.schema); onRules(r.rules) }
   }
   return (
     <div className="space-y-4">
@@ -55,11 +67,30 @@ export function TypesEditor({ schema, onChange, locked }: { schema: TemplateSche
                   onChange={(e) => onChange(updateSelectorOption(schema, sel.key, o.value, { label: e.target.value }))} />
                 <input className={inputCls} value={o.description ?? ''} placeholder="Short description (optional)"
                   onChange={(e) => onChange(updateSelectorOption(schema, sel.key, o.value, { description: e.target.value }))} />
-                <p className="text-[11px] text-green-500 dark:text-night-400">Permanent id: <code>{o.value}</code></p>
+                <div className="flex items-center gap-2">
+                  <p className="text-[11px] text-green-500 dark:text-night-400 flex-1">Permanent id: <code>{o.value}</code></p>
+                  <button className={smallBtn} onClick={() => onChange(moveSelectorOption(schema, sel.key, o.value, -1))} aria-label="Move up"><ArrowUp className="w-3.5 h-3.5" /></button>
+                  <button className={smallBtn} onClick={() => onChange(moveSelectorOption(schema, sel.key, o.value, 1))} aria-label="Move down"><ArrowDown className="w-3.5 h-3.5" /></button>
+                  {!locked && (
+                    <button className={`${smallBtn} text-red-600 border-red-200`} onClick={() => remove(sel.key, o.value, o.label)}>
+                      <Trash2 className="inline w-3.5 h-3.5 mr-1" />Remove
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-green-600 dark:text-night-300 mt-3">Adding or removing types isn't available yet. You can rename them and change their prices.</p>
+          {!locked && (
+            <div className="flex gap-2 mt-3">
+              <input className={inputCls} placeholder="New type, e.g. Express" value={newLabel[sel.key] ?? ''}
+                onChange={(e) => setNewLabel((p) => ({ ...p, [sel.key]: e.target.value }))} />
+              <button className={smallBtn} disabled={!(newLabel[sel.key] ?? '').trim()}
+                onClick={() => { onChange(addSelectorOption(schema, sel.key, newLabel[sel.key]).schema); setNewLabel((p) => ({ ...p, [sel.key]: '' })) }}>
+                <Plus className="inline w-3.5 h-3.5 mr-1" />Add type
+              </button>
+            </div>
+          )}
+          {!locked && <p className="text-[11px] text-green-600 dark:text-night-300 mt-2">A new type is priced by the default price until you add its own price below.</p>}
         </div>
       ))}
     </div>

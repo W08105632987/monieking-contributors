@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
@@ -34,6 +35,39 @@ export function resolveManualKey(code: string): string {
 
 export function isManualService(code: string): boolean {
   return (MANUAL_SERVICE_CODES as readonly string[]).includes(resolveManualKey(code))
+}
+
+/** One row of GET /service-templates (every service that runs on a template, including ones the director built). */
+export interface TemplateListItem {
+  service_code: string
+  title: string
+  description?: string | null
+  is_enabled: boolean
+  live: boolean
+  has_original_form?: boolean
+  from_price_kobo?: number | null
+}
+
+/** Same query (and cache) every screen shares. Failing to load it must never break a screen. */
+export function useTemplateList() {
+  return useQuery({
+    queryKey: ['service-templates', 'list'],
+    retry: false,
+    staleTime: 15_000,
+    queryFn: async () => (await api.get<TemplateListItem[]>('/service-templates')).data,
+  })
+}
+
+/**
+ * True for the built-in manual services AND for services the director built in the Service Builder.
+ * Built-ins still work if the list can't be loaded (the hardcoded list is the fallback).
+ */
+export function useIsManualService(): (code: string) => boolean {
+  const { data } = useTemplateList()
+  return useCallback(
+    (code: string) => isManualService(code) || (data ?? []).some((t) => t.service_code === resolveManualKey(code)),
+    [data],
+  )
 }
 
 export interface ManualPricingConfig {

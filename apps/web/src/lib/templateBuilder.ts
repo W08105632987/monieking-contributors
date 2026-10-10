@@ -6,7 +6,7 @@
  * The server is the authority: it re-validates everything on preview and publish.
  * These helpers only make sure the screen never builds something obviously impossible.
  */
-import type { TemplateField, TemplateSchema, TemplateSelector } from './templateRules'
+import type { TemplateField, TemplateSchema, TemplateSelector, VisibilityRule } from './templateRules'
 
 export interface PriceRule {
   when: Record<string, string[]>
@@ -223,4 +223,158 @@ export function describeRule(schema: TemplateSchema, rule: PriceRule): string {
 
 export function sameJson(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
+}
+
+// ─── Conditions: "show this field only when…" (Phase 4c) ─────────────────────
+
+export interface ConditionChoice { key: string; label: string; options: Array<{ value: string; label: string }> }
+
+/** Fields that (directly or through others) depend on `key`. A field can never be controlled by one of these (it would loop). */
+export function transitiveDependents(schema: TemplateSchema, key: string): Set<string> {
+  const out = new Set<string>()
+  const stack = [key]
+  while (stack.length) {
+    const k = stack.pop()!
+    for (const f of schema.fields) {
+      if (!out.has(f.key) && f.visible_when?.some((c) => c.field === k)) {
+        out.add(f.key)
+        stack.push(f.key)
+      }
+    }
+  }
+  return out
+}
+
+/** What a field's visibility can be tied to: the type questions, and dropdown fields (never itself or its own dependents). */
+export function conditionCandidates(schema: TemplateSchema, key: string): ConditionChoice[] {
+  const banned = transitiveDependents(schema, key)
+  banned.add(key)
+  const fromSelectors: ConditionChoice[] = schema.selectors.map((s) => ({
+    key: s.key, label: s.label, options: s.options.map((o) => ({ value: o.value, label: o.label })),
+  }))
+  const fromFields: ConditionChoice[] = schema.fields
+    .filter((f) => f.type === 'select' && !banned.has(f.key) && hasPlainOptions(f) && (f.options ?? []).length > 0)
+    .map((f) => ({ key: f.key, label: f.label, options: (f.options as string[]).map((o) => ({ value: o, label: o })) }))
+  return [...fromSelectors, ...fromFields]
+}
+
+/** Replace a field's visibility rules (none = always shown). Rules with no values are dropped. */
+export function setConditions(schema: TemplateSchema, key: string, conds: VisibilityRule[]): TemplateSchema {
+  const clean = conds.filter((c) => (c.in && c.in.length) || (c.not_in && c.not_in.length))
+  return {
+    ...schema,
+    fields: schema.fields.map((f) => {
+      if (f.key !== key) return f
+      if (!clean.length) {
+        const { visible_when: _drop, ...rest } = f
+        return rest as TemplateField
+      }
+      return { ...f, visible_when: clean }
+    }),
+  }
+}
+
+// ─── Types (selector options): add, remove, reorder (Phase 4c) ───────────────
+
+/** Stored value for a new type: lowercase_with_underscores, unique within the question, never empty. */
+export function uniqueOptionValue(label: string, taken: Set<string>): string {
+  const base = slugKey(label).replace(/^f_/, '') || 'option'
+  let v = base
+  let n = 2
+  while (taken.has(v)) {
+    v = `${base}_${n}`
+    n += 1
+  }
+  return v
+}
+
+export function addSelectorOption(
+  schema: TemplateSchema, selectorKey: string, label: string, description?: string,
+): { schema: TemplateSchema; value: string } {
+  const sel = schema.selectors.find((s) => s.key === selectorKey)
+  const value = uniqueOptionValue(label, new Set((sel?.options ?? []).map((o) => o.value)))
+  const opt: { value: string; label: string; description?: string } = { value, label: label.trim() }
+  if (description?.trim()) opt.description = description.trim()
+  return {
+    value,
+    schema: { ...schema, selectors: schema.selectors.map((s) => (s.key === selectorKey ? { ...s, options: [...s.options, opt] } : s)) },
+  }
+}
+
+export function moveSelectorOption(schema: TemplateSchema, selectorKey: string, value: string, dir: -1 | 1): TemplateSchema {
+  return {
+    ...schema,
+    selectors: schema.selectors.map((s) => {
+      if (s.key !== selectorKey) return s
+      const i = s.options.findIndex((o) => o.value === value)
+      const j = i + dir
+      if (i < 0 || j < 0 || j >= s.options.length) return s
+      const options = [...s.options]
+      ;[options[i], options[j]] = [options[j], options[i]]
+      return { ...s, options }
+    }),
+  }
+}
+
+export interface RemoveTypeResult {
+  schema: TemplateSchema
+  rules: PriceRule[]
+  droppedFields: string[]     // labels of fields that could only ever have shown for this type, now removed
+  droppedRules: number        // price rules that could only ever have matched this type, now removed
+  blockedReason?: string      // set => nothing changed
+}
+
+/**
+ * Remove a type. Everything that pointed at it is cleaned up so nothing is left that could
+ * never match or, worse, silently match MORE than before:
+ *  - a price rule that was for this type is removed (never "narrowed" into a broader rule);
+ *  - a field shown only for this type is removed;
+ *  - the last type can't be removed, nor one the system itself relies on.
+ */
+export function removeSelectorOption(schema: TemplateSchema, rules: PriceRule[], selectorKey: string, value: string): RemoveTypeResult {
+  const unchanged = (blockedReason: string): RemoveTypeResult => ({ schema, rules, droppedFields: [], droppedRules: 0, blockedReason })
+  const sel = schema.selectors.find((s) => s.key === selectorKey)
+  if (!sel || !sel.options.some((o) => o.value === value)) return unchanged('That type no longer exists.')
+  if (sel.options.length <= 1) return unchanged('A question needs at least one type.')
+  if (selectorKey === 'service_type' && schema.fixed_service_type === value) return unchanged('The system relies on this type; it can\'t be removed.')
+  const q = schema.quantity_from
+  if (q && String(q.when?.[selectorKey]) === value) return unchanged('The system relies on this type (it counts items from it); it can\'t be removed.')
+
+  const selectors = schema.selectors.map((s) => (s.key === selectorKey ? { ...s, options: s.options.filter((o) => o.value !== value) } : s))
+
+  const dropped = new Set<string>()
+  let fields: TemplateField[] = schema.fields.map((f) => {
+    if (!f.visible_when) return f
+    const conds: VisibilityRule[] = []
+    for (const c of f.visible_when) {
+      if (c.field !== selectorKey) { conds.push(c); continue }
+      if (c.in) {
+        const rest = c.in.filter((v) => v !== value)
+        if (rest.length === 0) dropped.add(f.key)         // could only show for the removed type
+        else conds.push({ ...c, in: rest })
+      } else if (c.not_in) {
+        const rest = c.not_in.filter((v) => v !== value)
+        if (rest.length) conds.push({ ...c, not_in: rest })   // an empty "is not" list excludes nothing: drop the rule
+      }
+    }
+    if (dropped.has(f.key)) return f
+    if (conds.length === f.visible_when.length && conds.every((c, i) => sameJson(c, f.visible_when![i]))) return f
+    if (!conds.length) { const { visible_when: _x, ...rest } = f; return rest as TemplateField }
+    return { ...f, visible_when: conds }
+  })
+  const droppedLabels = fields.filter((f) => dropped.has(f.key)).map((f) => f.label)
+  fields = fields.filter((f) => !dropped.has(f.key))
+  let next: TemplateSchema = { ...schema, selectors, fields }
+  for (const k of dropped) next = removeField(next, k)   // anything that hung off a removed field loses that link too
+
+  let removedRules = 0
+  const newRules: PriceRule[] = []
+  for (const r of rules) {
+    const vals = r.when[selectorKey]
+    if (!vals) { newRules.push(r); continue }
+    const rest = vals.filter((v) => v !== value)
+    if (rest.length === 0) { removedRules += 1; continue }
+    newRules.push({ ...r, when: { ...r.when, [selectorKey]: rest } })
+  }
+  return { schema: next, rules: newRules, droppedFields: droppedLabels, droppedRules: removedRules }
 }

@@ -1,11 +1,18 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
+import { parseNaira } from '@/lib/templateBuilder'
+import { apiDetail } from '@/lib/templateBuilderApi'
 import { FallbackError } from '@/components/ui/FallbackError'
 import type { TemplateListRow } from '@/lib/templateBuilderApi'
-import { cardCls, smallBtn } from '@/components/builder/builderUi'
+import { cardCls, smallBtn, primaryBtn, inputCls, labelCls, Sheet } from '@/components/builder/builderUi'
+
+const TILE_OPTIONS: Array<[string, string]> = [
+  ['nimc', 'NIN services'], ['bvn', 'BVN services'], ['tin', 'TIN'], ['attestation', 'Attestation'], ['cac', 'CAC'],
+]
 
 function Chip({ children, tone = 'grey' }: { children: string; tone?: 'green' | 'amber' | 'grey' | 'red' }) {
   const t = {
@@ -34,6 +41,27 @@ export default function ServiceBuilderPage() {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
+  const [newOpen, setNewOpen] = useState(false)
+  const [nTitle, setNTitle] = useState('')
+  const [nDesc, setNDesc] = useState('')
+  const [nTile, setNTile] = useState('nimc')
+  const [nPrice, setNPrice] = useState('')
+  const nKobo = parseNaira(nPrice)
+  const createService = useMutation({
+    mutationFn: async () =>
+      (await api.post<{ service_code: string }>('/service-templates/admin/create', {
+        title: nTitle.trim(), description: nDesc.trim() || null, category: nTile, price_kobo: nKobo,
+      })).data,
+    onSuccess: (d) => {
+      toast.success('Created, switched OFF. Edit the form, preview it, then switch it on.')
+      qc.invalidateQueries({ queryKey: ['service-templates'] })
+      qc.invalidateQueries({ queryKey: ['identity-services'] })
+      setNewOpen(false); setNTitle(''); setNDesc(''); setNPrice('')
+      navigate(`/director/service-builder/${d.service_code}`)
+    },
+    onError: (e) => toast.error(apiDetail(e)?.message ?? getErrorMessage(e)),
+  })
+
   const active = data.filter((t) => !t.archived)
   const archived = data.filter((t) => t.archived)
 
@@ -49,6 +77,9 @@ export default function ServiceBuilderPage() {
         <p className="text-green-600 dark:text-night-300 text-sm">
           Edit the form and prices of each service. Changes go live for new orders as soon as you publish, and you can go back to any earlier version.
         </p>
+        <button className={`${primaryBtn} w-full`} onClick={() => setNewOpen(true)}>
+          <Plus className="inline w-4 h-4 mr-1" />New service
+        </button>
         {isError ? (
           <FallbackError title="Couldn't load the services" onRetry={() => refetch()} isRetrying={isFetching} />
         ) : isLoading ? (
@@ -87,6 +118,36 @@ export default function ServiceBuilderPage() {
           </>
         )}
       </div>
+      <Sheet open={newOpen} title="New service" onClose={() => setNewOpen(false)}>
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Name customers will see</label>
+            <input className={inputCls} value={nTitle} maxLength={120} onChange={(e) => setNTitle(e.target.value)} placeholder="e.g. Passport renewal help" />
+          </div>
+          <div>
+            <label className={labelCls}>Short description (optional)</label>
+            <input className={inputCls} value={nDesc} maxLength={500} onChange={(e) => setNDesc(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Where it appears in the app</label>
+            <select className={inputCls} value={nTile} onChange={(e) => setNTile(e.target.value)}>
+              {TILE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Starting price (₦)</label>
+            <input className={`${inputCls} font-mono`} inputMode="decimal" value={nPrice} onChange={(e) => setNPrice(e.target.value)} placeholder="e.g. 5,000" />
+            {nPrice && nKobo === null && <p className="text-[11px] text-red-600 mt-1">Enter an amount above ₦0 (max 2 decimals).</p>}
+          </div>
+          <p className="text-[11px] text-green-700 dark:text-night-300">
+            It starts with a simple form (name, phone, what you need, optional document) that you can change next.
+            It is created <strong>switched off</strong> and hidden from customers until you turn it on. Workers receive its orders like any other manual service.
+          </p>
+          <button className={`${primaryBtn} w-full`} disabled={!nTitle.trim() || nKobo === null || createService.isPending} onClick={() => createService.mutate()}>
+            {createService.isPending ? 'Creating…' : 'Create service'}
+          </button>
+        </div>
+      </Sheet>
     </div>
   )
 }
