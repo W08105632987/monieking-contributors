@@ -19,6 +19,7 @@ export interface TemplateField {
   width?: 'full' | 'half' | 'third'
   section?: string
   help?: string
+  placeholder?: string
   options?: Array<string | TemplateOption>
   length?: number
   max_items?: number

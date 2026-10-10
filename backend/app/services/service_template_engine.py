@@ -43,6 +43,8 @@ PER_MODES = {"flat", "bulk_count"}
 MAX_FIELDS = 150
 MAX_OPTIONS = 100
 MAX_RULES = 200
+PLACEHOLDER_MAX = 120
+HELP_MAX = 300
 
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,59}$")
 
@@ -171,6 +173,9 @@ def validate_schema(schema: Any) -> list[str]:
                 errors.append(f"{where}: length must be a whole number from 1 to 30.")
         if "sensitive" in f and not isinstance(f["sensitive"], bool):
             errors.append(f"{where}: 'sensitive' must be true or false.")
+        for text_key, limit in (("placeholder", PLACEHOLDER_MAX), ("help", HELP_MAX)):
+            if text_key in f and (not isinstance(f[text_key], str) or len(f[text_key]) > limit):
+                errors.append(f"{where}: '{text_key}' must be text of at most {limit} characters.")
 
     # visible_when: refer only to existing keys, never to itself, no cycles.
     graph: dict[str, set[str]] = {}

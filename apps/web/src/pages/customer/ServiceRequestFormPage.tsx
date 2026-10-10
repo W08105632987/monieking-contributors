@@ -7,10 +7,11 @@ import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
 import type { IdentityService, IdentityServiceRequest } from '@/types'
 import { FallbackError } from '@/components/ui/FallbackError'
-import { isManualService } from '@/lib/manualServices'
+import { useIsManualService } from '@/lib/manualServices'
 
 export default function ServiceRequestFormPage() {
   const navigate = useNavigate()
+  const isManualService = useIsManualService()
   // Present at two routes, same pattern as ServiceHistoryPage:
   // /customer/services/:serviceId/request (customer, own wallet charged)
   // /officer/customers/:customerId/services/:serviceId/request (officer

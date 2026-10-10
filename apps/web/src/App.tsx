@@ -71,6 +71,8 @@ const DirectorAllCustomers   = lazy(() => import('@/pages/director/AllCustomersP
 const DirectorCustomerDetail = lazy(() => import('@/pages/director/CustomerOverviewPage'))
 const DirectorSettings       = lazy(() => import('@/pages/director/BusinessSettingsPage'))
 const DirectorIdentityServices = lazy(() => import('@/pages/director/IdentityServicesPage'))
+const DirectorServiceBuilder = lazy(() => import('@/pages/director/ServiceBuilderPage'))
+const DirectorServiceBuilderEdit = lazy(() => import('@/pages/director/ServiceBuilderEditPage'))
 const DirectorInstantMessage = lazy(() => import('@/pages/director/InstantMessagePage'))
 const DirectorPromoBanners   = lazy(() => import('@/pages/director/PromoBannersPage'))
 const DirectorAnalytics      = lazy(() => import('@/pages/director/AnalyticsPage'))
@@ -276,6 +278,8 @@ export default function App() {
             <Route path="/director/customers/:customerId" element={<AuthGuard allowedRoles={['director']}><DirectorCustomerDetail /></AuthGuard>} />
             <Route path="/director/settings"        element={<AuthGuard allowedRoles={['director']}><DirectorSettings /></AuthGuard>} />
             <Route path="/director/identity-services" element={<AuthGuard allowedRoles={['director']}><DirectorIdentityServices /></AuthGuard>} />
+            <Route path="/director/service-builder" element={<AuthGuard allowedRoles={['director']}><DirectorServiceBuilder /></AuthGuard>} />
+            <Route path="/director/service-builder/:code" element={<AuthGuard allowedRoles={['director']}><DirectorServiceBuilderEdit /></AuthGuard>} />
             <Route path="/director/instant-message" element={<AuthGuard allowedRoles={['director']}><DirectorInstantMessage /></AuthGuard>} />
             <Route path="/director/promo-banners"   element={<AuthGuard allowedRoles={['director']}><DirectorPromoBanners /></AuthGuard>} />
             <Route path="/director/analytics"       element={<AuthGuard allowedRoles={['director']}><DirectorAnalytics /></AuthGuard>} />

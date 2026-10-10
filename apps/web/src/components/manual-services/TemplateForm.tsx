@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { SelectHTMLAttributes } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
 import { FileUploadField } from './FileUploadField'
 import {
@@ -40,6 +42,16 @@ const WIDTH_CLS: Record<string, string> = {
   third: 'col-span-6 md:col-span-2',
 }
 
+/** A dropdown with a visible arrow (the bare select hides the browser's own arrow). */
+function SelectBox({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <div className="relative">
+      <select {...props} className={`${inputCls} appearance-none pr-10`}>{children}</select>
+      <ChevronDown aria-hidden className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-600 dark:text-night-300" />
+    </div>
+  )
+}
+
 function priceFor(
   matrix: TemplateData['price_matrix'],
   selections: Record<string, string>,
@@ -52,30 +64,31 @@ function FieldInput({
   field, value, onChange,
 }: { field: TemplateField; value: unknown; onChange: (v: unknown) => void }) {
   const str = typeof value === 'string' ? value : ''
+  const ph = field.placeholder
   switch (field.type) {
     case 'textarea':
-      return <textarea rows={3} value={str} onChange={(e) => onChange(e.target.value)} className={inputCls} />
+      return <textarea rows={3} value={str} placeholder={ph} onChange={(e) => onChange(e.target.value)} className={inputCls} />
     case 'select':
       return (
-        <select value={str} onChange={(e) => onChange(e.target.value)} className={`${inputCls} appearance-none`}>
+        <SelectBox value={str} onChange={(e) => onChange(e.target.value)}>
           <option value="">Select…</option>
           {(field.options ?? []).map((o) => {
             const v = typeof o === 'string' ? o : o.value
             const l = typeof o === 'string' ? o : o.label
             return <option key={v} value={v}>{l}</option>
           })}
-        </select>
+        </SelectBox>
       )
     case 'date':
       return <input type="date" value={str} onChange={(e) => onChange(e.target.value)} className={inputCls} />
     case 'phone':
-      return <input type="tel" inputMode="tel" value={str} onChange={(e) => onChange(e.target.value)} className={inputCls} />
+      return <input type="tel" inputMode="tel" value={str} placeholder={ph} onChange={(e) => onChange(e.target.value)} className={inputCls} />
     case 'email':
-      return <input type="email" value={str} onChange={(e) => onChange(e.target.value)} className={inputCls} />
+      return <input type="email" value={str} placeholder={ph} onChange={(e) => onChange(e.target.value)} className={inputCls} />
     case 'digits':
       return (
         <input
-          type="text" inputMode="numeric" maxLength={field.length} value={str}
+          type="text" inputMode="numeric" maxLength={field.length} value={str} placeholder={ph}
           onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
           className={`${inputCls} font-mono`}
         />
@@ -86,7 +99,7 @@ function FieldInput({
         <textarea
           rows={6} value={text}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={'One NIN per line, e.g.:\n12345678901\n98765432101'}
+          placeholder={ph ?? 'One NIN per line, e.g.:\n12345678901\n98765432101'}
           className={`${inputCls} font-mono text-xs`}
         />
       )
@@ -103,7 +116,7 @@ function FieldInput({
         />
       )
     default:
-      return <input type="text" value={str} onChange={(e) => onChange(e.target.value)} className={inputCls} />
+      return <input type="text" value={str} placeholder={ph} onChange={(e) => onChange(e.target.value)} className={inputCls} />
   }
 }
 
@@ -185,16 +198,15 @@ export function TemplateForm({
           <div key={sel.key} className="space-y-2">
             <p className={labelCls}>{sel.label} {(sel.required ?? true) && <span className="text-red-500">*</span>}</p>
             {asDropdown ? (
-              <select
+              <SelectBox
                 value={String(answers[sel.key] ?? '')}
                 onChange={(e) => set(sel.key, e.target.value)}
-                className={`${inputCls} appearance-none`}
               >
                 {sel.options.map((o) => {
                   const p = showPrices ? optionPrice(sel.key, o.value) : null
                   return <option key={o.value} value={o.value}>{o.label}{p ? ` — ${formatNaira(p)}` : ''}</option>
                 })}
-              </select>
+              </SelectBox>
             ) : (
               sel.options.map((o) => {
                 const chosen = String(answers[sel.key]) === o.value

@@ -5,7 +5,7 @@ import { ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
-import { isManualService, resolveManualKey } from '@/lib/manualServices'
+import { useIsManualService, useTemplateList, resolveManualKey } from '@/lib/manualServices'
 import type { IdentityService, IdentityServiceCategory } from '@/types'
 import { CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_ORDER } from '@/lib/identityServices'
 import { FallbackError } from '@/components/ui/FallbackError'
@@ -23,13 +23,16 @@ function ServiceCard({
   onOpen,
   forceActive,
   coverLabel,
+  fromPrice,
 }: {
   service: IdentityService
   categoryIcon: typeof CATEGORY_ICON[IdentityServiceCategory]
   onOpen: () => void
   forceActive?: boolean
   coverLabel?: string
+  fromPrice?: number | null   // services built in the Service Builder: the real lowest charge
 }) {
+  const isManualService = useIsManualService()
   const active = service.is_active || forceActive
 
   // Display price: if director set custom alphanumeric label, show it; else fallback
@@ -37,6 +40,9 @@ function ServiceCard({
     // Manual services: the label comes from the backend (director's text, or the live "From ₦X").
     if (coverLabel) {
       return coverLabel
+    }
+    if (fromPrice && fromPrice > 0) {
+      return `From ${formatNaira(fromPrice)}`
     }
     if (isManualService(service.code)) {
       return ''
@@ -88,15 +94,12 @@ export default function ServicesPage() {
 
   // The director's on/off switch for manual services lives on the service template.
   // If this can't be loaded we fall back to the old behaviour (cards open), never to "all off".
-  const { data: templateList } = useQuery({
-    queryKey: ['service-templates', 'list'],
-    retry: false,
-    staleTime: 15_000,
-    queryFn: async () => {
-      const { data } = await api.get<Array<{ service_code: string; is_enabled: boolean }>>('/service-templates')
-      return data
-    },
-  })
+  const { data: templateList } = useTemplateList()
+  const isManualService = useIsManualService()
+  const builderFromPrice = (code: string): number | null => {
+    const t = templateList?.find((x) => x.service_code === resolveManualKey(code))
+    return t && t.has_original_form === false ? (t.from_price_kobo ?? null) : null
+  }
   const templateEnabled = (code: string): boolean | undefined =>
     templateList?.find((t) => t.service_code === resolveManualKey(code))?.is_enabled
 
@@ -268,6 +271,7 @@ export default function ServicesPage() {
                       service={s}
                       categoryIcon={CategoryIcon}
                       coverLabel={pricingConfig?.cover_labels?.[s.code] || pricingConfig?.cover_labels?.[resolveManualKey(s.code)]}
+                      fromPrice={builderFromPrice(s.code)}
                       forceActive={
                         group.category === 'airtime' ||
                         group.category === 'bills' ||

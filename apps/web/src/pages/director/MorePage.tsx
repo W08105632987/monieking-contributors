@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Settings, Megaphone, Image, BarChart3, LineChart, Activity,
-  FileClock, Send, Users, User, AlertTriangle, Fingerprint, UserCheck, Package,
+  FileClock, Send, Users, User, AlertTriangle, Fingerprint, UserCheck, Package, Wrench,
 } from 'lucide-react'
 
 const actions = [
@@ -9,6 +9,7 @@ const actions = [
   { label: 'Food Collection Oversight', icon: Package, href: '/director/food/oversight', color: 'bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-300' },
   { label: 'Business Settings', icon: Settings,   href: '/director/settings',   color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
   { label: 'Identity Services & Pricing', icon: Fingerprint, href: '/director/identity-services', color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
+  { label: 'Service Builder', icon: Wrench, href: '/director/service-builder', color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
   { label: 'Instant Message',   icon: Megaphone,  href: '/director/instant-message', color: 'bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-300' },
   { label: 'Promo Banners',     icon: Image,      href: '/director/promo-banners',   color: 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300' },
   { label: 'Analytics',         icon: BarChart3,  href: '/director/analytics',  color: 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300' },

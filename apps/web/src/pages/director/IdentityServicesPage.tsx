@@ -183,7 +183,7 @@ function ChildPricingModal({
   )
 }
 
-interface TemplateSummary { service_code: string; is_enabled: boolean; live: boolean }
+interface TemplateSummary { service_code: string; is_enabled: boolean; live: boolean; has_original_form?: boolean }
 
 function ServiceRow({
   service,
@@ -198,6 +198,7 @@ function ServiceRow({
   template?: TemplateSummary
   liveCodes: string[]
 }) {
+  const navigate = useNavigate()
   const qc = useQueryClient()
   const [editingCard, setEditingCard] = useState(false)
   const [customCover, setCustomCover] = useState(coverLabel || '')
@@ -302,7 +303,13 @@ function ServiceRow({
         </button>
       </div>
 
-      {template && (
+      {template && template.has_original_form === false && (
+        <p className="text-xs text-green-700 dark:text-night-300 mb-2">
+          Built in the Service Builder. Its form and prices are edited there.{' '}
+          <button className="underline font-bold" onClick={() => navigate(`/director/service-builder/${template.service_code}`)}>Open builder</button>
+        </p>
+      )}
+      {template && template.has_original_form !== false && (
         <div className="flex items-center justify-between gap-2 mb-2 text-xs">
           <span className="text-green-700 dark:text-night-300">
             Order form:{' '}
@@ -345,7 +352,7 @@ function ServiceRow({
               Save Cover
             </button>
           </div>
-          {childTiers.length === 0 && (
+          {childTiers.length === 0 && template?.has_original_form !== false && (
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-green-700 dark:text-night-300 whitespace-nowrap">Base ₦:</span>
               <input
