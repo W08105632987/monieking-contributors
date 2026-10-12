@@ -17,7 +17,7 @@ export const primaryBtn =
 export function Sheet({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: ReactNode }) {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center">
       <div className="absolute inset-0 bg-green-950/60" onClick={onClose} />
       <div className="relative w-full md:max-w-lg max-h-[88dvh] overflow-y-auto bg-white dark:bg-night-800 rounded-t-3xl md:rounded-3xl p-5">
         <div className="flex items-center justify-between gap-3 mb-4">
