@@ -7,6 +7,7 @@ import { FallbackError } from '@/components/ui/FallbackError'
 import { TemplateForm, type TemplateData } from '@/components/manual-services/TemplateForm'
 import { FieldsEditor } from '@/components/builder/FieldsEditor'
 import { TypesEditor, PriceRulesEditor } from '@/components/builder/TypesAndPrices'
+import { LookPicker } from '@/components/builder/LookPicker'
 import { PublishSheet, type PublishMode } from '@/components/builder/PublishSheet'
 import { cardCls, primaryBtn, smallBtn, labelCls } from '@/components/builder/builderUi'
 import type { TemplateSchema } from '@/lib/templateRules'
@@ -128,6 +129,7 @@ export default function ServiceBuilderEditPage() {
 
         {tab === 'preview' && (
           <div className="space-y-3">
+            <LookPicker schema={schema} onChange={setSchema} />
             <p className="text-xs text-green-700 dark:text-night-200">This is what a customer would see with your edits. Nothing is submitted from here.</p>
             {!!preview.data?.errors?.length && (
               <div className="rounded-2xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-700 dark:text-red-200">

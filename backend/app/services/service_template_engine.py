@@ -45,6 +45,8 @@ MAX_OPTIONS = 100
 MAX_RULES = 200
 PLACEHOLDER_MAX = 120
 HELP_MAX = 300
+# How the customer's order form is laid out (display only; never affects what is asked or charged).
+LOOKS = ("classic", "compact", "guided")
 
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,59}$")
 
@@ -219,6 +221,9 @@ def validate_schema(schema: Any) -> list[str]:
         if cyclic(k):
             errors.append(f"field '{k}': visibility rules form a loop.")
             break
+    look = schema.get("look")
+    if look is not None and look not in LOOKS:
+        errors.append(f"look: must be one of {', '.join(LOOKS)}.")
     return errors
 
 
