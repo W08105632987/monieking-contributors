@@ -16,7 +16,7 @@ Safeguards (the ones agreed with the owner):
     forgotten (and its file always reaches the worker).
   * A field's type cannot change under the same key (old orders keep their meaning).
   * API-provider services (kind="api"): only label / width / placeholder / help / section / order
-    may change. Provider fields stay locked. Prices stay under the director's control.
+    may change (and the form's `look`). Provider fields stay locked. Prices stay under the director's control.
 """
 from __future__ import annotations
 
@@ -92,6 +92,7 @@ def _field_map(schema: dict) -> dict[str, dict]:
 def _locked_form(schema: dict) -> dict:
     """Everything an API-service director may NOT change, with the editable bits removed and order ignored."""
     s = copy.deepcopy(schema)
+    s.pop("look", None)   # how the form looks is display only; an API service's director may change it
     s["fields"] = sorted(
         ({k: v for k, v in f.items() if k not in API_EDITABLE_FIELD_KEYS} for f in s.get("fields", []) if isinstance(f, dict)),
         key=lambda f: str(f.get("key")),

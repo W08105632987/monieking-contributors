@@ -230,3 +230,38 @@ class ApiServiceLockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LookTests(unittest.TestCase):
+    """Phase 5: the form's look is display only."""
+
+    def setUp(self):
+        self.schema, self.rules = seed("nin_attestation")
+
+    def test_known_looks_are_valid_and_unknown_is_not(self):
+        for look in eng.LOOKS:
+            s = copy.deepcopy(self.schema)
+            s["look"] = look
+            self.assertEqual(eng.validate_schema(s), [], look)
+        for bad in ("fancy", "", 3):
+            s = copy.deepcopy(self.schema)
+            s["look"] = bad
+            self.assertTrue(any(e.startswith("look:") for e in eng.validate_schema(s)), repr(bad))
+
+    def test_no_look_means_classic_and_is_valid(self):
+        self.assertNotIn("look", self.schema)
+        self.assertEqual(eng.validate_schema(self.schema), [])
+
+    def test_changing_look_changes_no_price_and_needs_no_confirmation(self):
+        new = copy.deepcopy(self.schema)
+        new["look"] = "guided"
+        r = pub.analyse_change(self.schema, self.rules, new, self.rules)
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["price_changes"], [])
+        self.assertFalse(r["needs_price_confirmation"])
+
+    def test_api_service_director_may_change_the_look(self):
+        new = copy.deepcopy(self.schema)
+        new["look"] = "compact"
+        r = pub.analyse_change(self.schema, self.rules, new, self.rules, kind="api")
+        self.assertEqual(r["errors"], [])

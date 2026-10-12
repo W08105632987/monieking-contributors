@@ -34,6 +34,8 @@ export interface TemplateSchema {
   fixed_service_type?: string
   quantity_from?: { field: string; when: Record<string, string> }
   uploaded_file_fields?: string[]
+  /** How the customer's form is laid out. Display only. Missing means 'classic'. */
+  look?: string
 }
 
 export type Answers = Record<string, unknown>
