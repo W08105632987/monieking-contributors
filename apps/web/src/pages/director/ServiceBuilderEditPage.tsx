@@ -117,7 +117,7 @@ export default function ServiceBuilderEditPage() {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-40 space-y-4" key={resetKey}>
+      <div className="flex-1 overflow-y-auto px-4 pb-52 space-y-4" key={resetKey}>
         {tab === 'fields' && <FieldsEditor schema={schema} onChange={setSchema} locked={locked} />}
 
         {tab === 'prices' && (
@@ -168,7 +168,11 @@ export default function ServiceBuilderEditPage() {
       </div>
 
       {dirty && (
-        <div className="fixed bottom-0 inset-x-0 z-40 bg-white dark:bg-night-800 border-t border-green-100 dark:border-night-600 p-3 flex gap-2 pb-safe">
+        // Sits just above the app's bottom menu (which is fixed and would otherwise cover this bar).
+        <div
+          className="fixed inset-x-0 z-[55] bg-white dark:bg-night-800 border-t border-green-100 dark:border-night-600 p-3 flex gap-2 max-w-lg mx-auto"
+          style={{ bottom: 'var(--bottom-nav-height, 4.5rem)' }}
+        >
           <button className={smallBtn} onClick={discard}>Discard</button>
           <button className={`${primaryBtn} flex-1`} onClick={() => setSheet({ kind: 'publish' })}>Review & publish</button>
         </div>
