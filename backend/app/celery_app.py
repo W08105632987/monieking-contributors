@@ -19,7 +19,7 @@ celery_app = Celery(
     "monieking",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.pricing", "app.tasks.health_monitor"],
+    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge"],
 )
 
 celery_app.conf.update(
@@ -51,5 +51,10 @@ celery_app.conf.beat_schedule = {
         # this from re-sending SMS every 3 minutes during an ongoing
         # incident, not the schedule interval itself.
         "schedule": crontab(minute="*/3"),
+    },
+    "purge-expired-verifications": {
+        "task": "app.tasks.verification_purge.purge_expired_verifications",
+        # Hourly: wipes stored NIN/BVN results past their retention window.
+        "schedule": crontab(minute=7),
     },
 }

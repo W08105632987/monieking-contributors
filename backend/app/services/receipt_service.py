@@ -112,6 +112,24 @@ async def _details_bill_payment(db: AsyncSession, entity_id: uuid.UUID) -> dict[
     return details
 
 
+async def _details_techhub_lookup(db: AsyncSession, entity_id: uuid.UUID) -> dict[str, Any]:
+    from app.verification.models import VerificationLookup
+    row = await db.get(VerificationLookup, entity_id)
+    if not row:
+        return {}
+    return {"Service": f"{row.kind.upper()} verification", "Reference": f"MK-VF-{row.id.hex[:12].upper()}"}
+
+
+async def _details_techhub_slip(db: AsyncSession, entity_id: uuid.UUID) -> dict[str, Any]:
+    from app.verification.models import VerificationSlip, VerificationLookup
+    row = await db.get(VerificationSlip, entity_id)
+    if not row:
+        return {}
+    lookup = await db.get(VerificationLookup, row.lookup_id)
+    kind = lookup.kind.upper() if lookup else "ID"
+    return {"Service": f"{kind} {row.tier.title()} slip"}
+
+
 # Sources with no separate row to join — the transaction IS the record.
 # Handled by returning {} and letting the receipt fall back to the
 # transaction's own description/reference, not an error.
@@ -123,6 +141,8 @@ _BUILDERS: dict[str, Callable[[AsyncSession, uuid.UUID], Awaitable[dict[str, Any
     "manual_service_request":  _details_manual_service_request,
     "identity_service":        _details_identity_service,
     "bill_payment":            _details_bill_payment,
+    "techhub_lookup":          _details_techhub_lookup,
+    "techhub_slip":            _details_techhub_slip,
 }
 
 

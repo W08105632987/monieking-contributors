@@ -54,6 +54,10 @@ httpx==0.24.1
 # same request path as a customer-facing download.
 reportlab==4.2.5
 
+# Techhub verification (migration 046): pull the portrait out of the provider PDF.
+pypdf==4.3.1
+Pillow==10.4.0
+
 # Web Push (VAPID) — real OS-level push notifications, no Firebase/APNs
 # account needed. py-vapid signs with our own key pair; pywebpush sends
 # the request to whichever push service the subscription's endpoint

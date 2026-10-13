@@ -62,6 +62,15 @@ class Settings(BaseSettings):
     YOUVERIFY_BASE_URL: str = "https://api.youverify.co"
     YOUVERIFY_TOKEN: str = ""
 
+    # ── Techhub NIN/BVN verification (migration 046) ──────────────
+    # Backend env only. Never logged, never sent to the browser.
+    TECHHUB_API_KEY: str = ""
+    TECHHUB_BASE_URL: str = "https://techhubltd.co/api/verification"
+    # Fernet key(s) used to encrypt stored lookup results. Comma-separated
+    # so a new key can be added in front for rotation (oldest still decrypts).
+    # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    VERIFICATION_ENCRYPTION_KEY: str = ""
+
     # ── Redis ─────────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
 
