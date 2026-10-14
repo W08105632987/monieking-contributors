@@ -103,6 +103,8 @@ const DisputeDetailPage  = lazy(() => import('@/pages/disputes/DisputeDetailPage
 // ── Identity service history (shared across all three portals, same
 // reasoning as Disputes above — one detail page, backend role-filters
 // what the list endpoint returns) ──
+const VerifyLookupPage          = lazy(() => import('@/pages/customer/VerifyLookupPage'))
+const DirectorVerificationSettings = lazy(() => import('@/pages/director/VerificationSettingsPage'))
 const ServiceHistoryPage        = lazy(() => import('@/pages/customer/ServiceHistoryPage'))
 const ServiceRequestFormPage    = lazy(() => import('@/pages/customer/ServiceRequestFormPage'))
 const ServicesPage              = lazy(() => import('@/pages/customer/ServicesPage'))
@@ -253,6 +255,8 @@ export default function App() {
             <Route path="/customer/cards/:cardId" element={<AuthGuard allowedRoles={['customer']}><CardDetailPage /></AuthGuard>} />
             <Route path="/customer/withdrawals/new"          element={<AuthGuard allowedRoles={['customer']}><WithdrawalPage /></AuthGuard>} />
             <Route path="/customer/disputes"      element={<AuthGuard allowedRoles={['customer']}><DisputesListPage /></AuthGuard>} />
+            <Route path="/customer/verify/:kind" element={<AuthGuard allowedRoles={['customer']}><VerifyLookupPage /></AuthGuard>} />
+            <Route path="/customer/verify/:kind/:lookupId" element={<AuthGuard allowedRoles={['customer']}><VerifyLookupPage /></AuthGuard>} />
             <Route path="/customer/services/history" element={<AuthGuard allowedRoles={['customer']}><ServiceHistoryPage /></AuthGuard>} />
             <Route path="/customer/services" element={<AuthGuard allowedRoles={['customer']}><ServicesPage /></AuthGuard>} />
             <Route path="/customer/services/:serviceId/request" element={<AuthGuard allowedRoles={['customer']}><ServiceRequestFormPage /></AuthGuard>} />
@@ -288,6 +292,8 @@ export default function App() {
             <Route path="/officer/customer-stats" element={<AuthGuard allowedRoles={['officer']}><OfficerCustomerStats /></AuthGuard>} />
             <Route path="/officer/profile"        element={<AuthGuard allowedRoles={['officer']}><OfficerProfile /></AuthGuard>} />
             <Route path="/officer/disputes"       element={<AuthGuard allowedRoles={['officer']}><DisputesListPage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/verify/:kind" element={<AuthGuard allowedRoles={['officer']}><VerifyLookupPage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/verify/:kind/:lookupId" element={<AuthGuard allowedRoles={['officer']}><VerifyLookupPage /></AuthGuard>} />
             <Route path="/officer/customers/:customerId/services" element={<AuthGuard allowedRoles={['officer']}><ServiceHistoryPage /></AuthGuard>} />
             <Route path="/officer/customers/:customerId/services/all" element={<AuthGuard allowedRoles={['officer']}><ServicesPage /></AuthGuard>} />
             <Route path="/officer/customers/:customerId/services/:serviceId/request" element={<AuthGuard allowedRoles={['officer']}><ServiceRequestFormPage /></AuthGuard>} />
@@ -305,6 +311,7 @@ export default function App() {
             <Route path="/director/customers"       element={<AuthGuard allowedRoles={['director']}><DirectorAllCustomers /></AuthGuard>} />
             <Route path="/director/customers/:customerId" element={<AuthGuard allowedRoles={['director']}><DirectorCustomerDetail /></AuthGuard>} />
             <Route path="/director/settings"        element={<AuthGuard allowedRoles={['director']}><DirectorSettings /></AuthGuard>} />
+            <Route path="/director/verification" element={<AuthGuard allowedRoles={['director']}><DirectorVerificationSettings /></AuthGuard>} />
             <Route path="/director/identity-services" element={<AuthGuard allowedRoles={['director']}><DirectorIdentityServices /></AuthGuard>} />
             <Route path="/director/service-builder" element={<AuthGuard allowedRoles={['director']}><DirectorServiceBuilder /></AuthGuard>} />
             <Route path="/director/service-builder/:code" element={<AuthGuard allowedRoles={['director']}><DirectorServiceBuilderEdit /></AuthGuard>} />

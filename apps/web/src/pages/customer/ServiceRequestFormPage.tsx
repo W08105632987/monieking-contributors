@@ -8,6 +8,7 @@ import { formatNaira } from '@/lib/utils'
 import type { IdentityService, IdentityServiceRequest } from '@/types'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { useIsManualService } from '@/lib/manualServices'
+import { verifyStatus } from '@/lib/verificationApi'
 
 export default function ServiceRequestFormPage() {
   const navigate = useNavigate()
@@ -69,6 +70,17 @@ export default function ServiceRequestFormPage() {
     }
   }, [serviceId, service, customerId, navigate])
 
+  // NIN / BVN verification: once a director switches the Techhub version on, the old
+  // Youverify form is replaced by the new lookup screens. While it is off (the default)
+  // this does nothing and the existing form below keeps working exactly as before.
+  const verifyKind = service?.code === 'nin_verification' ? 'nin' : service?.code === 'bvn_verification' ? 'bvn' : null
+  const verifyQuery = useQuery({ queryKey: ['verify-status'], queryFn: verifyStatus, enabled: Boolean(verifyKind), staleTime: 30_000 })
+  useEffect(() => {
+    if (verifyKind && verifyQuery.data?.enabled) {
+      navigate(customerId ? `/officer/customers/${customerId}/verify/${verifyKind}` : `/customer/verify/${verifyKind}`, { replace: true })
+    }
+  }, [verifyKind, verifyQuery.data?.enabled, customerId, navigate])
+
   const submitMutation = useMutation({
     mutationFn: async () => {
       const payloadData = {
@@ -97,7 +109,8 @@ export default function ServiceRequestFormPage() {
 
   const isRedirecting =
     Boolean(serviceId && isManualService(serviceId)) ||
-    Boolean(service && isManualService(service.code))
+    Boolean(service && isManualService(service.code)) ||
+    Boolean(verifyKind && (verifyQuery.isLoading || verifyQuery.data?.enabled))
 
   if (isRedirecting) {
     return (
