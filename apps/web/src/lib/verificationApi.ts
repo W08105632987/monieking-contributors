@@ -13,8 +13,6 @@ export const createLookup = async (
 
 export const getLookup = async (id: string) => (await api.get<Lookup>(`/verifications/lookups/${id}`)).data
 
-export const listLookups = async (kind: VerifyKind, customerId?: string) =>
-  (await api.get<Lookup[]>('/verifications/lookups', { params: { kind, ...(customerId ? { customer_id: customerId } : {}) } })).data
 
 export const buySlip = async (id: string, tier: SlipTier) =>
   (await api.post<{ tier: SlipTier; already_owned: boolean; price_kobo: number }>(`/verifications/lookups/${id}/slips`, { tier }, LONG)).data

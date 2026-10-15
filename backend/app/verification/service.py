@@ -28,6 +28,7 @@ from app.utils.audit import log_action
 from app.verification import breaker as B
 from app.verification import constants as C
 from app.verification import crypto
+from app.verification import extract as X
 from app.verification import settings as S
 from app.verification.models import VerificationLookup, VerificationServiceState, VerificationSlip
 from app.verification.normalize import InputError, mask_id, mask_name, normalize_inputs
@@ -169,7 +170,7 @@ def lookup_summary_view(row: VerificationLookup) -> dict:
     return {
         "id": str(row.id), "kind": row.kind, "method": row.method, "status": row.status,
         "failure_reason": row.failure_reason, "fee_kobo": row.fee_kobo,
-        "summary": row.summary or {}, "created_at": row.created_at.isoformat() if row.created_at else None,
+        "summary": {k: v for k, v in (row.summary or {}).items() if k != "diag"}, "created_at": row.created_at.isoformat() if row.created_at else None,
         "expires_at": row.expires_at.isoformat() if row.expires_at else None,
         "expired": _expired(row), "by_officer": row.officer_id is not None,
     }
@@ -297,12 +298,25 @@ async def create_lookup(db: AsyncSession, *, actor: User, customer_id: uuid.UUID
         await db.commit()
         return await lookup_full_view(db, row)
 
+    id_key = "nin" if kind == "nin" else "bvn"
+    person = X.complete(result.user_data, result.pdf, id_key=id_key, requested_id=str(normalized.get(id_key) or ""))
+    if not X.has_identity(person):
+        # Techhub answered "success" but nothing we can read as a person. Never charge for that,
+        # and log key NAMES only so the field mapping can be corrected without seeing any data.
+        names = X.key_names(result.user_data)
+        logger.warning("verification unreadable result kind=%s method=%s keys=%s pdf=%s", kind, method, names, bool(result.pdf))
+        await record_outcome(db, kind, ok=False, reason="unreadable_result")
+        row = await db.get(VerificationLookup, row.id)
+        row.status, row.completed_at = "failed", _now()
+        row.failure_reason = UNAVAILABLE_MSG
+        row.summary = {"method": method, "diag": {"keys": names, "had_pdf": bool(result.pdf)}}
+        await db.commit()
+        return await lookup_full_view(db, row)
     await record_outcome(db, kind, ok=True)
     row = await db.get(VerificationLookup, row.id)
-
-    photo = await asyncio.to_thread(extract_portrait, result.pdf)
-    id_key = "nin" if kind == "nin" else "bvn"
-    ident = str(result.user_data.get(id_key) or normalized.get(id_key) or "")
+    result.user_data = person
+    photo = X.photo_from_data(result.user_data) or await asyncio.to_thread(extract_portrait, result.pdf)
+    ident = str(person.get(id_key) or "")
     reference = f"VF-{row.id.hex}"
     wallet = await get_or_create_wallet(db, customer_id)
     try:
@@ -448,7 +462,7 @@ async def list_lookups(db: AsyncSession, *, actor: User, customer_id: uuid.UUID 
     q = select(VerificationLookup).where(VerificationLookup.customer_id == target)
     if kind in C.KINDS:
         q = q.where(VerificationLookup.kind == kind)
-    q = q.where(VerificationLookup.status.in_(("found", "not_found"))).order_by(VerificationLookup.created_at.desc()).limit(limit)
+    q = q.where(VerificationLookup.status != "pending").order_by(VerificationLookup.created_at.desc()).limit(limit)
     return [lookup_summary_view(r) for r in (await db.execute(q)).scalars().all()]
 
 

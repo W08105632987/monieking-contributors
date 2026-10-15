@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Eye, EyeOff, FileDown, ExternalLink, BadgeCheck } from 'lucide-react'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 import { formatDateTime } from '@/lib/utils'
 import { DISCLAIMER, initialsOf, maskId, type Lookup, type VerifyKind } from '@/lib/verification'
 
@@ -30,7 +31,7 @@ export function ResultSheet({ lookup, kind, ninAuthUrl, busy, onDownloadSheet, o
     <div>
       <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4">
         <div className="flex items-center justify-between mb-3">
-          <img src="/brand/logo.png" alt="MonieKing" className="h-7 w-auto" />
+          <BrandBlobLogo height={44} />
           <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
             <BadgeCheck className="w-4 h-4" /> Verified
           </span>
