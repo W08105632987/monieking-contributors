@@ -10,7 +10,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
-from reportlab.platypus import HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Flowable, HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.verification.normalize import mask_id
 
@@ -18,6 +18,39 @@ _NAVY = colors.HexColor("#12233d")
 _GREY = colors.HexColor("#5a5a5a")
 _LIGHT = colors.HexColor("#f4f1ea")
 _LOGO = Path(__file__).parent / "assets" / "logo.png"
+
+_GREEN = colors.HexColor("#0a5c2e")
+_GREEN_DARK = colors.HexColor("#063d1e")
+
+
+class BlobLogo(Flowable):
+    """Logo on a green organic blob. The logo artwork is light-coloured and
+    disappears on white paper, so it always sits on the brand green."""
+
+    def __init__(self, logo_path: str, width: float):
+        super().__init__()
+        w, h = ImageReader(logo_path).getSize()
+        self.path, self.lw, self.lh = logo_path, width, width * h / w
+        self.width, self.height = width * 1.5, self.lh * 2.0
+        self.hAlign = "LEFT"
+
+    def wrap(self, *_):
+        return self.width, self.height
+
+    def draw(self):
+        c, W, H = self.canv, self.width, self.height
+        c.saveState()
+        path = c.beginPath()
+        path.roundRect(0, 0, W, H, H * 0.45)
+        c.clipPath(path, stroke=0, fill=0)
+        c.setFillColor(_GREEN_DARK)
+        c.rect(0, 0, W, H, stroke=0, fill=1)
+        c.setFillColor(_GREEN)
+        for cx, cy, r in ((0.12, 0.62, 0.34), (0.42, 0.85, 0.3), (0.78, 0.7, 0.36), (0.9, 0.3, 0.28), (0.3, 0.2, 0.3)):
+            c.circle(W * cx, H * cy, H * r, stroke=0, fill=1)
+        c.restoreState()
+        c.drawImage(self.path, (W - self.lw) / 2, (H - self.lh) / 2, width=self.lw, height=self.lh, mask="auto")
+
 
 DISCLAIMERS = {
     "nin": "This is a MonieKing verification sheet. It is not an official NIMC document.",
@@ -34,8 +67,8 @@ def full_name(data: dict) -> str:
 def build_sheet_pdf(*, kind: str, data: dict, photo_jpeg: bytes | None, reference: str,
                     verified_at: datetime, reveal_id: bool = False) -> bytes:
     st = getSampleStyleSheet()
-    st.add(ParagraphStyle(name="T", fontName="Helvetica-Bold", fontSize=17, textColor=_NAVY, spaceAfter=2))
-    st.add(ParagraphStyle(name="S", fontName="Helvetica", fontSize=9.5, textColor=_GREY, spaceAfter=8))
+    st.add(ParagraphStyle(name="T", fontName="Helvetica-Bold", fontSize=17, leading=22, textColor=_NAVY, spaceAfter=2))
+    st.add(ParagraphStyle(name="S", fontName="Helvetica", fontSize=9.5, leading=12, textColor=_GREY, spaceAfter=8))
     st.add(ParagraphStyle(name="C", fontName="Helvetica", fontSize=10, leading=13))
     st.add(ParagraphStyle(name="CB", fontName="Helvetica-Bold", fontSize=9.5, leading=13, textColor=_GREY))
     st.add(ParagraphStyle(name="N", fontName="Helvetica-Bold", fontSize=15, textColor=_NAVY, leading=18))
@@ -51,9 +84,8 @@ def build_sheet_pdf(*, kind: str, data: dict, photo_jpeg: bytes | None, referenc
 
     story = []
     if _LOGO.exists():
-        w, h = ImageReader(str(_LOGO)).getSize()
-        story.append(Image(str(_LOGO), width=4.2 * cm, height=4.2 * cm * h / w))
-        story.append(Spacer(1, 6))
+        story.append(BlobLogo(str(_LOGO), 4.2 * cm))
+        story.append(Spacer(1, 14))
     story.append(Paragraph(TITLES[kind], st["T"]))
     story.append(Paragraph(DISCLAIMERS[kind], st["S"]))
     story.append(HRFlowable(width="100%", thickness=0.8, color=_NAVY, spaceAfter=10))

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ChevronRight, ShieldCheck, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getErrorMessage } from '@/lib/api'
-import { formatNaira, formatDateTime } from '@/lib/utils'
+import { formatNaira } from '@/lib/utils'
 import { useWalletStore } from '@/store/wallet.store'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { ResultSheet } from '@/components/verification/ResultSheet'
@@ -14,7 +14,7 @@ import {
   slipOptions, validateFields, type Lookup, type MethodDef, type SlipOption, type SlipTier, type VerifyMethod,
 } from '@/lib/verification'
 import {
-  buySlip, createLookup, downloadSheet, downloadSlip, getLookup, listLookups, verifyStatus,
+  buySlip, createLookup, downloadSheet, downloadSlip, getLookup, verifyStatus,
 } from '@/lib/verificationApi'
 
 const inputCls =
@@ -37,7 +37,6 @@ export default function VerifyLookupPage() {
 
   const balance = useWalletStore(s => s.wallet?.balance_kobo)
   const status = useQuery({ queryKey: ['verify-status'], queryFn: verifyStatus, refetchInterval: 30_000 })
-  const recent = useQuery({ queryKey: ['verify-recent', kind, customerId ?? 'me'], queryFn: () => listLookups(kind, customerId) })
 
   const defs = METHODS[kind]
   const [method, setMethod] = useState<VerifyMethod | null>(defs.length === 1 ? defs[0].id : null)
@@ -94,7 +93,7 @@ export default function VerifyLookupPage() {
       if (l.status === 'pending') l = await pollUntilDone(l.id)
       requestId.current = newRequestId()      // a response arrived: the next tap is a new check
       setResult(l)
-      qc.invalidateQueries({ queryKey: ['verify-recent'] })
+      qc.invalidateQueries({ queryKey: ['service-history'] })
       qc.invalidateQueries({ queryKey: ['wallet'] })
       qc.invalidateQueries({ queryKey: ['verify-status'] })
     } catch (e: unknown) {
@@ -121,6 +120,7 @@ export default function VerifyLookupPage() {
       await downloadSlip(shown.id, o.tier)
       setSlipOpen(false)
       qc.invalidateQueries({ queryKey: ['wallet'] })
+      qc.invalidateQueries({ queryKey: ['service-history'] })
       qc.invalidateQueries({ queryKey: ['verify-lookup', shown.id] })
       if (result) setResult({ ...result, slips: Array.from(new Set([...(result.slips ?? []), o.tier])) })
     } catch (e) {
@@ -296,37 +296,6 @@ export default function VerifyLookupPage() {
             </button>
             {!submitting && problem && Object.keys(values).length > 0 && <p className="text-red-500 text-xs mt-2">{problem}</p>}
           </>
-        )}
-
-        {/* ───────── Recent (masked) ───────── */}
-        {!shown && (recent.data?.length ?? 0) > 0 && (
-          <div className="mt-8">
-            <p className={`${labelCls} mb-2`}>Recent checks</p>
-            <div className="space-y-2">
-              {recent.data!.map(r => {
-                const open = r.status === 'found' && !r.expired
-                return (
-                  <button
-                    key={r.id}
-                    disabled={!open}
-                    onClick={() => navigate(`${base}/${r.id}`)}
-                    className="w-full flex items-center justify-between bg-white dark:bg-night-700 rounded-xl border border-green-100 dark:border-night-500 px-4 py-3 text-left disabled:opacity-70"
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-green-900 dark:text-white text-sm font-semibold truncate">
-                        {r.status === 'found' ? `${r.summary.name ?? ''} · ${r.summary.id_masked ?? ''}` : 'No record found'}
-                      </span>
-                      <span className="block text-green-500 dark:text-night-300 text-xs">
-                        {formatDateTime(r.created_at)}{r.by_officer ? ' · by officer' : ''}
-                        {r.status === 'found' && r.expired ? ' · expired' : ''}
-                      </span>
-                    </span>
-                    {open && <ChevronRight className="w-4 h-4 text-green-400 flex-shrink-0" />}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
         )}
       </div>
 
