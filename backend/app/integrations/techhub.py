@@ -74,7 +74,7 @@ class TechhubNotFound(TechhubError):
 @dataclass
 class TechhubResult:
     user_data: dict
-    pdf: bytes
+    pdf: bytes   # b"" when Techhub sent no usable PDF
 
 
 def _looks_like_balance(message: str) -> bool:
@@ -82,8 +82,79 @@ def _looks_like_balance(message: str) -> bool:
     return "balance" in m or "insufficient" in m or "fund" in m
 
 
+# Field-name variants seen across providers; we always hand the rest of the app the
+# canonical names the docs use (first_name, last_name, ...).
+_ALIASES = {
+    "first_name": ("first_name", "firstname", "firstName", "first"),
+    "last_name": ("last_name", "lastname", "lastName", "surname"),
+    "middle_name": ("middle_name", "middlename", "middleName", "othername", "other_name"),
+    "gender": ("gender", "sex"),
+    "date_of_birth": ("date_of_birth", "dateOfBirth", "dob", "birthdate", "birth_date"),
+    "phone_number": ("phone_number", "phoneNumber", "phone", "telephoneno", "mobile"),
+    "address": ("address", "residence_address", "residenceAddress"),
+    "nin": ("nin", "NIN"),
+    "bvn": ("bvn", "BVN"),
+}
+_SUCCESS_WORDS = {"success", "successful", "ok", "true", "00", "0", "200"}
+_FAIL_WORDS = {"error", "failed", "fail", "false"}
+
+
+def canonical_user_data(data: dict) -> dict:
+    out = dict(data)
+    for canon, names in _ALIASES.items():
+        if out.get(canon) not in (None, ""):
+            continue
+        for n in names:
+            v = data.get(n)
+            if v not in (None, ""):
+                out[canon] = v
+                break
+    return out
+
+
+def _decode_pdf(value) -> bytes:
+    """Base64 PDF, tolerating a data-URI prefix, whitespace and stray bytes before %PDF.
+    Returns b"" when there is no usable PDF."""
+    if not isinstance(value, str) or not value:
+        return b""
+    if "base64," in value[:80]:
+        value = value.split("base64,", 1)[1]
+    try:
+        raw = base64.b64decode("".join(value.split()), validate=False)
+    except Exception:
+        return b""
+    i = raw.find(b"%PDF")
+    return raw[i:] if 0 <= i < 1024 else b""
+
+
+def _safe_text(v, n: int = 60) -> str:
+    """Short, digit-free rendering of a scalar for diagnostics (never person data)."""
+    import re
+    return re.sub(r"\d", "#", str(v))[:n]
+
+
+def describe_shape(status_code: int, body) -> str:
+    """Names and types only, plus short status words. Never values of user_data."""
+    if not isinstance(body, dict):
+        return f"http={status_code} body={type(body).__name__}"
+    ud = body.get("user_data") if isinstance(body.get("user_data"), dict) else body.get("data")
+    return (
+        f"http={status_code} keys={sorted(body.keys())} "
+        f"status={_safe_text(body.get('status'))!r} code={_safe_text(body.get('response_code'))!r} "
+        f"success={_safe_text(body.get('success'))!r} err={_safe_text(body.get('error_code'))!r} "
+        f"msg={_safe_text(body.get('message'), 80)!r} "
+        f"data_keys={sorted(ud.keys()) if isinstance(ud, dict) else None} "
+        f"pdf_len={len(body.get('pdf_base64') or '') if isinstance(body.get('pdf_base64'), str) else None}"
+    )
+
+
 def interpret(status_code: int, body) -> TechhubResult:
-    """Map an HTTP status + parsed JSON body to a result or a typed error."""
+    """Map an HTTP status + parsed JSON body to a result or a typed error.
+
+    Success means: a 2xx answer that carries the person's data and does not say
+    it failed. The PDF is a bonus: if it is missing or unreadable the person's
+    details are still delivered (we have already paid for the lookup) and only
+    the Techhub slip for that tier is unavailable."""
     if status_code == 429:
         raise TechhubBusy()
     if status_code in (401,):
@@ -97,24 +168,17 @@ def interpret(status_code: int, body) -> TechhubResult:
         raise TechhubUnavailable("bad_response")
 
     code = str(body.get("response_code") or "")
-    status = str(body.get("status") or "").lower()
+    status = str(body.get("status") if body.get("status") is not None else "").lower()
+    flag = body.get("success")
     message = str(body.get("message") or "")
 
-    if status_code == 200 and status == "success" and code in ("00", ""):
-        data = body.get("user_data")
-        b64 = body.get("pdf_base64")
-        if not isinstance(data, dict) or not data:
-            raise TechhubUnavailable("bad_response")
-        pdf = b""
-        if isinstance(b64, str) and b64:
-            try:
-                pdf = base64.b64decode(b64, validate=False)
-            except Exception:
-                raise TechhubUnavailable("bad_response")
-        if not pdf.startswith(b"%PDF"):
-            # Person data without a usable PDF is not a delivered product.
-            raise TechhubUnavailable("no_pdf")
-        return TechhubResult(user_data=data, pdf=pdf)
+    data = body.get("user_data")
+    if not (isinstance(data, dict) and data):
+        data = body.get("data")
+    said_failure = (status in _FAIL_WORDS) or (flag is False) or code in ("01", "02")
+    if 200 <= status_code < 300 and isinstance(data, dict) and data and not said_failure:
+        pdf = _decode_pdf(body.get("pdf_base64") or body.get("pdf"))
+        return TechhubResult(user_data=canonical_user_data(data), pdf=pdf)
 
     if code == "02" or (status_code == 400 and "not found" in message.lower() and "record" in message.lower()):
         raise TechhubNotFound()
@@ -122,6 +186,8 @@ def interpret(status_code: int, body) -> TechhubResult:
         raise TechhubInvalidInput()
     if status_code == 400 and _looks_like_balance(message):
         raise TechhubUnavailable("provider_balance")
+    if 200 <= status_code < 300:
+        raise TechhubUnavailable("unexpected_shape")
     if status_code == 400:
         # Any other 400 we cannot classify is treated as OUR problem, not the
         # customer's: safer to say "unavailable, not charged" than to blame input.
@@ -155,4 +221,7 @@ async def call_techhub(endpoint_file: str, fields: dict) -> TechhubResult:
         return interpret(resp.status_code, body)
     except TechhubError as e:
         logger.warning("techhub endpoint=%s http=%s outcome=%s", endpoint_file, resp.status_code, e.reason)
+        if e.reason.startswith("unexpected") or e.reason in ("bad_response", "unclassified_400"):
+            # Structure only (key names, short status words) so a mismatch can be diagnosed from logs.
+            logger.warning("techhub shape endpoint=%s %s", endpoint_file, describe_shape(resp.status_code, body))
         raise

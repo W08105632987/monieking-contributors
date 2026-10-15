@@ -46,16 +46,57 @@ def test_success_returns_data_and_pdf():
     assert r.user_data["first_name"] == "JOHN" and r.pdf.startswith(b"%PDF")
 
 
-def test_success_without_pdf_is_not_a_delivered_product():
-    with pytest.raises(T.TechhubUnavailable):
-        T.interpret(200, {**GOOD, "pdf_base64": ""})
-    with pytest.raises(T.TechhubUnavailable):
-        T.interpret(200, {**GOOD, "pdf_base64": _pdf_b64(b"not a pdf")})
+def test_success_without_pdf_still_delivers_the_person_data():
+    # We already paid for the lookup: the details are delivered, only the Techhub slip is missing.
+    for bad in ("", _pdf_b64(b"not a pdf"), None):
+        r = T.interpret(200, {**GOOD, "pdf_base64": bad})
+        assert r.user_data["first_name"] == "JOHN" and r.pdf == b""
 
 
-def test_success_without_user_data_is_unavailable():
+def test_pdf_with_data_uri_prefix_or_whitespace_is_still_read():
+    raw = _pdf_b64()
+    assert T.interpret(200, {**GOOD, "pdf_base64": "data:application/pdf;base64," + raw}).pdf.startswith(b"%PDF")
+    assert T.interpret(200, {**GOOD, "pdf_base64": raw[:6] + "\n" + raw[6:]}).pdf.startswith(b"%PDF")
+
+
+def test_odd_status_words_with_data_are_still_a_success():
+    for extra in ({"status": "ok"}, {"status": True}, {"status": None, "success": True},
+                  {"response_code": "200"}, {"response_code": 0}, {"status": "SUCCESSFUL", "response_code": "000"}):
+        body = {k: v for k, v in GOOD.items()}
+        body.update(extra)
+        assert T.interpret(200, body).user_data["first_name"] == "JOHN"
+    assert T.interpret(201, GOOD).user_data["first_name"] == "JOHN"
+
+
+def test_data_under_alternate_key_and_field_names_is_normalised():
+    body = {"status": "success", "data": {"NIN": "12345678901", "firstName": "Ada", "surname": "Obi",
+                                          "dateOfBirth": "01-02-1990", "phoneNumber": "0801", "sex": "FEMALE"},
+            "pdf_base64": _pdf_b64()}
+    d = T.interpret(200, body).user_data
+    assert (d["first_name"], d["last_name"], d["date_of_birth"], d["phone_number"], d["gender"], d["nin"]) == (
+        "Ada", "Obi", "01-02-1990", "0801", "FEMALE", "12345678901")
+
+
+def test_explicit_failure_with_data_is_not_a_success():
+    with pytest.raises(T.TechhubError):
+        T.interpret(200, {**GOOD, "status": "error"})
+    with pytest.raises(T.TechhubError):
+        T.interpret(200, {**GOOD, "success": False})
+
+
+def test_200_without_person_data_is_unavailable_with_a_clear_reason():
+    with pytest.raises(T.TechhubUnavailable) as e:
+        T.interpret(200, {"status": "success", "message": "ok"})
+    assert e.value.reason == "unexpected_shape"
     with pytest.raises(T.TechhubUnavailable):
         T.interpret(200, {**GOOD, "user_data": {}})
+
+
+def test_shape_description_never_contains_person_data():
+    body = {**GOOD, "message": "Hello 08012345678", "user_data": {"first_name": "JOHN", "nin": "12345678901"}}
+    d = T.describe_shape(200, body)
+    assert "JOHN" not in d and "12345678901" not in d and "08012345678" not in d
+    assert "first_name" in d and "pdf_len" in d
 
 
 def test_not_found_code_02():
