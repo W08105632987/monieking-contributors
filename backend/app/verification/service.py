@@ -324,7 +324,7 @@ async def create_lookup(db: AsyncSession, *, actor: User, customer_id: uuid.UUID
     row.completed_at = _now()
     row.expires_at = row.completed_at + timedelta(hours=cfg.retention_hours)
     row.result_enc = crypto.encrypt_json(result.user_data)
-    row.pdf_enc = crypto.encrypt_bytes(result.pdf)
+    row.pdf_enc = crypto.encrypt_bytes(result.pdf) if result.pdf else None
     row.photo_enc = crypto.encrypt_bytes(photo) if photo else None
     row.summary = {"method": method, "name": mask_name(full_name(result.user_data)), "id_masked": mask_id(ident)}
     await log_action(db, actor_id=actor.id, action="verification.lookup_completed",
@@ -341,7 +341,7 @@ async def buy_slip(db: AsyncSession, *, actor: User, lookup_id: uuid.UUID, tier:
     row = await get_lookup_for(db, actor, lookup_id, lock=True)
     if tier not in C.TIERS_BY_KIND[row.kind]:
         raise HTTPException(status_code=422, detail="Unknown slip type.")
-    if row.status != "found" or _expired(row) or not row.result_enc or not row.pdf_enc:
+    if row.status != "found" or _expired(row) or not row.result_enc:
         raise HTTPException(status_code=410, detail="This result has expired. Please run the check again.")
 
     have = (await db.execute(select(VerificationSlip).where(
@@ -358,7 +358,7 @@ async def buy_slip(db: AsyncSession, *, actor: User, lookup_id: uuid.UUID, tier:
         raise HTTPException(status_code=400, detail=f"Insufficient wallet balance. Available: ₦{wallet.balance_kobo // 100:,}")
 
     pdf_enc = None
-    if tier != row.tier_used:
+    if tier != row.tier_used or not row.pdf_enc:
         if not crypto.is_configured():
             raise HTTPException(status_code=503, detail=UNAVAILABLE_MSG)
         st = await _state_row(db, row.kind)
@@ -378,6 +378,8 @@ async def buy_slip(db: AsyncSession, *, actor: User, lookup_id: uuid.UUID, tier:
             raise HTTPException(status_code=503 if e.counts_as_failure else 422, detail=e.user_message)
         await record_outcome(db, row.kind, ok=True)
         row = await get_lookup_for(db, actor, lookup_id, lock=True)
+        if not res.pdf:
+            raise HTTPException(status_code=503, detail="This slip couldn't be prepared right now. You have not been charged.")
         pdf_enc = crypto.encrypt_bytes(res.pdf)
 
     # record_outcome() commits (and so releases the lock) — re-check ownership
