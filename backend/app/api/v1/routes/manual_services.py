@@ -461,7 +461,12 @@ async def get_my_request(
     if not (is_owner or is_submitter_officer or is_director):
         raise HTTPException(status_code=403, detail="Access denied.")
 
-    return _serialize(req)
+    out = _serialize(req)
+    from app.models.wallet import WalletTransaction
+    from app.services.refund_service import refund_reference
+    out["refunded_kobo"] = await db.scalar(
+        select(WalletTransaction.amount_kobo).where(WalletTransaction.reference == refund_reference(req.id))) or 0
+    return out
 
 
 @router.get("/officer-requests")

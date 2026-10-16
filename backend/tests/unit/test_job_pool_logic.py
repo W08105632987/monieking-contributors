@@ -221,3 +221,26 @@ def test_sla_reclaim_condition():
     assert expires_at <= now
 
 
+
+
+# ── Phase 7: refund rules ─────────────────────────────────────────────────────
+def test_refund_amount_rules():
+    from app.services.refund_rules import amount_to_refund, naira, refund_reference
+    assert amount_to_refund([500_000], False) == 500_000
+    assert amount_to_refund([300_000, 200_000], False) == 500_000
+    assert amount_to_refund([500_000], True) == 0          # already refunded: never twice
+    assert amount_to_refund([], False) == 0                # nothing was charged
+    assert amount_to_refund([0, -5], False) == 0
+    jid = uuid.UUID(int=7)
+    assert refund_reference(jid) == f"RF-{jid.hex}" and len(refund_reference(jid)) <= 100
+    assert naira(500_000) == "₦5,000" and naira(150) == "₦1.50"
+
+
+def test_history_shows_refunded_manual_job():
+    from types import SimpleNamespace as NS
+    from app.history.feed import manual_item
+    job = NS(id="m", status="failed", price_kobo=500_000, created_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+             worker_remarks="photo blurry", service_type="x", service_category="y")
+    assert manual_item(job, "X", 500_000)["status"] == "reversed"
+    old = manual_item(job, "X", 0)
+    assert old["status"] == "failed" and old["amount_kobo"] == 500_000

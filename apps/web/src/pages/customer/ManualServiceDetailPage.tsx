@@ -27,6 +27,7 @@ interface ServiceRequestDetail {
   expires_at?: string | null
   completed_at?: string | null
   created_at: string
+  refunded_kobo?: number
 }
 
 export default function ManualServiceDetailPage() {
@@ -267,6 +268,11 @@ export default function ManualServiceDetailPage() {
                     ? 'Marked as Failed'
                     : 'Resolution Pending'}
                 </p>
+                {request.status === 'failed' && (request.refunded_kobo ?? 0) > 0 && (
+                  <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                    {formatNaira(request.refunded_kobo!)} refunded to your wallet
+                  </p>
+                )}
                 <p className="text-[10px] text-green-600 dark:text-night-400">
                   {request.completed_at
                     ? formatDateTime(request.completed_at)

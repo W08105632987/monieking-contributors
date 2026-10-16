@@ -29,7 +29,16 @@ async def build_feed(db: AsyncSession, *, actor_id: uuid.UUID, is_officer: bool,
     manual = (await db.execute(
         select(ManualServiceRequest).where(ManualServiceRequest.user_id == customer_id)
         .order_by(ManualServiceRequest.created_at.desc()).limit(limit))).scalars().all()
-    items += [manual_item(r, _manual_title(r)) for r in manual]
+    refunds = {}
+    failed_ids = [r.id for r in manual if _v(r.status) == "failed"]
+    if failed_ids:
+        from app.models.wallet import WalletTransaction
+        from app.services.refund_service import refund_reference
+        refs = {refund_reference(i): i for i in failed_ids}
+        refunds = {refs[ref]: amt for ref, amt in (await db.execute(
+            select(WalletTransaction.reference, WalletTransaction.amount_kobo)
+            .where(WalletTransaction.reference.in_(list(refs))))).all()}
+    items += [manual_item(r, _manual_title(r), refunds.get(r.id, 0)) for r in manual]
 
     bills = (await db.execute(
         select(BillPaymentRequest, Biller.name, Biller.product_name)

@@ -270,6 +270,9 @@ async def resolve_job(
     else:
         raise ValueError("Invalid worker status. Must be 'successful' or 'failed'.")
 
+    if final_status == ManualServiceStatus.FAILED and len((worker_remarks or worker_response or "").strip()) < 5:
+        raise ValueError("Please write the reason this service could not be completed. The customer is refunded in full.")
+
     commission_kobo = 0
     if final_status == ManualServiceStatus.SUCCESSFUL and job.price_kobo > 0:
         pct = await _get_commission_percent(db)
@@ -285,6 +288,12 @@ async def resolve_job(
     job.worker_commission_kobo = commission_kobo
     job.commission_status     = CommissionStatus.CLEARED if commission_kobo > 0 else CommissionStatus.CLEARED
     job.completed_at          = now
+
+    # A failure refunds the customer in full, in this same transaction, and pays no commission.
+    refunded_kobo = 0
+    if final_status == ManualServiceStatus.FAILED:
+        from app.services.refund_service import refund_manual_job
+        refunded_kobo = await refund_manual_job(db, job, actor_id=worker_id, why="worker marked failed")
 
     # Credit commission to worker balance (offsetting active debt first per 4.4.5)
     if commission_kobo > 0:
@@ -307,6 +316,7 @@ async def resolve_job(
         details={
             "status": final_status.value,
             "commission_kobo": commission_kobo,
+            "refund_kobo": refunded_kobo,
             "resolved_at": now.isoformat(),
         },
     )
@@ -316,6 +326,9 @@ async def resolve_job(
     category_title = job.service_category.replace("_", " ").title()
     outcome_label = "successfully completed" if final_status == ManualServiceStatus.SUCCESSFUL else "marked as failed"
     remarks_snippet = f" Remarks: {worker_remarks}" if worker_remarks else ""
+    if refunded_kobo:
+        from app.services.refund_service import naira
+        remarks_snippet += f" {naira(refunded_kobo)} has been returned to your wallet."
     await send_notification(
         db,
         user_id=job.user_id,

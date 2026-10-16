@@ -19,7 +19,7 @@ celery_app = Celery(
     "monieking",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge"],
+    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry"],
 )
 
 celery_app.conf.update(
@@ -56,5 +56,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.verification_purge.purge_expired_verifications",
         # Hourly: wipes stored NIN/BVN results past their retention window.
         "schedule": crontab(minute=7),
+    },
+    "expire-unclaimed-manual-jobs": {
+        "task": "app.tasks.job_expiry.expire_unclaimed_jobs",
+        # Every 30 minutes: fail + refund manual jobs nobody claimed within the director-set days.
+        "schedule": crontab(minute="*/30"),
     },
 }
