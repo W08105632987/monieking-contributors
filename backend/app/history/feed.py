@@ -24,13 +24,16 @@ def identity_item(req, name: str, category) -> dict:
     }
 
 
-def manual_item(req, title: str) -> dict:
+def manual_item(req, title: str, refunded_kobo: int = 0) -> dict:
     status = {"successful": "completed", "failed": "failed"}.get(_v(req.status), "pending")
+    if status == "failed" and refunded_kobo > 0:
+        status = "reversed"      # shown to the customer as "Refunded"
     return {
         "key": f"manual:{req.id}", "source": "manual", "id": str(req.id), "title": title,
         "category": "manual", "status": status, "amount_kobo": req.price_kobo or 0,
         "created_at": _iso(req.created_at),
-        "detail": (req.worker_remarks if status == "failed" else None),
+        "detail": (req.worker_remarks if status in ("failed", "reversed") else None),
+        "refunded_kobo": refunded_kobo,
     }
 
 
