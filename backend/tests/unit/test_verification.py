@@ -407,3 +407,38 @@ def test_sheet_reveal_shows_full_id():
     from pypdf import PdfReader
     pdf = build_sheet_pdf(kind="nin", data=DATA, photo_jpeg=None, reference="r", verified_at=NOW, reveal_id=True)
     assert "12345678901" in PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
+
+
+# ── Phase 6d: slip replies ────────────────────────────────────────────────
+_PDF = base64.b64encode(b"%PDF-1.4 " + b"x" * 300).decode()
+
+
+def test_slip_reply_with_only_a_pdf_is_accepted():
+    r = T.interpret(200, {"status": "success", "pdf_base64": _PDF}, "slip")
+    assert r.pdf.startswith(b"%PDF") and r.user_data == {}
+
+
+def test_slip_pdf_under_any_key_or_nesting():
+    r = T.interpret(200, {"result": {"slip": {"document": _PDF}}}, "slip")
+    assert r.pdf.startswith(b"%PDF")
+
+
+def test_slip_reply_without_a_pdf_is_a_clear_no_pdf_failure():
+    with pytest.raises(T.TechhubUnavailable) as e:
+        T.interpret(200, {"status": "success", "message": "done"}, "slip")
+    assert e.value.reason == "no_pdf"
+
+
+def test_slip_that_says_failure_is_not_accepted_even_with_pdf():
+    with pytest.raises(T.TechhubError):
+        T.interpret(200, {"status": "error", "pdf_base64": _PDF}, "slip")
+
+
+def test_person_lookup_still_requires_person_data():
+    with pytest.raises(T.TechhubUnavailable):
+        T.interpret(200, {"status": "success", "pdf_base64": _PDF})
+
+
+def test_shape_description_has_key_names_but_no_values():
+    d = T.describe_shape(200, {"status": "success", "result": {"slip": {"document": _PDF}, "name": "SECRETNAME"}})
+    assert "result.slip.document" in d and "SECRETNAME" not in d and "pdf_found=True" in d

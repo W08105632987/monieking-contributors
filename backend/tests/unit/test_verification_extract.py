@@ -105,3 +105,4 @@ def test_manual_bill_identity_mapping_and_merge():
     assert ident["status"] == "reversed" and ident["category"] == "bvn"
     items = [dict(man, created_at="2026-10-01"), dict(bill, created_at="2026-10-03"), dict(ident, created_at="2026-10-02")]
     assert [i["source"] for i in H.merge(items, 2)] == ["bill", "identity"]
+
