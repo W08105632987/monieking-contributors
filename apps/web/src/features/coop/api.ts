@@ -8,7 +8,7 @@ export interface PublicRules {
   loan_term_months: number; loan_max_active: number; cover_pct: number; guarantee_min_kobo: number
   guarantee_max_kobo: number; guarantee_max_active: number; guarantee_min_commit_pct: number
   guarantor_min_funds_pct: number; loan_max_guarantors: number; loan_request_expiry_days: number
-  invite_expiry_hours: number; overdue_daily_bps: number; overdue_cap_pct: number; early_withdrawal_bps: number
+  invite_expiry_hours: number; overdue_daily_bps: number; overdue_cap_pct: number; early_withdrawal_bps: number; membership_fee_kobo: number
   running_cost_bps: number; dividend_contribution_pct: number; dividend_guarantee_pct: number
   dividend_min_balance_kobo: number; dividend_min_months: number; approvals_loan: number
   loan_first_limit_kobo: number; loan_cooling_days: number; year_end_month: number; year_end_day: number

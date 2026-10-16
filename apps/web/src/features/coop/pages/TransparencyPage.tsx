@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Info } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
 import { useTransparency } from '../api'
+import { bucketSeries } from '../chart'
 import { Bar, Card, CoopPage, SectionTitle, Skel, Stat, compactNaira, dDay, dShort, inputCls, pctText } from '../ui'
 
 const RANGES = [['7d', '7 days'], ['30d', '30 days'], ['year', 'This year'], ['custom', 'Custom']] as const
@@ -12,11 +13,12 @@ export default function TransparencyPage() {
   const [end, setEnd] = useState('')
   const [pick, setPick] = useState<number | null>(null)
   const { data: t, isFetching, error } = useTransparency(range, start || undefined, end || undefined)
-  const max = useMemo(() => Math.max(1, ...(t?.series.map((d) => d.contributed_kobo) ?? [1])), [t])
+  const bars = useMemo(() => bucketSeries(t?.series ?? []), [t])
+  const max = useMemo(() => Math.max(1, ...bars.map((d) => d.contributed_kobo)), [bars])
   const p = t?.profit
-  const shown = pick !== null ? t?.series[pick] : null
-  const bars = t?.series ?? []
-  const dense = bars.length > 45
+  const shown = pick !== null ? bars[pick] : null
+  const grouped = bars.some((b) => b.days > 1)
+  const dense = bars.length > 20
 
   return (
     <CoopPage title="Transparency" subtitle="What the cooperative holds, every day" back="/coop">
@@ -41,10 +43,10 @@ export default function TransparencyPage() {
               <Stat label="Contributed in this period" value={formatNaira(t.range_totals.contributed_kobo)} sub={`${dShort(t.range.start)} to ${dShort(t.range.end)}`} />
               {isFetching && <span className="h-4 w-4 animate-spin rounded-full border-2 border-green-500 border-t-transparent" />}
             </div>
-            <div className="mt-4 flex h-32 items-end gap-[3px]" role="img" aria-label="Daily contributions">
+            <div className="mt-4 flex h-32 w-full items-end gap-[2px] overflow-hidden" role="img" aria-label={grouped ? 'Contributions grouped by period' : 'Daily contributions'}>
               {bars.map((d, i) => (
-                <button key={d.date} onClick={() => setPick(pick === i ? null : i)} aria-label={`${dDay(d.date)}: ${formatNaira(d.contributed_kobo)}`}
-                  className={`min-w-[2px] flex-1 rounded-t ${pick === i ? 'bg-amber-400' : 'bg-green-500 dark:bg-green-400'}`}
+                <button key={d.start} onClick={() => setPick(pick === i ? null : i)} aria-label={`${dDay(d.start)}${d.days > 1 ? ` to ${dDay(d.end)}` : ''}: ${formatNaira(d.contributed_kobo)}`}
+                  className={`min-w-0 flex-1 rounded-t ${pick === i ? 'bg-amber-400' : 'bg-green-500 dark:bg-green-400'}`}
                   style={{ height: `${Math.max(d.contributed_kobo ? 4 : 1, (d.contributed_kobo / max) * 100)}%`, opacity: d.contributed_kobo ? 1 : 0.25 }} />
               ))}
             </div>
@@ -52,7 +54,7 @@ export default function TransparencyPage() {
               <span>{dDay(t.range.start)}</span>{!dense && <span>{compactNaira(max)} peak</span>}<span>{dDay(t.range.end)}</span>
             </div>
             <p className="mt-2 min-h-[1.25rem] text-sm font-semibold text-green-800 dark:text-night-100">
-              {shown ? `${dShort(shown.date)}: ${formatNaira(shown.contributed_kobo)} in${shown.withdrawn_kobo ? `, ${formatNaira(shown.withdrawn_kobo)} out` : ''}` : 'Tap a bar to see that day.'}
+              {shown ? `${shown.days > 1 ? `${dShort(shown.start)} to ${dShort(shown.end)}` : dShort(shown.start)}: ${formatNaira(shown.contributed_kobo)} in${shown.withdrawn_kobo ? `, ${formatNaira(shown.withdrawn_kobo)} out` : ''}` : grouped ? 'Each bar groups several days. Tap a bar to see its dates.' : 'Tap a bar to see that day.'}
             </p>
           </Card>
 

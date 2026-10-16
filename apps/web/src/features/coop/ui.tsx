@@ -1,8 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, FlaskConical, X } from 'lucide-react'
+import { ArrowLeft, Bell, FlaskConical, Home, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Avatar } from '@/components/ui/Avatar'
+import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { useAuthStore } from '@/store/auth.store'
+import { useNotificationsStore } from '@/store/notifications.store'
+import { mainHomePath, notificationsPath, profilePath } from './nav'
 
 export const pctText = (bps: number) => `${+(bps / 100).toFixed(2)}%`
 export const dShort = (iso: string) =>
@@ -26,13 +31,50 @@ export function TestBanner({ className }: { className?: string }) {
   )
 }
 
+/**
+ * The same top bar the rest of MonieKing uses (logo, notifications, profile picture),
+ * plus a Home button that leaves the cooperative and returns to the main app.
+ * Every cooperative page is built on CoopPage, so this appears on all of them.
+ */
+export function CoopBrandBar() {
+  const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
+  const unread = useNotificationsStore((s) => s.unreadCount)
+  return (
+    <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-3">
+      <BrandBlobLogo height={34} onClick={() => navigate(mainHomePath(user?.role))} />
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={() => navigate(mainHomePath(user?.role))}
+          className="flex h-9 items-center gap-1.5 rounded-full border border-green-200 bg-white px-3 text-xs font-extrabold text-green-800 shadow-card active:scale-95 transition-transform dark:border-night-400 dark:bg-night-700 dark:text-night-100"
+          aria-label="Back to MonieKing home"
+        >
+          <Home className="h-4 w-4" /> Home
+        </button>
+        <button onClick={() => navigate(notificationsPath(user?.role))} className="relative flex h-9 w-9 items-center justify-center" aria-label="Notifications">
+          <Bell className="h-5 w-5 text-green-800 dark:text-white" />
+          {unread > 0 && (
+            <span className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold leading-none text-white">
+              {unread > 9 ? '9+' : unread}
+            </span>
+          )}
+        </button>
+        <button onClick={() => navigate(profilePath(user?.role))} className="rounded-full shadow-card" aria-label="My profile">
+          <Avatar name={user?.full_name ?? 'U'} avatarUrl={user?.avatar_url} size={36} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function CoopPage({ title, subtitle, back, right, children, noBanner }: {
   title: string; subtitle?: string; back?: string | boolean; right?: ReactNode; children: ReactNode; noBanner?: boolean
 }) {
   const navigate = useNavigate()
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
-      <header className="flex items-center gap-3 px-4 py-3">
+      <CoopBrandBar />
+      <header className="flex items-center gap-3 px-4 pb-3 pt-1">
         {back && (
           <button
             onClick={() => (typeof back === 'string' ? navigate(back) : navigate(-1))}

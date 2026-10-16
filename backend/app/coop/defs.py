@@ -78,7 +78,7 @@ DEFINITIONS: list[SettingDef] = [
     _D("nin_required", "Membership", "NIN required to join", "bool", "true",
        effect=EFFECT_IMMEDIATE, note="In the preview a tester without a linked NIN can continue and is marked as a test bypass."),
     _D("membership_fee_kobo", "Membership", "One-time membership fee", "kobo", str(1000 * NAIRA),
-       effect=EFFECT_NEXT_YEAR, min=0, note="Deducted once, at the end of the accounting year (not built in this preview)."),
+       effect=EFFECT_NEXT_YEAR, min=0, note="One-time, not yearly. Taken from the contribution balance at the end of the accounting year, only when the full amount is available. Not refundable. Goes to running costs, not the dividend (collection is not built in this preview)."),
     _D("year_end_month", "Membership", "Accounting year ends (month)", "int", "12",
        effect=EFFECT_NEXT_YEAR, min=1, max=12, note="The year starts on 1 January and ends on this month and day."),
     _D("year_end_day", "Membership", "Accounting year ends (day)", "int", "10",

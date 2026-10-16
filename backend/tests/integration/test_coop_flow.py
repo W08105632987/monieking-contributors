@@ -269,6 +269,16 @@ async def _run():
         assert l6["rate_bps"] == 1200 and l6["interest_kobo"] == K(12_000)          # new rate applies to NEW loans
         await call("ada", "POST", f"/coop/loans/{l6['id']}/cancel")
 
+        # ── accountant assignment: the second director can SEE it and approve it ──
+        a = await call("dir1", "POST", "/coop/admin/settings/accountant_user_id/propose", json={"value": str(users["dir2"]), "reason": "Accountant duty assignment"})
+        sp = await call("dir2", "GET", "/coop/admin/settings")
+        assert sp["accountant_pending"]["new_name"] == "Director Two" and sp["accountant_pending"]["you_voted"] is False
+        assert (await call("dir1", "GET", "/coop/admin/settings"))["accountant_pending"]["you_voted"] is True
+        await call("dir2", "POST", f"/coop/admin/settings/changes/{a['id']}/vote", json={"decision": "approve"})
+        assert (await call("dir1", "GET", "/coop/admin/settings"))["accountant_pending"] is None
+        assert any(d["is_accountant"] and d["name"] == "Director Two" for d in await call("dir1", "GET", "/coop/admin/directors"))
+        assert (await call("ada", "GET", "/coop/settings/public"))["membership_fee_kobo"] == K(1000)
+
         # ── the money book can never be edited ──
         async with maker() as db:
             with pytest.raises(Exception):

@@ -15,17 +15,11 @@ export default function CoopHomePage() {
   const loanId = s?.active_loan?.id
   const { data: loan } = useLoan(loanId)
 
-  const back = (
-    <button onClick={() => nav('/customer/dashboard')} className="rounded-full border border-green-200 bg-white px-3 py-1.5 text-xs font-bold text-green-800 dark:border-night-400 dark:bg-night-700 dark:text-night-100">
-      MonieKing
-    </button>
-  )
-
-  if (isLoading) return <CoopPage title="Cooperative" right={back}><div className="space-y-3"><Skel h="h-40" /><Skel /><Skel /></div></CoopPage>
+  if (isLoading) return <CoopPage title="Cooperative"><div className="space-y-3"><Skel h="h-40" /><Skel /><Skel /></div></CoopPage>
 
   if (!s?.access) {
     return (
-      <CoopPage title="Cooperative" right={back} noBanner>
+      <CoopPage title="Cooperative" noBanner>
         <Empty icon={<Users className="h-7 w-7" />} title="Not open for you yet"
           text="The MonieKing Cooperative is being tested with a small group of members first. You will be told when it opens for you." />
       </CoopPage>
@@ -35,7 +29,7 @@ export default function CoopHomePage() {
   if (!s.is_member || !s.member || !s.rules) {
     const r = s.rules
     return (
-      <CoopPage title="MonieKing Cooperative" subtitle="Save together. Borrow together. Share the profit." right={back}>
+      <CoopPage title="MonieKing Cooperative" subtitle="Save together. Borrow together. Share the profit.">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden rounded-3xl bg-hero-gradient p-5 text-white dark:bg-night-gradient">
           <div className="absolute -right-8 -top-8 h-36 w-36 rounded-full bg-green-600/30" />
           <Sparkles className="relative h-7 w-7 text-amber-300" />
@@ -64,7 +58,7 @@ export default function CoopHomePage() {
   const lt = loan ? loanTone(loan.status) : null
   const stepIdx = loan ? loan.steps.filter((x) => x.done).length : 0
   return (
-    <CoopPage title="Cooperative" subtitle={`Card ${m.card_no}`} right={back}>
+    <CoopPage title="Cooperative" subtitle={`Card ${m.card_no}`}>
       <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className="relative overflow-hidden rounded-3xl bg-hero-gradient p-5 text-white dark:bg-night-gradient">
         <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-green-600/30" />
         <p className="relative text-xs font-semibold uppercase tracking-widest text-green-300">Your contribution</p>

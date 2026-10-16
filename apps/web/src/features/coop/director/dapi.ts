@@ -12,6 +12,10 @@ export interface SettingItem {
   scheduled: null | { id: string; new_value: string; effective_on: string | null }
 }
 
+export interface AccountantPending {
+  id: string; new_value: string; new_name: string; reason: string | null; approvals: number; needed: number; you_voted: boolean
+}
+
 /** Show a stored setting value in friendly units. */
 export function showValue(s: { kind: string; value: string; unit?: string }): string {
   const v = s.value

@@ -169,7 +169,7 @@ def public_summary(rules: Rules) -> dict:
     keys = ["registration_min_kobo", "loan_rate_bps", "loan_min_kobo", "loan_max_kobo", "loan_term_months", "loan_max_active",
             "cover_pct", "guarantee_min_kobo", "guarantee_max_kobo", "guarantee_max_active", "guarantee_min_commit_pct",
             "guarantor_min_funds_pct", "loan_max_guarantors", "loan_request_expiry_days", "invite_expiry_hours",
-            "overdue_daily_bps", "overdue_cap_pct", "early_withdrawal_bps", "running_cost_bps",
+            "overdue_daily_bps", "overdue_cap_pct", "early_withdrawal_bps", "running_cost_bps", "membership_fee_kobo",
             "dividend_contribution_pct", "dividend_guarantee_pct", "dividend_min_balance_kobo", "dividend_min_months",
             "approvals_loan", "loan_first_limit_kobo", "loan_cooling_days", "year_end_month", "year_end_day"]
     return {k: rules.get(k) for k in keys} | {"provisional": [k for k in keys if not rules.is_confirmed(k)]}

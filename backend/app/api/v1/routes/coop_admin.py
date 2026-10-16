@@ -139,7 +139,13 @@ async def settings(director: DirectorOnly, rules=R, db: AsyncSession = Depends(g
                 "needed": int(rules.get("approvals_settings")), "you_voted": any(v.director_id == director.id for v in votes),
                 "effective_on": c.effective_on.isoformat() if c.effective_on else None}
         (pending if c.status == "pending" else scheduled)[c.key] = info
-    return {"groups": defs.GROUPS, "settings": settings_store.describe(rules, pending, scheduled)}
+    # The accountant assignment is a hidden setting, so it is not in the list above. Without this the
+    # second director saw nothing to approve and the assignment stayed "pending" forever.
+    acc_pending = pending.get("accountant_user_id")
+    if acc_pending:
+        nu = await db.get(User, uuid.UUID(acc_pending["new_value"])) if acc_pending["new_value"] else None
+        acc_pending = {**acc_pending, "new_name": nu.full_name if nu else "(none)"}
+    return {"groups": defs.GROUPS, "settings": settings_store.describe(rules, pending, scheduled), "accountant_pending": acc_pending}
 
 
 @router.post("/settings/{key}/propose")

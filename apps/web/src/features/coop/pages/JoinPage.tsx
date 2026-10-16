@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { CheckCircle2, ChevronRight, FlaskConical, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, ChevronRight, Coins, FlaskConical, ShieldCheck } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { post, useCoopAction, useCoopStatus } from '../api'
@@ -52,9 +52,19 @@ export default function JoinPage() {
                 <p>• Withdrawing early costs <b>{pctText(r.early_withdrawal_bps)}</b>, and you do not share that year's dividend.</p>
                 <p>• To share a dividend you need at least <b>{formatNaira(r.dividend_min_balance_kobo)}</b> held for <b>{r.dividend_min_months} months</b>.</p>
               </Card>
+              <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-500/50 dark:bg-amber-500/10" role="note">
+                <div className="flex items-center gap-2"><Coins className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+                  <p className="text-base font-extrabold text-amber-900 dark:text-amber-200">One-time membership fee: {formatNaira(r.membership_fee_kobo)}</p></div>
+                <ul className="mt-2 space-y-1 text-sm text-amber-900 dark:text-amber-200">
+                  <li>• It is paid <b>once</b>, not every year.</li>
+                  <li>• It is taken from your contribution balance at the <b>end of the accounting year</b>, but only if your balance can cover the full amount. If it cannot, the fee stays outstanding.</li>
+                  <li>• It is <b>not refundable</b> once collected, and it goes to running costs, not to the dividend.</li>
+                  <li>• It is the same for members who join late in the year.</li>
+                </ul>
+              </div>
               <label className="flex items-start gap-3 rounded-xl bg-white p-3 dark:bg-night-700">
                 <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-5 w-5 accent-green-600" />
-                <span className="text-sm text-green-900 dark:text-white">I have read these rules and I want to join.</span>
+                <span className="text-sm text-green-900 dark:text-white">I have read these rules, including the {formatNaira(r.membership_fee_kobo)} membership fee, and I want to join.</span>
               </label>
               <BigButton disabled={!agree} onClick={next}>Continue</BigButton>
             </div>
