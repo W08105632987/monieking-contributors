@@ -62,6 +62,7 @@ export default function VerifyLookupPage() {
   useEffect(() => {
     setMethod(METHODS[kind].length === 1 ? METHODS[kind][0].id : null)
     setValues({}); setConsent(false); setResult(null); setSlowNote(false)
+    setSlipOpen(false); setBusyTier(null); setBusyDl(false)
     requestId.current = newRequestId()
   }, [kind])
 

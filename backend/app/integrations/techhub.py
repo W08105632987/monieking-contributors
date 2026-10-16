@@ -127,6 +127,22 @@ def _decode_pdf(value) -> bytes:
     return raw[i:] if 0 <= i < 1024 else b""
 
 
+def find_pdf(obj, _depth: int = 0) -> bytes:
+    """First embedded PDF anywhere in a parsed reply (any key name, any nesting)."""
+    if _depth > 5:
+        return b""
+    if isinstance(obj, str):
+        if len(obj) > 200:
+            return _decode_pdf(obj)
+        return b""
+    vals = obj.values() if isinstance(obj, dict) else obj if isinstance(obj, list) else ()
+    for v in vals:
+        got = find_pdf(v, _depth + 1)
+        if got:
+            return got
+    return b""
+
+
 def _safe_text(v, n: int = 60) -> str:
     """Short, digit-free rendering of a scalar for diagnostics (never person data)."""
     import re
@@ -144,11 +160,27 @@ def describe_shape(status_code: int, body) -> str:
         f"success={_safe_text(body.get('success'))!r} err={_safe_text(body.get('error_code'))!r} "
         f"msg={_safe_text(body.get('message'), 80)!r} "
         f"data_keys={sorted(ud.keys()) if isinstance(ud, dict) else None} "
-        f"pdf_len={len(body.get('pdf_base64') or '') if isinstance(body.get('pdf_base64'), str) else None}"
+        f"pdf_len={len(body.get('pdf_base64') or '') if isinstance(body.get('pdf_base64'), str) else None} "
+        f"pdf_found={bool(find_pdf(body))} all_keys={_key_paths(body)}"
     )
 
 
-def interpret(status_code: int, body) -> TechhubResult:
+def _key_paths(o, prefix: str = "", depth: int = 0, out: list | None = None) -> list:
+    out = [] if out is None else out
+    if depth > 3 or len(out) > 40:
+        return out
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if isinstance(v, (dict, list)):
+                _key_paths(v, f"{prefix}{k}.", depth + 1, out)
+            else:
+                out.append(f"{prefix}{k}")
+    elif isinstance(o, list) and o:
+        _key_paths(o[0], prefix + "[].", depth + 1, out)
+    return out
+
+
+def interpret(status_code: int, body, want: str = "person") -> TechhubResult:
     """Map an HTTP status + parsed JSON body to a result or a typed error.
 
     Success means: a 2xx answer that carries the person's data and does not say
@@ -177,8 +209,14 @@ def interpret(status_code: int, body) -> TechhubResult:
         data = body.get("data")
     said_failure = (status in _FAIL_WORDS) or (flag is False) or code in ("01", "02")
     if 200 <= status_code < 300 and isinstance(data, dict) and data and not said_failure:
-        pdf = _decode_pdf(body.get("pdf_base64") or body.get("pdf"))
+        pdf = _decode_pdf(body.get("pdf_base64") or body.get("pdf")) or find_pdf(body)
         return TechhubResult(user_data=canonical_user_data(data), pdf=pdf)
+    if want == "slip" and 200 <= status_code < 300 and not said_failure:
+        # A slip reply may carry only the PDF (no person data). The PDF is the product.
+        pdf = find_pdf(body)
+        if pdf:
+            return TechhubResult(user_data=canonical_user_data(data) if isinstance(data, dict) else {}, pdf=pdf)
+        raise TechhubUnavailable("no_pdf")
 
     if code == "02" or (status_code == 400 and "not found" in message.lower() and "record" in message.lower()):
         raise TechhubNotFound()
@@ -195,7 +233,7 @@ def interpret(status_code: int, body) -> TechhubResult:
     raise TechhubUnavailable("unexpected_status")
 
 
-async def call_techhub(endpoint_file: str, fields: dict) -> TechhubResult:
+async def call_techhub(endpoint_file: str, fields: dict, want: str = "person") -> TechhubResult:
     """POST one lookup. Raises a TechhubError subclass on anything but a clean result."""
     if not settings.TECHHUB_API_KEY:
         raise TechhubAuthError("not_configured")
@@ -213,15 +251,19 @@ async def call_techhub(endpoint_file: str, fields: dict) -> TechhubResult:
 
     if len(resp.content) > MAX_RESPONSE_BYTES:
         raise TechhubUnavailable("too_large")
+    if want == "slip" and 200 <= resp.status_code < 300 and resp.content[:1024].find(b"%PDF") >= 0 \
+            and "json" not in (resp.headers.get("content-type") or "").lower():
+        i = resp.content.find(b"%PDF")
+        return TechhubResult(user_data={}, pdf=resp.content[i:])   # the reply IS the PDF
     try:
         body = resp.json()
     except ValueError:
         body = None
     try:
-        return interpret(resp.status_code, body)
+        return interpret(resp.status_code, body, want)
     except TechhubError as e:
         logger.warning("techhub endpoint=%s http=%s outcome=%s", endpoint_file, resp.status_code, e.reason)
-        if e.reason.startswith("unexpected") or e.reason in ("bad_response", "unclassified_400"):
+        if e.reason.startswith("unexpected") or e.reason in ("bad_response", "unclassified_400", "no_pdf"):
             # Structure only (key names, short status words) so a mismatch can be diagnosed from logs.
             logger.warning("techhub shape endpoint=%s %s", endpoint_file, describe_shape(resp.status_code, body))
         raise

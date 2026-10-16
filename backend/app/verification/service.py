@@ -38,6 +38,7 @@ from app.verification.sheet_pdf import build_sheet_pdf, full_name
 logger = logging.getLogger(__name__)
 
 _CRID = re.compile(r"^[A-Za-z0-9_\-]{8,64}$")
+_OUTAGE_REASONS = {"timeout", "network", "provider_5xx", "ip_blocked", "provider_balance", "auth"}
 UNAVAILABLE_MSG = "This service is temporarily unavailable. You have not been charged."
 
 
@@ -384,9 +385,11 @@ async def buy_slip(db: AsyncSession, *, actor: User, lookup_id: uuid.UUID, tier:
         if not ident or not endpoint:
             raise HTTPException(status_code=503, detail=UNAVAILABLE_MSG)
         try:
-            res = await call_techhub(endpoint, {("nin" if row.kind == "nin" else "bvn"): ident})
+            res = await call_techhub(endpoint, {("nin" if row.kind == "nin" else "bvn"): ident}, want="slip")
         except TechhubError as e:
-            if e.counts_as_failure:
+            # Only real outages trip the breaker. A slip reply we cannot read must not
+            # switch off NIN/BVN lookups for everyone.
+            if e.counts_as_failure and e.reason in _OUTAGE_REASONS:
                 await record_outcome(db, row.kind, ok=False, reason=e.reason)
                 row = await get_lookup_for(db, actor, lookup_id, lock=True)
             raise HTTPException(status_code=503 if e.counts_as_failure else 422, detail=e.user_message)
