@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowDownToLine, BarChart3, ChevronRight, Plus } from 'lucide-react'
+import { ArrowDownToLine, BarChart3, ChevronRight, Coins, FileText, Heart, Landmark, LogOut, MessageSquare, Plus } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
 import { useCoopStatus, useMe } from '../api'
 import { Card, CoopPage, Pill, SectionTitle, Skel, Stat, dShort, pctText } from '../ui'
@@ -29,6 +29,17 @@ export default function MePage() {
         {m.disqualified_this_year && <p className="mt-3 text-xs font-semibold text-amber-700 dark:text-amber-300">You withdrew early this year, so you will not share this year's dividend.</p>}
         {m.nin_bypassed && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Test note: you joined without a linked NIN.</p>}
       </Card>
+
+      <SectionTitle>My account</SectionTitle>
+      <div className="space-y-2">
+        {([['/coop/bank', Landmark, 'Bank details', m.has_bank ? 'Where your loan is paid' : 'Add the account for your loan'],
+          ['/coop/next-of-kin', Heart, 'Next of kin', m.next_of_kin ? m.next_of_kin.name : 'Not added yet'],
+          ['/coop/dividends', Coins, 'My dividends', 'Yearly share and disputes'],
+          ['/coop/statement', FileText, 'Statement', 'Entries and PDF download'],
+          ['/coop/complaints', MessageSquare, 'Complaints', 'Tell the directors'],
+          ['/coop/close', LogOut, 'Close my membership', 'Take out your contribution']] as any[]).map(([to, Icon, t, sub]) => (
+          <Card key={to} onClick={() => nav(to)}><div className="flex items-center gap-3"><Icon className="h-5 w-5 text-green-600" /><div className="min-w-0 flex-1"><p className="font-bold text-green-900 dark:text-white">{t}</p><p className="truncate text-xs text-green-600 dark:text-night-300">{sub}</p></div><ChevronRight className="h-4 w-4 text-green-300" /></div></Card>))}
+      </div>
 
       <SectionTitle>Quick links</SectionTitle>
       <div className="space-y-2">

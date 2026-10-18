@@ -36,7 +36,7 @@ NAIRA = 100
 
 
 def _mig_statements():
-    sql = (Path(__file__).resolve().parents[3] / "supabase" / "migrations" / "045_coop_foundation.sql").read_text()
+    sql = (Path(__file__).resolve().parents[3] / "supabase" / "migrations" / "045_coop_foundation.sql").read_text() + (Path(__file__).resolve().parents[3] / "supabase" / "migrations" / "047_coop_completion.sql").read_text()
     out, buf, in_d = [], [], False
     for line in sql.splitlines():
         s = line.strip()
@@ -68,7 +68,8 @@ async def _run():
             ("chika", UserRole.CUSTOMER, "Chika Eze", "08033333333", True), ("dayo", UserRole.CUSTOMER, "Dayo Bello", "08044444444", False),
             ("eze", UserRole.CUSTOMER, "Eze Nwa", "08055555555", True),
             ("dir1", UserRole.DIRECTOR, "Director One", "08066666661", True), ("dir2", UserRole.DIRECTOR, "Director Two", "08066666662", True)]:
-            u = User(role=role, full_name=name, phone_number=phone, nin_linked=nin)
+            u = User(role=role, full_name=name, phone_number=phone, nin_linked=nin, bank_code="058", bank_name="GTBank",
+                     account_number="0123456789" if key == "ada" else None, account_name="OBI ADA" if key == "ada" else None)
             db.add(u)
             await db.flush()
             users[key] = u.id
@@ -119,6 +120,10 @@ async def _run():
         assert {p["name"] for p in pool} == {"Bayo Ade", "Chika Eze"}
         assert all(p["whatsapp_link"].startswith("https://wa.me/234") for p in pool)
 
+        # repayments in this older part of the test are made by hand from the wallet
+        sx = await call("dir1", "POST", "/coop/admin/settings/repay_source/propose", json={"value": "wallet_manual", "reason": "test"})
+        await call("dir2", "POST", f"/coop/admin/settings/changes/{sx['id']}/vote", json={"decision": "approve"})
+
         # ── loan request ──
         pv = await call("ada", "GET", "/coop/loans/preview?amount_kobo=%d&term_months=3" % K(100_000))
         assert pv["interest_kobo"] == K(10_000) and pv["total_kobo"] == K(110_000) and len(pv["schedule"]) == 3
@@ -161,14 +166,26 @@ async def _run():
         assert r1["status"] == "awaiting_approval" and r1["approvals"] == 1
         await call("dir1", "POST", f"/coop/admin/loans/{lid}/decision", 409, json={"decision": "approve"})
         r2 = await call("dir2", "POST", f"/coop/admin/loans/{lid}/decision", json={"decision": "approve"})
-        assert r2["status"] == "repaying"
+        assert r2["status"] == "awaiting_acceptance" and r2["net_payout_kobo"] == K(95_000) and r2["fee_kobo"] == K(5_000)
+        ld = await call("ada", "GET", f"/coop/loans/{lid}")
+        assert ld["offer"]["net_payout_kobo"] == K(95_000)
+        await call("ada", "POST", f"/coop/loans/{lid}/accept", json={})
+        po = await call("dir1", "GET", "/coop/admin/payouts")
+        assert po[0]["payout_status"] == "held" and "bank details" in po[0]["hold_reason"]
+        await call("dir1", "POST", f"/coop/admin/loans/{lid}/payout", 409, json={"reference": "R1", "evidence": "x"})   # held
+        await call("ada", "POST", "/coop/bank/from-profile")
+        po = await call("dir1", "GET", "/coop/admin/payouts")
+        assert po[0]["payout_status"] == "pending" and po[0]["account"]["account_number"] == "0123456789"
+        await call("dir1", "POST", f"/coop/admin/loans/{lid}/payout", 400, json={})                                  # evidence needed
+        await call("dir1", "POST", f"/coop/admin/loans/{lid}/payout", json={"reference": "NIP-1", "evidence": "receipt-001"})
         ld = await call("ada", "GET", f"/coop/loans/{lid}")
         assert ld["status"] == "repaying" and len(ld["schedule"]) == 3 and ld["total_due_kobo"] == K(110_000)
         assert sum(r["amount_kobo"] for r in ld["schedule"]) == K(110_000)
 
         # ── partial repayment: interest first, guarantees stay locked ──
-        await call("ada", "POST", f"/coop/loans/{lid}/repay", 409, json={"amount_kobo": K(999_999)})
-        rp = await call("ada", "POST", f"/coop/loans/{lid}/repay", json={"amount_kobo": K(30_000)})
+        await call("ada", "POST", f"/coop/loans/{lid}/repay", 409, json={"amount_kobo": K(999_999), "source": "wallet"})
+        await call("ada", "POST", f"/coop/loans/{lid}/repay", 409, json={"amount_kobo": K(30_000), "source": "contribution"})   # contribution is not allowed on this loan
+        rp = await call("ada", "POST", f"/coop/loans/{lid}/repay", json={"amount_kobo": K(30_000), "source": "wallet"})
         assert rp["applied"] == {"charges": 0, "interest": K(10_000), "principal": K(20_000), "excess": 0}
         assert rp["repaid"] is False
         assert (await call("bayo", "GET", "/coop/me"))["locked_kobo"] == K(50_000)
@@ -182,8 +199,17 @@ async def _run():
         assert ld["accrued_charge_kobo"] == K(10_000) * 300 * ld["overdue_days"] // 10000
         before = ld["total_due_kobo"]
         assert before == K(80_000) + ld["accrued_charge_kobo"]
-        rp = await call("ada", "POST", f"/coop/loans/{lid}/repay", json={"amount_kobo": before})
+        rp = await call("ada", "POST", f"/coop/loans/{lid}/repay", json={"amount_kobo": before, "source": "wallet"})
         assert rp["repaid"] is True and rp["applied"]["charges"] == ld["accrued_charge_kobo"]
+        assert (await call("ada", "GET", f"/coop/loans/{lid}"))["status"] == "awaiting_final_release"
+        assert (await call("bayo", "GET", "/coop/me"))["locked_kobo"] == K(50_000)       # still locked until directors confirm
+        await call("ada", "POST", "/coop/loans", 409, json={"amount_kobo": K(50_000), "term_months": 2})
+        fr = await call("dir1", "GET", "/coop/admin/requests?status=pending&kind=final_release")
+        assert len(fr) == 1 and fr[0]["needed"] == 2
+        await call("dir1", "POST", f"/coop/admin/requests/{fr[0]['id']}/vote", json={"decision": "approve"})
+        assert (await call("bayo", "GET", "/coop/me"))["locked_kobo"] == K(50_000)
+        await call("dir2", "POST", f"/coop/admin/requests/{fr[0]['id']}/vote", json={"decision": "approve"})
+        assert (await call("ada", "GET", f"/coop/loans/{lid}"))["status"] == "repaid"
         assert (await call("bayo", "GET", "/coop/me"))["locked_kobo"] == 0
         assert (await call("chika", "GET", "/coop/me"))["locked_kobo"] == 0
         await call("ada", "POST", f"/coop/loans/{lid}/repay", 409, json={"amount_kobo": K(1)})   # nothing owed any more
@@ -305,6 +331,8 @@ async def _run():
         j = await call("ada", "POST", "/coop/join", json={"amount_kobo": K(100)})
         assert j["card_no"].startswith("MK-C 0001")
     await engine.dispose()
+    from app.core.database import engine as _app_engine
+    await _app_engine.dispose()  # the app pool is bound to this run's event loop
 
 
 def test_coop_full_flow():

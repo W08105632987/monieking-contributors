@@ -8,8 +8,9 @@ import { useAdmin } from './dapi'
 import ApprovalsTab from './ApprovalsTab'
 import SettingsTab from './SettingsTab'
 import PeopleTab from './PeopleTab'
+import { AuditTab, CasesTab, MoneyTab, PayoutsTab, RequestsTab, RolesTab, YearEndTab } from './MoreTabs'
 
-const TABS = [['overview', 'Overview'], ['approvals', 'Approvals'], ['people', 'People'], ['settings', 'Rules'], ['tools', 'Test tools']] as const
+const TABS = [['overview', 'Overview'], ['approvals', 'Approvals'], ['payouts', 'Payouts'], ['requests', 'Requests'], ['cases', 'Cases'], ['yearend', 'Year end'], ['money', 'Money'], ['people', 'People'], ['roles', 'Roles'], ['settings', 'Rules'], ['audit', 'Audit'], ['tools', 'Test tools']] as const
 
 export default function DirectorCoopPage() {
   const nav = useNavigate()
@@ -19,12 +20,19 @@ export default function DirectorCoopPage() {
     <CoopPage title="Cooperative" subtitle="Director console" back="/director/more">
       <div className="no-scrollbar -mx-4 mb-3 flex gap-2 overflow-x-auto px-4">
         {TABS.map(([k, l]) => {
-          const n = k === 'approvals' ? ov?.awaiting_approval : k === 'settings' ? ov?.settings_pending : 0
+          const n = k === 'approvals' ? ov?.awaiting_approval : k === 'settings' ? ov?.settings_pending : k === 'payouts' ? ov?.payouts_waiting : k === 'requests' ? ov?.requests_pending : k === 'cases' ? (ov?.recovery_open ?? 0) + (ov?.complaints_open ?? 0) : 0
           return <button key={k} onClick={() => setTab(k)} className={`flex flex-shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold ${tab === k ? 'bg-green-700 text-white dark:bg-green-600' : 'border border-green-200 bg-white text-green-800 dark:border-night-400 dark:bg-night-700 dark:text-night-100'}`}>{l}{n ? <span className="rounded-full bg-amber-400 px-1.5 text-[10px] font-extrabold text-green-950">{n}</span> : null}</button>
         })}
       </div>
       {tab === 'overview' && <Overview ov={ov} go={setTab} />}
       {tab === 'approvals' && <ApprovalsTab />}
+      {tab === 'payouts' && <PayoutsTab stepUp={!!ov?.step_up} />}
+      {tab === 'requests' && <RequestsTab stepUp={!!ov?.step_up} />}
+      {tab === 'cases' && <CasesTab />}
+      {tab === 'yearend' && <YearEndTab stepUp={!!ov?.step_up} />}
+      {tab === 'money' && <MoneyTab />}
+      {tab === 'roles' && <RolesTab />}
+      {tab === 'audit' && <AuditTab />}
       {tab === 'people' && <PeopleTab />}
       {tab === 'settings' && <SettingsTab />}
       {tab === 'tools' && <Tools ov={ov} onMember={() => nav('/coop')} />}
@@ -43,6 +51,12 @@ function Overview({ ov, go }: { ov: any; go: (t: any) => void }) {
         <Card onClick={() => go('approvals')}><Stat label="Waiting for approval" value={ov.awaiting_approval} sub="loans" /></Card>
         <Card><Stat label="Overdue loans" value={ov.overdue_loans} sub={`Dividend pool ${formatNaira(ov.dividend_pool_kobo)}`} /></Card>
       </div>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <Card onClick={() => go('payouts')}><Stat label="Payouts waiting" value={ov.payouts_waiting ?? 0} sub="to send" /></Card>
+        <Card onClick={() => go('requests')}><Stat label="Requests waiting" value={ov.requests_pending ?? 0} sub="for votes" /></Card>
+        <Card onClick={() => go('cases')}><Stat label="Recovery cases" value={ov.recovery_open ?? 0} sub="open" /></Card>
+        <Card onClick={() => go('cases')}><Stat label="Complaints" value={ov.complaints_open ?? 0} sub="open" /></Card>
+      </div>
       <SectionTitle>Loans by stage</SectionTitle>
       <Card><div className="flex flex-wrap gap-2">{Object.entries(ov.loans as Record<string, number>).map(([k, v]) => { const t = loanTone(k); return <Pill key={k} tone={t.tone}>{t.label}: {v}</Pill> })}{!Object.keys(ov.loans).length && <p className="text-sm text-green-700 dark:text-night-200">No loans yet.</p>}</div></Card>
       <SectionTitle right={<Pill tone={bad.length ? 'red' : 'green'}>{bad.length ? `${bad.length} problem` : 'All clear'}</Pill>}>Accountant checks</SectionTitle>
@@ -52,7 +66,8 @@ function Overview({ ov, go }: { ov: any; go: (t: any) => void }) {
       <SectionTitle>Going live</SectionTitle>
       <Card className="border-amber-300 bg-amber-50 dark:bg-amber-500/10">
         <div className="flex gap-2"><AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-700" /><div className="text-sm text-amber-900 dark:text-amber-200">
-          <p className="font-bold">Preview only. Live money is switched off.</p><p>{ov.live_blocked_reason}</p>
+          <p className="font-bold">{ov.live ? 'Live money is ON.' : 'Preview only. Live money is switched off.'}</p>
+          {!ov.live && <p>{ov.go_live_ready ? 'Everything is ready. Open Money to ask for the switch-on.' : `Still needed: ${(ov.go_live_missing ?? []).join('; ') || ov.live_blocked_reason}`}</p>}
           {ov.accountant ? <p className="mt-1">Accountant duty: {ov.accountant}</p> : <p className="mt-1">No director has accountant duty yet. Set it in Rules.</p>}</div></div>
       </Card>
     </>

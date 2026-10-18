@@ -13,6 +13,9 @@ export interface PublicRules {
   dividend_min_balance_kobo: number; dividend_min_months: number; approvals_loan: number
   loan_first_limit_kobo: number; loan_cooling_days: number; year_end_month: number; year_end_day: number
   provisional: string[]
+  transfer_fee_bps?: number; payout_mode?: string; loan_offer_required?: boolean; loan_offer_expiry_hours?: number
+  repay_source?: string; step_up_required?: 'off' | 'member_money' | 'all_money'; pilot_cap_enabled?: boolean; pilot_cap_kobo?: number
+  membership_fee_timing?: string; closure_charge_bps?: number; dividend_dispute_days?: number; coop_live_funds?: boolean
 }
 
 export interface MemberSummary {
@@ -22,6 +25,7 @@ export interface MemberSummary {
   contribution_kobo: number; locked_kobo: number; free_kobo: number
   pool_listed: boolean; pool_offer_kobo: number; pool_whatsapp_ok: boolean; pool_note: string | null
   nin_bypassed: boolean; disqualified_this_year: boolean
+  has_bank?: boolean; fee_paid?: boolean; next_of_kin?: { name: string; relationship: string; phone: string; address?: string } | null
   history?: { date: string; type: string; delta_kobo: number; balance_kobo: number }[]
 }
 
@@ -48,11 +52,17 @@ export interface LoanDetail extends LoanCard {
   principal_due_kobo: number; principal_paid_kobo: number; interest_paid_kobo: number
   guarantors: LoanGuarantor[]; steps: { key: string; done: boolean }[]
   overdue_daily_bps: number; overdue_cap_pct: number; still_needed_kobo: number
+  offer: null | { principal_kobo: number; fee_kobo: number; net_payout_kobo: number; interest_kobo: number; total_repay_kobo: number; term_months: number; rate_bps: number; expires_at: string | null; repay_source: string }
+  payout?: { status: string | null; hold_reason: string | null; reference: string | null; paid_at: string | null; account: any; bank_on_file: boolean }
+  allowed_sources?: ('contribution' | 'wallet')[]; waived_kobo?: number; due_now_kobo?: number; restructured?: number; written_off_kobo?: number
+  interest_breakdown?: { interest_total_kobo: number; interest_paid_kobo: number; running_cost_kobo: number; to_dividend_pool_kobo: number; contribution_share_kobo: number; guarantee_share_kobo: number; overdue_charges_paid_kobo: number; running_cost_pct: number; contribution_pct: number; guarantee_pct: number }
 }
 
 export interface CoopStatus {
   enabled: boolean; access: boolean; test_mode: boolean; is_member: boolean; now: string; clock_offset_days: number
   rules?: PublicRules; member?: MemberSummary; active_loan?: LoanCard | null; pending_invites?: number
+  pending_consents?: number; offers_waiting?: number
+  pilot?: { enabled: boolean; cap_kobo: number; received_kobo: number; remaining_kobo: number | null } | null
 }
 
 export interface PoolEntry {
@@ -167,3 +177,10 @@ export function useCoopAction<TVars, TRes = any>(fn: (v: TVars) => Promise<TRes>
 
 export const post = async <T = any>(url: string, body?: unknown) => (await api.post<T>(url, body)).data
 export const put = async <T = any>(url: string, body?: unknown) => (await api.put<T>(url, body)).data
+
+/** Money actions carry a fresh Idempotency-Key so a double tap or a retry cannot move money twice. */
+export const postIdem = async <T = any>(url: string, body: unknown, key: string) =>
+  (await api.post<T>(url, body, { headers: { 'Idempotency-Key': key } })).data
+
+export const useCoopQ = <T = any>(name: string, url: string, params?: Record<string, unknown>, enabled = true) =>
+  useQuery<T>({ queryKey: [...KEY, name, params], enabled, queryFn: async () => (await api.get(url, { params })).data })

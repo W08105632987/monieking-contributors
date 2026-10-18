@@ -7,6 +7,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 import { useAuthStore } from '@/store/auth.store'
 import { useNotificationsStore } from '@/store/notifications.store'
+import { useCoopStatus } from './api'
 import { mainHomePath, notificationsPath, profilePath } from './nav'
 
 export const pctText = (bps: number) => `${+(bps / 100).toFixed(2)}%`
@@ -71,6 +72,7 @@ export function CoopPage({ title, subtitle, back, right, children, noBanner }: {
   title: string; subtitle?: string; back?: string | boolean; right?: ReactNode; children: ReactNode; noBanner?: boolean
 }) {
   const navigate = useNavigate()
+  const { data: st } = useCoopStatus()
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
       <CoopBrandBar />
@@ -90,7 +92,7 @@ export function CoopPage({ title, subtitle, back, right, children, noBanner }: {
         </div>
         {right}
       </header>
-      {!noBanner && <TestBanner />}
+      {!noBanner && st?.test_mode !== false && <TestBanner />}
       <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">{children}</div>
     </div>
   )

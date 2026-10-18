@@ -128,6 +128,13 @@ const CoopInvitePage      = lazy(() => import('@/features/coop/pages/InvitePage'
 const CoopMemberProfile   = lazy(() => import('@/features/coop/pages/MemberProfilePage'))
 const CoopDividendPage    = lazy(() => import('@/features/coop/pages/DividendPage'))
 const CoopMePage          = lazy(() => import('@/features/coop/pages/MePage'))
+const CoopBankPage        = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.BankPage })))
+const CoopKinPage         = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.KinPage })))
+const CoopClosePage       = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.ClosePage })))
+const CoopComplaintsPage  = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.ComplaintsPage })))
+const CoopConsentsPage    = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.ConsentsPage })))
+const CoopMyDividendsPage = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.MyDividendsPage })))
+const CoopStatementPage   = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.StatementPage })))
 const DirectorCoopPage    = lazy(() => import('@/features/coop/director/DirectorCoopPage'))
 
 export default function App() {
@@ -273,6 +280,13 @@ export default function App() {
             <Route path="/coop/transparency"    element={<AuthGuard allowedRoles={['customer']}><CoopTransparency /></AuthGuard>} />
             <Route path="/coop/loans"           element={<AuthGuard allowedRoles={['customer']}><CoopLoansPage /></AuthGuard>} />
             <Route path="/coop/loans/new"       element={<AuthGuard allowedRoles={['customer']}><CoopNewLoanPage /></AuthGuard>} />
+            <Route path="/coop/bank" element={<AuthGuard allowedRoles={['customer']}><CoopBankPage /></AuthGuard>} />
+            <Route path="/coop/next-of-kin" element={<AuthGuard allowedRoles={['customer']}><CoopKinPage /></AuthGuard>} />
+            <Route path="/coop/close" element={<AuthGuard allowedRoles={['customer']}><CoopClosePage /></AuthGuard>} />
+            <Route path="/coop/complaints" element={<AuthGuard allowedRoles={['customer']}><CoopComplaintsPage /></AuthGuard>} />
+            <Route path="/coop/consents" element={<AuthGuard allowedRoles={['customer']}><CoopConsentsPage /></AuthGuard>} />
+            <Route path="/coop/dividends" element={<AuthGuard allowedRoles={['customer']}><CoopMyDividendsPage /></AuthGuard>} />
+            <Route path="/coop/statement" element={<AuthGuard allowedRoles={['customer']}><CoopStatementPage /></AuthGuard>} />
             <Route path="/coop/loans/:id"       element={<AuthGuard allowedRoles={['customer']}><CoopLoanDetailPage /></AuthGuard>} />
             <Route path="/coop/pool"            element={<AuthGuard allowedRoles={['customer']}><CoopPoolPage /></AuthGuard>} />
             <Route path="/coop/invites/:id"     element={<AuthGuard allowedRoles={['customer']}><CoopInvitePage /></AuthGuard>} />

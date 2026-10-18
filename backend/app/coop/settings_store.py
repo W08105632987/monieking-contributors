@@ -42,6 +42,9 @@ class Rules:
         return d.confirmed or key in self.overrides
 
     def now(self) -> datetime:
+        # With live funds on, the clock is the real clock: time travel is a practice tool only.
+        if self.get("coop_live_funds"):
+            return datetime.now(timezone.utc)
         return datetime.now(timezone.utc) + timedelta(days=int(self.get("test_clock_offset_days")))
 
     def today(self) -> date:
@@ -80,8 +83,18 @@ async def _apply_due(db: AsyncSession, rules: Rules) -> None:
 
 async def propose(db: AsyncSession, rules: Rules, director: "User", key: str, value, reason: str | None) -> CoopSettingChange:
     d = defs.BY_KEY.get(key)
-    if not d or (d.hidden and key != "accountant_user_id"):
+    if not d or (d.hidden and key not in defs.ROLE_KEYS):
         raise defs.SettingError("Unknown setting")
+    if key in defs.ROLE_KEYS:
+        from app.models.user import User, UserRole
+        ids = [x for x in str(value or "").split(",") if x] if key == "final_release_directors" else ([str(value)] if value else [])
+        for i in ids:
+            try:
+                u = await db.get(User, uuid.UUID(i))
+            except ValueError:
+                u = None
+            if not u or u.role != UserRole.DIRECTOR:
+                raise defs.SettingError("Choose a director")
     if d.readonly:
         raise defs.SettingError("This setting cannot be changed in the preview")
     new = defs.normalise_value(d, value)
@@ -171,5 +184,9 @@ def public_summary(rules: Rules) -> dict:
             "guarantor_min_funds_pct", "loan_max_guarantors", "loan_request_expiry_days", "invite_expiry_hours",
             "overdue_daily_bps", "overdue_cap_pct", "early_withdrawal_bps", "running_cost_bps", "membership_fee_kobo",
             "dividend_contribution_pct", "dividend_guarantee_pct", "dividend_min_balance_kobo", "dividend_min_months",
-            "approvals_loan", "loan_first_limit_kobo", "loan_cooling_days", "year_end_month", "year_end_day"]
+            "approvals_loan", "loan_first_limit_kobo", "loan_cooling_days", "year_end_month", "year_end_day",
+            "transfer_fee_bps", "transfer_fee_payer", "payout_mode", "loan_offer_required", "loan_offer_expiry_hours", "loan_clock_starts",
+            "final_due_rule", "repay_source", "auto_deduct_partial", "reminder_days_before", "withdraw_while_borrowing", "final_release_mode",
+            "closure_charge_bps", "membership_fee_timing", "dividend_payout", "dividend_dispute_days", "restructure_reconsent",
+            "step_up_required", "complaint_response_days", "pilot_cap_enabled", "pilot_cap_kobo", "coop_live_funds", "coop_pilot_only"]
     return {k: rules.get(k) for k in keys} | {"provisional": [k for k in keys if not rules.is_confirmed(k)]}

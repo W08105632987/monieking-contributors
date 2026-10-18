@@ -177,6 +177,8 @@ from app.api.v1.routes.manual_services import router as manual_services_router
 from app.api.v1.routes.service_templates import router as service_templates_router
 from app.api.v1.routes.coop import router as coop_router
 from app.api.v1.routes.coop_admin import router as coop_admin_router
+from app.api.v1.routes.coop_admin_more import router as coop_admin_more_router
+from app.api.v1.routes.coop_more import router as coop_more_router
 from app.verification.routes import router as verification_router
 from app.history.routes import router as history_router
 
@@ -211,7 +213,9 @@ app.include_router(service_templates_router, prefix=PREFIX)
 app.include_router(verification_router, prefix=PREFIX)
 app.include_router(history_router, prefix=PREFIX)
 app.include_router(coop_admin_router, prefix=PREFIX)  # before coop_router: fixed /coop/admin paths first
+app.include_router(coop_admin_more_router, prefix=PREFIX)
 app.include_router(coop_router, prefix=PREFIX)
+app.include_router(coop_more_router, prefix=PREFIX)
 app.include_router(webhook_router)
 app.include_router(webhook_router,           prefix=PREFIX)
 
