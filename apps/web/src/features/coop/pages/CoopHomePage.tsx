@@ -73,6 +73,13 @@ export default function CoopHomePage() {
         </div>
       </motion.div>
 
+      {(s.offers_waiting ?? 0) > 0 && s.active_loan && (
+        <Card className="mt-3 border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10" onClick={() => nav(`/coop/loans/${s.active_loan!.id}`)}>
+          <div className="flex items-center gap-3"><Coins className="h-5 w-5 text-amber-700" /><p className="flex-1 text-sm font-bold text-amber-900 dark:text-amber-200">Your loan offer is waiting. Review and accept it.</p><ChevronRight className="h-4 w-4 text-amber-700" /></div></Card>)}
+      {(s.pending_consents ?? 0) > 0 && (
+        <Card className="mt-3 border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10" onClick={() => nav('/coop/consents')}>
+          <div className="flex items-center gap-3"><HeartHandshake className="h-5 w-5 text-amber-700" /><p className="flex-1 text-sm font-bold text-amber-900 dark:text-amber-200">A loan change needs your answer</p><ChevronRight className="h-4 w-4 text-amber-700" /></div></Card>)}
+      {s.pilot?.enabled && <p className="mt-3 text-center text-[11px] text-green-700 dark:text-night-200">Pilot limit: the cooperative can still receive {formatNaira(s.pilot.remaining_kobo ?? 0)} of {formatNaira(s.pilot.cap_kobo)}.</p>}
       {(s.pending_invites ?? 0) > 0 && (
         <Card className="mt-3 border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10" onClick={() => nav('/coop/pool')}>
           <div className="flex items-center gap-3"><HeartHandshake className="h-5 w-5 text-amber-700" />

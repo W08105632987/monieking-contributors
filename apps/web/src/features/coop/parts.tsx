@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronRight, ShieldCheck, Star } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
 import { BigButton, Field, MoneyInput, Pill, Sheet, toKobo, pctText } from './ui'
-import { post, useCoopAction, type MemberSummary, type PublicRules } from './api'
+import { postIdem, useCoopAction, useCoopStatus, type MemberSummary, type PublicRules } from './api'
+import { newKey, useAuthPrompt } from './auth'
 import { api } from '@/lib/api'
 
 export function ReliabilityBadge({ pct, has }: { pct: number | null; has: boolean }) {
@@ -14,12 +15,21 @@ export function ReliabilityBadge({ pct, has }: { pct: number | null; has: boolea
 
 export function TopUpSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [v, setV] = useState('')
-  const m = useCoopAction((k: number) => post('/coop/contributions', { amount_kobo: k }), {
-    success: 'Test contribution added', onSuccess: () => { setV(''); onClose() },
+  const { data: st } = useCoopStatus()
+  const live = st?.test_mode === false
+  const stepUp = st?.rules?.step_up_required && st.rules.step_up_required !== 'off'
+  const { ask, sheet } = useAuthPrompt()
+  const m = useCoopAction(async (k: number) => {
+    const auth = await ask(!!stepUp)
+    if (auth === null) throw new Error('Cancelled')
+    return postIdem('/coop/contributions', { amount_kobo: k, ...(auth ? { auth } : {}) }, newKey())
+  }, {
+    success: live ? 'Contribution added' : 'Test contribution added', onSuccess: () => { setV(''); onClose() },
   })
   return (
-    <Sheet open={open} onClose={onClose} title="Add test contribution">
-      <p className="mb-3 text-sm text-green-700 dark:text-night-200">This adds test money to your cooperative balance. No real wallet is used in the preview.</p>
+    <Sheet open={open} onClose={onClose} title={live ? 'Add to my contribution' : 'Add test contribution'}>
+      {sheet}
+      <p className="mb-3 text-sm text-green-700 dark:text-night-200">{live ? 'This moves money from your MonieKing wallet into your cooperative contribution.' : 'This adds test money to your cooperative balance. No real wallet is used in the preview.'}</p>
       <Field label="Amount"><MoneyInput value={v} onChange={setV} autoFocus /></Field>
       <div className="mt-2 flex gap-2">
         {[5_000, 20_000, 100_000].map((n) => (
@@ -43,11 +53,19 @@ export function WithdrawSheet({ open, onClose, member, rules }: { open: boolean;
     catch (e: any) { setErr(e?.response?.data?.detail ?? 'Could not check that amount') }
     finally { setBusy(false) }
   }
-  const run = useCoopAction(() => post('/coop/withdrawals', { amount_kobo: toKobo(v), confirm: true }), {
-    success: 'Withdrawal recorded (test money)', onSuccess: () => { setV(''); reset(); onClose() },
+  const { data: st } = useCoopStatus()
+  const stepUp = st?.rules?.step_up_required && st.rules.step_up_required !== 'off'
+  const { ask, sheet } = useAuthPrompt()
+  const run = useCoopAction(async () => {
+    const auth = await ask(!!stepUp)
+    if (auth === null) throw new Error('Cancelled')
+    return postIdem('/coop/withdrawals', { amount_kobo: toKobo(v), confirm: true, ...(auth ? { auth } : {}) }, newKey())
+  }, {
+    success: st?.test_mode === false ? 'Withdrawal recorded' : 'Withdrawal recorded (test money)', onSuccess: () => { setV(''); reset(); onClose() },
   })
   return (
     <Sheet open={open} onClose={() => { reset(); onClose() }} title="Withdraw contribution">
+      {sheet}
       <p className="mb-3 text-sm text-green-700 dark:text-night-200">You can withdraw only money that is not locked behind a guarantee. You have <b>{formatNaira(member.free_kobo)}</b> free.</p>
       <Field label="Amount"><MoneyInput value={v} onChange={(x) => { setV(x); reset() }} /></Field>
       {err && <p className="mt-2 text-sm font-semibold text-red-600">{err}</p>}

@@ -6,7 +6,10 @@ Ledgers (each member has their own running balance per ledger):
   locked         the part of it locked behind guarantees
   loan_out       principal lent out (disbursed)  -- record only, no wallet credited
   loan_repaid    what a borrower has paid back, one entry per part: principal / interest / overdue charge
-Pool ledgers (member_id is NULL): pool_interest, pool_overdue, pool_withdrawal, running_cost.
+  loan_written_off  principal written off after a recovery failure (per borrower and loan)
+  dividend_paid     a dividend paid out of the cooperative to a member (record of the payout)
+Pool ledgers (member_id is NULL): pool_interest, pool_overdue, pool_withdrawal, pool_distributed, pool_carry,
+running_cost (the running-cost fund, also receives membership fees and pays expenses) and operating (transfer fees).
 Corrections are made with reversing entries, never edits (the database blocks UPDATE/DELETE).
 """
 from __future__ import annotations
@@ -23,7 +26,8 @@ from app.coop.errors import CoopError
 from app.coop.models import CoopJournal
 from app.coop.settings_store import Rules
 
-POOL_LEDGERS = ("pool_interest", "pool_overdue", "pool_withdrawal")
+POOL_LEDGERS = ("pool_interest", "pool_overdue", "pool_withdrawal", "pool_distributed", "pool_carry")
+NO_MEMBER_LEDGERS = POOL_LEDGERS + ("running_cost", "operating")
 
 
 async def balance(db: AsyncSession, member_id: Optional[uuid.UUID], ledger: str) -> int:
@@ -38,7 +42,8 @@ async def free_funds(db: AsyncSession, member_id: uuid.UUID) -> int:
 
 async def post(db: AsyncSession, rules: Rules, *, member_id: Optional[uuid.UUID], ledger: str, entry_type: str,
                delta: int, reference: str, loan_id=None, guarantee_id=None, actor=None, note: str | None = None,
-               reverses_id: int | None = None) -> CoopJournal:
+               reverses_id: int | None = None, year: int | None = None) -> CoopJournal:
+    """`year` overrides the accounting year (used when a year-end run is posted after the year has turned)."""
     if delta == 0:
         raise CoopError("Nothing to record")
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
@@ -50,7 +55,7 @@ async def post(db: AsyncSession, rules: Rules, *, member_id: Optional[uuid.UUID]
     now = rules.now()
     row = CoopJournal(member_id=member_id, ledger=ledger, entry_type=entry_type, delta_kobo=delta,
                       balance_after=new_bal, loan_id=loan_id, guarantee_id=guarantee_id, reference=reference,
-                      accounting_year=logic.accounting_year(now.date()), effective_at=now,
+                      accounting_year=year or logic.accounting_year(now.date()), effective_at=now,
                       actor_id=actor, reverses_id=reverses_id, note=note)
     db.add(row)
     await db.flush()
@@ -62,3 +67,9 @@ async def pool_total(db: AsyncSession, year: Optional[int] = None) -> int:
     if year:
         q = q.where(CoopJournal.accounting_year == year)
     return int((await db.execute(q)).scalar_one())
+
+
+async def money_totals(db: AsyncSession) -> dict:
+    """Every ledger total in one query (used by the money position and the reconciliation)."""
+    rows = (await db.execute(select(CoopJournal.ledger, func.coalesce(func.sum(CoopJournal.delta_kobo), 0)).group_by(CoopJournal.ledger))).all()
+    return {l: int(v) for l, v in rows}

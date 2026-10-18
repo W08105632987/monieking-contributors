@@ -4,7 +4,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle2, ChevronRight, Coins, FlaskConical, ShieldCheck } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
-import { post, useCoopAction, useCoopStatus } from '../api'
+import { postIdem, useCoopAction, useCoopStatus } from '../api'
+import { newKey, useAuthPrompt } from '../auth'
 import { BigButton, Card, CoopPage, Field, MoneyInput, Pill, pctText, toKobo } from '../ui'
 
 export default function JoinPage() {
@@ -17,7 +18,12 @@ export default function JoinPage() {
   const [agree, setAgree] = useState(false)
   const [bypass, setBypass] = useState(false)
   const [done, setDone] = useState<any>(null)
-  const join = useCoopAction((v: { amount_kobo: number; nin_bypass: boolean }) => post('/coop/join', v), { onSuccess: (m) => { setDone(m); setStep(4) } })
+  const { ask, sheet } = useAuthPrompt()
+  const join = useCoopAction(async (v: { amount_kobo: number; nin_bypass: boolean }) => {
+    const auth = await ask(!!r?.step_up_required && r.step_up_required !== 'off')
+    if (auth === null) throw new Error('Cancelled')
+    return postIdem('/coop/join', { ...v, ...(auth ? { auth } : {}) }, newKey())
+  }, { onSuccess: (m) => { setDone(m); setStep(4) } })
   if (!r) return <CoopPage title="Join" back="/coop"><div /></CoopPage>
   const ninOk = !!user?.nin_linked || bypass
   const min = r.registration_min_kobo
@@ -25,6 +31,7 @@ export default function JoinPage() {
 
   return (
     <CoopPage title="Join the Cooperative" back={step < 4 ? '/coop' : false} subtitle={step < 4 ? `Step ${step + 1} of 4` : undefined}>
+      {sheet}
       <div className="mb-4 flex gap-1.5">{[0, 1, 2, 3].map((i) => <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= Math.min(step, 3) ? 'bg-green-500' : 'bg-green-100 dark:bg-night-600'}`} />)}</div>
       <AnimatePresence mode="wait">
         <motion.div key={step} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.18 }}>

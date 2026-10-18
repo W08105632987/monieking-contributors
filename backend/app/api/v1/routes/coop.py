@@ -3,14 +3,15 @@ import uuid
 from datetime import date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.coop import insights, ledger, logic, service, settings_store
+from app.coop import insights, ledger, logic, ops, safety, service, settings_store, yearend
+from app.coop.safety import AuthBody
 from app.coop.errors import CoopError
-from app.coop.models import CoopGuarantee, CoopLoan, CoopMember
+from app.coop.models import CoopGuarantee, CoopLoan, CoopMember, CoopMemberBank
 from app.coop.settings_store import Rules
 from app.core.database import get_db
 from app.core.dependencies import CurrentUser
@@ -44,6 +45,16 @@ class AmountBody(BaseModel):
 
 class WithdrawBody(AmountBody):
     confirm: bool = False
+    auth: Optional[AuthBody] = None
+
+
+class RepayBody(AmountBody):
+    source: Optional[str] = None
+    auth: Optional[AuthBody] = None
+
+
+class AuthOnly(BaseModel):
+    auth: Optional[AuthBody] = None
 
 
 class LoanBody(BaseModel):
@@ -74,33 +85,43 @@ async def _summary(db, rules, m: CoopMember) -> dict:
     s = await insights.stats(db, rules, m)
     return {"member_id": str(m.id), "card_no": m.card_no, "status": m.status, **s, "pool_listed": m.pool_listed,
             "pool_offer_kobo": m.pool_offer_kobo, "pool_whatsapp_ok": m.pool_whatsapp_ok, "pool_note": m.pool_note,
-            "nin_bypassed": m.nin_bypassed, "disqualified_this_year": m.disqualified_year == logic.accounting_year(rules.today())}
+            "nin_bypassed": m.nin_bypassed, "disqualified_this_year": m.disqualified_year == logic.accounting_year(rules.today()),
+            "balances": await service.itemised(db, rules, m), "fee_paid": bool(m.fee_paid_at), "next_of_kin": m.next_of_kin,
+            "has_bank": (await db.get(CoopMemberBank, m.id)) is not None}
 
 
 @router.get("/status")
 async def status(user: CurrentUser, db: AsyncSession = Depends(get_db)):
     rules = await settings_store.load_rules(db)
     access = await service.has_access(db, rules, user)
-    out = {"enabled": bool(rules.get("coop_enabled")), "access": access, "test_mode": True, "is_member": False,
+    out = {"enabled": bool(rules.get("coop_enabled")), "access": access, "test_mode": not rules.get("coop_live_funds"), "is_member": False,
            "now": rules.now().isoformat(), "clock_offset_days": int(rules.get("test_clock_offset_days"))}
     if not access:
         return out
     out["rules"] = settings_store.public_summary(rules)
+    out["pilot"] = await safety.pilot_status(db, rules)
     m = await service.member_of(db, user)
     if m and m.status == "active":
-        await service.sweep(db, rules)
+        await ops.run_jobs(db, rules)
         out["is_member"] = True
         out["member"] = await _summary(db, rules, m)
         loan = (await db.execute(select(CoopLoan).where(CoopLoan.member_id == m.id, CoopLoan.status.in_(service.ACTIVE_LOAN)).order_by(CoopLoan.created_at.desc()))).scalars().first()
         out["active_loan"] = await _loan_card(db, rules, loan) if loan else None
+        from app.coop.models import CoopRequest
+        out["pending_consents"] = sum(1 for r in (await db.execute(select(CoopRequest).where(CoopRequest.status == "pending", CoopRequest.kind == "restructure"))).scalars().all()
+                                      for c in r.consents if c["member_id"] == str(m.id) and c["status"] == "pending")
+        out["offers_waiting"] = len((await db.execute(select(CoopLoan).where(CoopLoan.member_id == m.id, CoopLoan.status == "awaiting_acceptance"))).scalars().all())
         out["pending_invites"] = len((await db.execute(select(CoopGuarantee).where(CoopGuarantee.guarantor_id == m.id, CoopGuarantee.status.in_(service.LIVE_INVITE)))).scalars().all())
     return out
 
 
 @router.post("/join")
-async def join(body: JoinBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):
-    m = await service.join(db, rules, user, body.amount_kobo, body.nin_bypass)
-    return await _summary(db, rules, m)
+async def join(body: JoinBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db),
+               idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
+    async def run():
+        m = await service.join(db, rules, user, body.amount_kobo, body.nin_bypass)
+        return await _summary(db, rules, m)
+    return await safety.idempotent(db, user, idempotency_key, "join", run)
 
 
 @router.get("/me")
@@ -110,19 +131,28 @@ async def me(user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(g
 
 
 @router.post("/contributions")
-async def contribute(body: AmountBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):
+async def contribute(body: AmountBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db),
+                     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     m = await service.require_member(db, user)
-    await service.contribute(db, rules, m, body.amount_kobo, user.id)
-    return await _summary(db, rules, m)
+
+    async def run():
+        await service.contribute(db, rules, m, body.amount_kobo, user.id)
+        return await _summary(db, rules, m)
+    return await safety.idempotent(db, user, idempotency_key, "contribute", run)
 
 
 @router.post("/withdrawals")
-async def withdraw(body: WithdrawBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):
+async def withdraw(body: WithdrawBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db),
+                   idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     m = await service.require_member(db, user)
     if not body.confirm:
-        return {"preview": True, **await service.withdraw_preview(db, rules, m, body.amount_kobo)}
-    pv = await service.withdraw(db, rules, m, body.amount_kobo, user.id)
-    return {"preview": False, **pv, "member": await _summary(db, rules, m)}
+        return {"preview": True, "step_up": safety.step_up_needed(rules, "member"), **await service.withdraw_preview(db, rules, m, body.amount_kobo)}
+
+    async def run():
+        await safety.require_step_up(db, rules, user, body.auth, "member")
+        pv = await service.withdraw(db, rules, m, body.amount_kobo, user.id)
+        return {"preview": False, **pv, "member": await _summary(db, rules, m)}
+    return await safety.idempotent(db, user, idempotency_key, "withdraw", run)
 
 
 @router.get("/transparency")
@@ -158,7 +188,10 @@ async def _loan_card(db, rules, loan: CoopLoan) -> dict:
             "rate_bps": loan.rate_bps, "purpose": loan.purpose, "created_at": loan.created_at.isoformat(),
             "expires_at": loan.expires_at.isoformat() if loan.expires_at else None, "due_date": loan.due_date.isoformat() if loan.due_date else None,
             "guaranteed_kobo": t["signed"], "pending_kobo": t["pending"], "cover_needed_kobo": t["need"],
-            "total_due_kobo": pos["total_due_kobo"], "overdue": pos["overdue"], "decision_note": loan.decision_note}
+            "total_due_kobo": pos["total_due_kobo"], "overdue": pos["overdue"], "decision_note": loan.decision_note,
+            "fee_kobo": loan.offer_fee_kobo, "net_payout_kobo": loan.net_payout_kobo, "payout_status": loan.payout_status,
+            "offer_expires_at": loan.offer_expires_at.isoformat() if loan.offer_expires_at else None, "repay_source": loan.repay_source,
+            "due_now_kobo": pos["due_now_kobo"]}
 
 
 async def _loan_detail(db, rules, loan: CoopLoan) -> dict:
@@ -173,15 +206,28 @@ async def _loan_detail(db, rules, loan: CoopLoan) -> dict:
         guarantors.append({"guarantee_id": str(g.id), "member_id": str(gm.id), "name": gu.full_name, "amount_kobo": g.amount_kobo,
                            "status": g.status, "signed_at": g.signed_at.isoformat() if g.signed_at else None,
                            "expires_at": g.expires_at.isoformat()})
+    approved = loan.status not in ("seeking_guarantors", "awaiting_approval", "expired", "cancelled", "rejected")
     steps = [{"key": "requested", "done": True}, {"key": "guaranteed", "done": loan.status not in ("seeking_guarantors", "expired", "cancelled")},
-             {"key": "approved", "done": loan.status in ("repaying", "repaid")}, {"key": "repaid", "done": loan.status == "repaid"}]
+             {"key": "approved", "done": approved}, {"key": "accepted", "done": loan.accepted_at is not None or loan.status in OWING_PLUS},
+             {"key": "paid_out", "done": loan.paid_out_at is not None or loan.status in ("repaying", "awaiting_final_release", "repaid")},
+             {"key": "repaid", "done": loan.status in ("repaid", "awaiting_final_release")}]
+    bank = await db.get(CoopMemberBank, loan.member_id)
     return {**card, "flags": loan.flags, "schedule": pos["schedule"], "next_instalment": pos["next"], "overdue_days": pos["overdue_days"],
             "accrued_charge_kobo": pos["accrued_charge_kobo"], "charges_due_kobo": pos["charges_due_kobo"],
             "charges_paid_kobo": pos["charges_paid_kobo"], "interest_due_kobo": pos["interest_due_kobo"],
             "principal_due_kobo": pos["principal_due_kobo"], "principal_paid_kobo": loan.principal_paid_kobo,
             "interest_paid_kobo": loan.interest_paid_kobo, "guarantors": guarantors, "steps": steps,
             "overdue_daily_bps": loan.overdue_daily_bps, "overdue_cap_pct": loan.overdue_cap_pct,
-            "still_needed_kobo": t_need(card)}
+            "still_needed_kobo": t_need(card), "offer": service.offer_view(loan) if loan.status == "awaiting_acceptance" else None,
+            "payout": {"status": loan.payout_status, "hold_reason": loan.payout_hold_reason, "reference": loan.payout_ref,
+                       "paid_at": loan.paid_out_at.isoformat() if loan.paid_out_at else None, "account": loan.payout_account,
+                       "bank_on_file": bank is not None}, "allowed_sources": service.allowed_sources(loan), "waived_kobo": loan.waived_kobo,
+            "due_now_kobo": pos["due_now_kobo"], "interest_breakdown": await service.interest_breakdown(db, rules, loan),
+            "restructured": loan.restructured_count, "written_off_kobo": loan.written_off_kobo, "start_date": loan.start_date.isoformat() if loan.start_date else None,
+            "free_kobo": await ledger.free_funds(db, loan.member_id), "step_up": safety.step_up_needed(rules, "member")}
+
+
+OWING_PLUS = ("awaiting_payout", "repaying", "awaiting_final_release", "repaid", "written_off")
 
 
 def t_need(card) -> int:
@@ -193,7 +239,9 @@ async def loan_preview(amount_kobo: int, term_months: int, user: CurrentUser, ru
     if amount_kobo <= 0 or term_months < 1 or term_months > int(rules.get("loan_term_months")):
         raise CoopError(f"Choose a term of 1 to {rules.get('loan_term_months')} months and an amount above zero")
     pv = service.instalment_preview(amount_kobo, term_months, int(rules.get("loan_rate_bps")), rules.today())
-    return {**pv, "rate_bps": int(rules.get("loan_rate_bps")), "cover_needed_kobo": logic.cover_required(amount_kobo, int(rules.get("cover_pct"))),
+    fee = service.transfer_fee(rules, amount_kobo)
+    return {**pv, "fee_kobo": fee, "net_payout_kobo": amount_kobo - fee, "fee_payer": rules.get("transfer_fee_payer"),
+            "rate_bps": int(rules.get("loan_rate_bps")), "cover_needed_kobo": logic.cover_required(amount_kobo, int(rules.get("cover_pct"))),
             "min_kobo": int(rules.get("loan_min_kobo")), "max_kobo": int(rules.get("loan_max_kobo")),
             "note": "Full interest is payable even if you repay early."}
 
@@ -246,10 +294,30 @@ async def invite(loan_id: uuid.UUID, body: InviteBody, user: CurrentUser, rules:
 
 
 @router.post("/loans/{loan_id}/repay")
-async def repay(loan_id: uuid.UUID, body: AmountBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):
-    res = await service.repay(db, rules, loan_id, user, body.amount_kobo)
-    loan = await db.get(CoopLoan, loan_id)
-    return {**res, "loan": await _loan_detail(db, rules, loan)}
+async def repay(loan_id: uuid.UUID, body: RepayBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db),
+                idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
+    async def run():
+        await safety.require_step_up(db, rules, user, body.auth, "member")
+        res = await service.repay(db, rules, loan_id, user, body.amount_kobo, body.source)
+        loan = await db.get(CoopLoan, loan_id)
+        return {**res, "loan": await _loan_detail(db, rules, loan)}
+    return await safety.idempotent(db, user, idempotency_key, "repay", run)
+
+
+@router.post("/loans/{loan_id}/accept")
+async def accept_offer(loan_id: uuid.UUID, body: AuthOnly, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db),
+                       idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
+    async def run():
+        await safety.require_step_up(db, rules, user, body.auth, "member")
+        loan = await service.accept_offer(db, rules, loan_id, user)
+        return await _loan_detail(db, rules, loan)
+    return await safety.idempotent(db, user, idempotency_key, "accept", run)
+
+
+@router.post("/loans/{loan_id}/decline-offer")
+async def decline_offer(loan_id: uuid.UUID, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):
+    loan = await service.decline_offer(db, rules, loan_id, user)
+    return await _loan_detail(db, rules, loan)
 
 
 # ── guarantor side ──

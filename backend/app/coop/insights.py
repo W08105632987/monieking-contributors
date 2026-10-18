@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.coop import ledger, logic
 from app.coop.errors import CoopError
 from app.coop.models import CoopGuarantee, CoopJournal, CoopLoan, CoopMember
-from app.coop.service import ACTIVE_LOAN, LIVE_INVITE, naira, position
+from app.coop.service import ACTIVE_LOAN, LIVE_INVITE, LOCKING, naira, position
 from app.coop.settings_store import Rules
 from app.models.user import User, UserRole
 
@@ -27,10 +27,12 @@ def wa_link(phone: str, text: str = "Hello, I found you on the MonieKing guarant
 
 async def stats(db: AsyncSession, rules: Rules, m: CoopMember) -> dict:
     today = rules.today()
-    loans = (await db.execute(select(CoopLoan).where(CoopLoan.member_id == m.id, CoopLoan.status.in_(("repaying", "repaid"))))).scalars().all()
+    loans = (await db.execute(select(CoopLoan).where(CoopLoan.member_id == m.id, CoopLoan.status.in_(("repaying", "awaiting_final_release", "repaid", "written_off"))))).scalars().all()
     reached = on_time = 0
     for l in loans:
-        if l.status == "repaid":
+        if l.status == "written_off":
+            reached += 1
+        elif l.status in ("repaid", "awaiting_final_release"):
             reached += 1
             if l.closed_at and l.due_date and (l.closed_at.date() <= l.due_date + timedelta(days=l.overdue_grace_days)):
                 on_time += 1
@@ -41,7 +43,7 @@ async def stats(db: AsyncSession, rules: Rules, m: CoopMember) -> dict:
     locked = await ledger.balance(db, m.id, "locked")
     rel = logic.reliability_pct(on_time, reached, int(rules.get("reliability_min_history")))
     return {"member_since": m.registered_at.date().isoformat(), "months_member": round((rules.now() - m.registered_at).days / 30.4, 1),
-            "loans_taken": len(loans), "loans_repaid": sum(1 for l in loans if l.status == "repaid"),
+            "loans_taken": len(loans), "loans_repaid": sum(1 for l in loans if l.status in ("repaid", "awaiting_final_release")),
             "reliability_pct": rel, "has_history": rel is not None,
             "guarantees_active": g_active["active"], "guarantees_total": g_active["total"],
             "guaranteed_active_kobo": g_active["active_kobo"],
@@ -52,7 +54,7 @@ async def _guarantee_stats(db: AsyncSession, member_id) -> dict:
     rows = (await db.execute(select(CoopGuarantee.status, CoopLoan.status, CoopGuarantee.amount_kobo)
                              .join(CoopLoan, CoopLoan.id == CoopGuarantee.loan_id).where(CoopGuarantee.guarantor_id == member_id))).all()
     total = sum(1 for g, l, a in rows if g in ("signed", "released"))
-    act = [a for g, l, a in rows if g == "signed" and l in ("awaiting_approval", "repaying")]
+    act = [a for g, l, a in rows if g == "signed" and l in LOCKING]
     return {"total": total, "active": len(act), "active_kobo": sum(act)}
 
 
@@ -143,7 +145,7 @@ async def transparency(db: AsyncSession, rules: Rules, start: date, end: date) -
     members = (await db.execute(select(func.count()).select_from(CoopMember).where(CoopMember.status == "active"))).scalar_one()
     interest = _sum(await _ledger_year(db, "pool_interest", year)) + _sum(await _ledger_year(db, "running_cost", year))
     run_cost = _sum(await _ledger_year(db, "running_cost", year))
-    loans = (await db.execute(select(CoopLoan).where(CoopLoan.status == "repaying"))).scalars().all()
+    loans = (await db.execute(select(CoopLoan).where(CoopLoan.status.in_(("repaying", "awaiting_final_release"))))).scalars().all()
     out_kobo = sum(l.principal_kobo - l.principal_paid_kobo for l in loans)
     uncollected = sum(position(l, rules.today())["charges_due_kobo"] for l in loans)
     return {"range": {"start": start.isoformat(), "end": end.isoformat()}, "series": series,
@@ -169,16 +171,17 @@ async def _ledger_year(db, ledger_name: str, year: int) -> list[int]:
 
 
 # ── dividend estimate ─────────────────────────────────────────────────────
-async def _weights(db: AsyncSession, rules: Rules, extra: dict | None = None) -> dict:
+async def _weights(db: AsyncSession, rules: Rules, extra: dict | None = None, year: int | None = None) -> dict:
     """
     Time-weighted weights, projected to year end on the basis that nothing else changes.
     contribution weight = sum over days of the member's contribution balance
     guarantee weight    = locked amount x days, stopping from the overdue date of that loan
     """
     today = rules.today()
-    year = logic.accounting_year(today)
+    year = year or logic.accounting_year(today)
     ys, ye = logic.year_bounds(year, int(rules.get("year_end_month")), int(rules.get("year_end_day")))
-    horizon = max(min(ye, ye), ys)
+    horizon = max(ye, ys)
+    today = min(today, ye)  # a finished year is never projected past its end
     members = (await db.execute(select(CoopMember))).scalars().all()
     ev = (await db.execute(select(CoopJournal.member_id, CoopJournal.effective_at, CoopJournal.delta_kobo).where(
         CoopJournal.ledger == "contribution").order_by(CoopJournal.id))).all()
@@ -192,6 +195,8 @@ async def _weights(db: AsyncSession, rules: Rules, extra: dict | None = None) ->
         w = 0
         cursor = ys
         for d, delta in events:
+            if d > today:
+                break
             # integrate up to min(day, today) with the balance before this event
             seg_end = min(max(d, ys), today)
             if seg_end > cursor:
@@ -293,10 +298,15 @@ async def reconciliation(db: AsyncSession) -> list[dict]:
     # 4 pool == interest (net of running cost) + charges recorded
     pi, rc, po = await ledger_total(db, "pool_interest"), await ledger_total(db, "running_cost"), await ledger_total(db, "loan_repaid")
     paid_int = int((await db.execute(select(func.coalesce(func.sum(CoopLoan.interest_paid_kobo), 0)))).scalar_one())
+    rc_interest = int((await db.execute(select(func.coalesce(func.sum(CoopJournal.delta_kobo), 0)).where(
+        CoopJournal.ledger == "running_cost", CoopJournal.entry_type == "running_cost"))).scalar_one())
+    pi_interest = int((await db.execute(select(func.coalesce(func.sum(CoopJournal.delta_kobo), 0)).where(
+        CoopJournal.ledger == "pool_interest", CoopJournal.entry_type == "interest_realised"))).scalar_one())
+    pi, rc = pi_interest, rc_interest
     checks.append({"name": "Interest received equals pool plus running cost", "ok": pi + rc == paid_int, "detail": f"{naira(paid_int)} received, {naira(pi)} to pool, {naira(rc)} running cost"})
     # 5 no repaid loan still has locked guarantees
     stuck = int((await db.execute(select(func.count()).select_from(CoopGuarantee).join(CoopLoan, CoopLoan.id == CoopGuarantee.loan_id).where(
-        CoopGuarantee.status == "signed", CoopLoan.status.in_(("repaid", "rejected", "cancelled", "expired"))))).scalar_one())
+        CoopGuarantee.status == "signed", CoopLoan.status.in_(("repaid", "rejected", "cancelled", "expired", "declined", "written_off"))))).scalar_one())
     checks.append({"name": "Closed loans have no locked guarantees", "ok": stuck == 0, "detail": f"{stuck} stuck guarantee(s)"})
     return checks
 
