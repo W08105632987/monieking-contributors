@@ -51,6 +51,7 @@ async def main(dry: bool) -> int:
             print("No director account found; cannot record who created these. Stopping.")
             return 1
         have_t = set((await db.scalars(select(ServiceTemplate.service_code))).all())
+        have_ids = set((await db.scalars(select(IdentityService.code))).all())
         have_c = set((await db.scalars(select(ProviderServiceConfig.service_code))).all())
         live = set(json.loads(await get_config_value(db, LIVE_KEY) or "[]"))
         for code, s in defaults.NEW_SERVICES.items():
@@ -70,9 +71,10 @@ async def main(dry: bool) -> int:
             db.add(ver)
             await db.flush()
             tpl.current_version_id = ver.id
-            db.add(IdentityService(category=IdentityServiceCategory(s["category"]), code=code, name=s["title"],
-                                   description=s["description"], provider="manual", price_kobo=s["price_kobo"],
-                                   is_active=False, required_fields=[], updated_by=director.id))
+            if code not in have_ids:
+                db.add(IdentityService(category=IdentityServiceCategory(s["category"]), code=code, name=s["title"],
+                                       description=s["description"], provider="manual", price_kobo=s["price_kobo"],
+                                       is_active=False, required_fields=[], updated_by=director.id))
             live.add(code)
         for code, cfg in defaults.DEFAULT_CONFIGS.items():
             if code in have_c:
