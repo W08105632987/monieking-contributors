@@ -13,6 +13,8 @@ import { formatNaira, formatServiceCategory, formatServiceType } from '@/lib/uti
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
 import { ViewInfoModal, type JobDetailData } from '@/components/worker/ViewInfoModal'
 import { useJobPoolRealtime } from '@/hooks/useJobPoolRealtime'
+import { ProviderActions } from '@/components/worker/ProviderActions'
+import { AwaitingList } from '@/components/worker/AwaitingList'
 
 interface JobItem {
   id: string
@@ -22,7 +24,7 @@ interface JobItem {
   service_category: string
   service_type: string
   price_kobo: number
-  status: 'pending' | 'processing' | 'successful' | 'failed'
+  status: 'pending' | 'processing' | 'awaiting_provider' | 'successful' | 'failed'
   claimed_at?: string | null
   expires_at?: string | null
   completed_at?: string | null
@@ -82,7 +84,7 @@ export default function WorkerMyJobsPage() {
   // Realtime subscription for automatic instant updates
   useJobPoolRealtime()
 
-  const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active')
+  const [activeTab, setActiveTab] = useState<'active' | 'awaiting' | 'completed'>('active')
 
   // Selected job for ViewInfoModal
   const [selectedJob, setSelectedJob] = useState<JobDetailData | null>(null)
@@ -260,7 +262,7 @@ export default function WorkerMyJobsPage() {
 
       <main className="flex-1 px-4 py-4 space-y-4 max-w-lg mx-auto w-full">
         {/* Segmented Control */}
-        <div className="grid grid-cols-2 gap-2 p-1 bg-green-100/60 dark:bg-night-800 rounded-2xl">
+        <div className="grid grid-cols-3 gap-2 p-1 bg-green-100/60 dark:bg-night-800 rounded-2xl">
           <button
             onClick={() => setActiveTab('active')}
             className={`py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
@@ -273,6 +275,17 @@ export default function WorkerMyJobsPage() {
             {activeJob && (
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('awaiting')}
+            className={`py-2 text-xs font-bold rounded-xl transition-all ${
+              activeTab === 'awaiting'
+                ? 'bg-white dark:bg-night-700 text-green-950 dark:text-white shadow-sm'
+                : 'text-green-700 dark:text-night-300'
+            }`}
+          >
+            Awaiting ({jobsList.filter((j) => j.status === 'awaiting_provider').length})
           </button>
 
           <button
@@ -370,6 +383,8 @@ export default function WorkerMyJobsPage() {
                     </button>
                   </div>
 
+                  <ProviderActions jobId={activeJob.id} />
+
                   <button
                     onClick={() => {
                       setDisputeModalJob(activeJob)
@@ -402,6 +417,21 @@ export default function WorkerMyJobsPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* ── Tab: Awaiting outcome ── */}
+        {activeTab === 'awaiting' && (
+          <AwaitingList
+            onResolve={(id) => {
+              const job = jobsList.find((j) => j.id === id)
+              if (!job) return
+              setResolveModalJob(job)
+              setResolveStatus('successful')
+              setRemarks('')
+              setAdditionalInfo('')
+              setResultFileUrl('')
+            }}
+          />
         )}
 
         {/* ── Tab: Completed Jobs ── */}

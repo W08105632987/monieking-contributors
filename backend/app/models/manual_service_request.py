@@ -10,6 +10,7 @@ from app.core.database import Base
 class ManualServiceStatus(str, enum.Enum):
     PENDING    = "pending"
     PROCESSING = "processing"
+    AWAITING_PROVIDER = "awaiting_provider"   # handed to an outside party; stays with its worker, never reclaimed
     SUCCESSFUL = "successful"
     FAILED     = "failed"
 

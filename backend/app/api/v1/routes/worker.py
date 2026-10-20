@@ -728,6 +728,8 @@ async def list_all_jobs(
         status_map = {
             "pending": ManualServiceStatus.PENDING,
             "in_progress": ManualServiceStatus.PROCESSING,
+            "awaiting": ManualServiceStatus.AWAITING_PROVIDER,
+            "awaiting_provider": ManualServiceStatus.AWAITING_PROVIDER,
             "processing": ManualServiceStatus.PROCESSING,
             "completed": ManualServiceStatus.SUCCESSFUL,
             "successful": ManualServiceStatus.SUCCESSFUL,
