@@ -19,7 +19,7 @@ celery_app = Celery(
     "monieking",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry"],
+    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry", "app.tasks.provider_poll"],
 )
 
 celery_app.conf.update(
@@ -61,5 +61,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.job_expiry.expire_unclaimed_jobs",
         # Every 30 minutes: fail + refund manual jobs nobody claimed within the director-set days.
         "schedule": crontab(minute="*/30"),
+    },
+    "poll-provider-tickets": {
+        "task": "app.tasks.provider_poll.poll_provider_tickets",
+        # Every 10 minutes; each service's own "check every N minutes" setting decides which tickets are due.
+        "schedule": crontab(minute="*/10"),
     },
 }

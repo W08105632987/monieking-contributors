@@ -105,6 +105,7 @@ const DisputeDetailPage  = lazy(() => import('@/pages/disputes/DisputeDetailPage
 // what the list endpoint returns) ──
 const VerifyLookupPage          = lazy(() => import('@/pages/customer/VerifyLookupPage'))
 const DirectorVerificationSettings = lazy(() => import('@/pages/director/VerificationSettingsPage'))
+const DirectorProviderServices = lazy(() => import('@/pages/director/ProviderServicesPage'))
 const ServiceHistoryPage        = lazy(() => import('@/pages/customer/ServiceHistoryPage'))
 const ServiceRequestFormPage    = lazy(() => import('@/pages/customer/ServiceRequestFormPage'))
 const ServicesPage              = lazy(() => import('@/pages/customer/ServicesPage'))
@@ -332,6 +333,7 @@ export default function App() {
             <Route path="/director/customers/:customerId" element={<AuthGuard allowedRoles={['director']}><DirectorCustomerDetail /></AuthGuard>} />
             <Route path="/director/settings"        element={<AuthGuard allowedRoles={['director']}><DirectorSettings /></AuthGuard>} />
             <Route path="/director/verification" element={<AuthGuard allowedRoles={['director']}><DirectorVerificationSettings /></AuthGuard>} />
+            <Route path="/director/provider-services" element={<AuthGuard allowedRoles={['director']}><DirectorProviderServices /></AuthGuard>} />
             <Route path="/director/identity-services" element={<AuthGuard allowedRoles={['director']}><DirectorIdentityServices /></AuthGuard>} />
             <Route path="/director/service-builder" element={<AuthGuard allowedRoles={['director']}><DirectorServiceBuilder /></AuthGuard>} />
             <Route path="/director/service-builder/:code" element={<AuthGuard allowedRoles={['director']}><DirectorServiceBuilderEdit /></AuthGuard>} />

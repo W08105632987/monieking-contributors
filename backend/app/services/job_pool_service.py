@@ -230,6 +230,28 @@ async def claim_job(
     return job
 
 
+async def compute_commission(db: AsyncSession, job: ManualServiceRequest) -> int:
+    if job.price_kobo and job.price_kobo > 0:
+        return int(job.price_kobo * (await _get_commission_percent(db)) / 100)
+    return 0
+
+
+async def credit_worker_commission(db: AsyncSession, worker_id: uuid.UUID, commission_kobo: int) -> None:
+    """Credit a worker's commission balance, paying down any commission debt first (per 4.4.5)."""
+    if commission_kobo <= 0:
+        return
+    worker = await db.get(User, worker_id)
+    if not worker:
+        return
+    debt = worker.commission_debt_kobo or 0
+    surplus = commission_kobo
+    if debt > 0:
+        repay = min(debt, commission_kobo)
+        worker.commission_debt_kobo = debt - repay
+        surplus = commission_kobo - repay
+    worker.commission_balance_kobo = (worker.commission_balance_kobo or 0) + surplus
+
+
 # ── Resolve Job ───────────────────────────────────────────────────────────────
 async def resolve_job(
     db: AsyncSession,
@@ -252,13 +274,17 @@ async def resolve_job(
         .where(
             ManualServiceRequest.id == job_id,
             ManualServiceRequest.claimed_by_id == worker_id,
-            ManualServiceRequest.status == ManualServiceStatus.PROCESSING,
+            ManualServiceRequest.status.in_([ManualServiceStatus.PROCESSING, ManualServiceStatus.AWAITING_PROVIDER]),
         )
         .with_for_update()
     )
     job = (await db.scalars(stmt)).first()
     if not job:
         raise ValueError("Active job not found or not yours to resolve.")
+    from app.provider.service import has_open_ticket
+    if await has_open_ticket(db, job.id):
+        raise ValueError("This job has been sent to Techhub and is waiting for their answer. "
+                         "It will complete by itself, or a director can close it.")
 
     status_lower = worker_status.lower().strip()
     if status_lower in ("successful", "completed"):
@@ -295,18 +321,7 @@ async def resolve_job(
         from app.services.refund_service import refund_manual_job
         refunded_kobo = await refund_manual_job(db, job, actor_id=worker_id, why="worker marked failed")
 
-    # Credit commission to worker balance (offsetting active debt first per 4.4.5)
-    if commission_kobo > 0:
-        worker = await db.get(User, worker_id)
-        if worker:
-            debt = worker.commission_debt_kobo or 0
-            if debt > 0:
-                repay = min(debt, commission_kobo)
-                worker.commission_debt_kobo = debt - repay
-                commission_kobo_surplus = commission_kobo - repay
-            else:
-                commission_kobo_surplus = commission_kobo
-            worker.commission_balance_kobo = (worker.commission_balance_kobo or 0) + commission_kobo_surplus
+    await credit_worker_commission(db, worker_id, commission_kobo)
 
     # Record audit event
     event = JobPoolEvent(

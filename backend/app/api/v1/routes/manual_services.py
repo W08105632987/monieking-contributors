@@ -166,7 +166,9 @@ def _serialize(req: ManualServiceRequest) -> dict:
         "service_category": req.service_category,
         "service_type":    req.service_type,
         "price_kobo":      req.price_kobo,
-        "status":          req.status.value if hasattr(req.status, "value") else req.status,
+        # The customer never sees the internal "waiting for an outside party" state: it is simply Processing.
+        "status":          ("processing" if req.status == ManualServiceStatus.AWAITING_PROVIDER
+                            else (req.status.value if hasattr(req.status, "value") else req.status)),
         "consent_given":   req.consent_given,
         "worker_status":   req.worker_status,
         "worker_response": req.worker_response,
@@ -424,7 +426,9 @@ async def list_my_requests(
     q = select(ManualServiceRequest).where(
         ManualServiceRequest.user_id == current_user.id
     )
-    if service_status:
+    if service_status == "processing":
+        q = q.where(ManualServiceRequest.status.in_([ManualServiceStatus.PROCESSING, ManualServiceStatus.AWAITING_PROVIDER]))
+    elif service_status:
         q = q.where(ManualServiceRequest.status == service_status)
     q = q.order_by(ManualServiceRequest.created_at.desc())
 
