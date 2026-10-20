@@ -1,13 +1,17 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Download, Landmark, Mail, ShieldCheck } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { useAuthStore } from '@/store/auth.store'
+import { ChatThread } from '../chat'
+import { EntryDetailSheet, EntryRow, ViewAll } from '../lists'
+import { Download, Landmark, Mail, MessageSquare, ShieldCheck, UserCheck } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
 import { api, getErrorMessage } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { BankPickerModal, type Bank } from '@/components/settings/BankPickerModal'
 import { post, postIdem, put, useCoopAction, useCoopQ, useCoopStatus } from '../api'
 import { newKey, useAuthPrompt } from '../auth'
-import { BigButton, Card, CoopPage, Empty, Field, Pill, SectionTitle, Sheet, Skel, dShort, inputCls } from '../ui'
+import { BigButton, Card, CoopPage, Empty, Field, LoadError, Pill, SectionTitle, Sheet, Skel, dShort, inputCls } from '../ui'
 
 /* ───────── bank details ───────── */
 export function BankPage() {
@@ -50,19 +54,25 @@ export function BankPage() {
 export function KinPage() {
   const { data } = useCoopQ<{ next_of_kin: any }>('kin', '/coop/next-of-kin')
   const [f, setF] = useState<any>(null)
+  const u = useAuthStore((st) => st.user)
+  const profileKin = u?.next_of_kin_name && u?.next_of_kin_phone ? { name: u.next_of_kin_name, phone: u.next_of_kin_phone } : null
   const cur = f ?? data?.next_of_kin ?? { name: '', relationship: '', phone: '', address: '' }
   const set = (k: string, v: string) => setF({ ...cur, [k]: v })
   const save = useCoopAction(() => put('/coop/next-of-kin', cur), { success: 'Next of kin saved', onSuccess: () => setF(null) })
   return (
     <CoopPage title="Next of kin" subtitle="Who the cooperative contacts if something happens to you" back="/coop/me">
-      {!data ? <Skel /> : (
+      {!data ? <Skel /> : (<>
+        {profileKin && (!data.next_of_kin || data.next_of_kin.phone !== profileKin.phone) && (
+          <div className="mb-3"><BigButton tone="ghost" onClick={() => setF({ name: profileKin.name, phone: profileKin.phone, relationship: data.next_of_kin?.relationship || 'Next of kin', address: data.next_of_kin?.address ?? '' })}>
+            <UserCheck className="h-4 w-4" />Use the next of kin on my profile ({profileKin.name} · {profileKin.phone})</BigButton>
+            <p className="mt-1 text-center text-[11px] text-green-600 dark:text-night-300">This fills the form below. Add how they are related to you, then save. Or type someone different.</p></div>)}
         <Card className="space-y-3">
           <Field label="Full name"><input className={inputCls} value={cur.name} onChange={(e) => set('name', e.target.value)} /></Field>
           <Field label="Relationship"><input className={inputCls} value={cur.relationship} onChange={(e) => set('relationship', e.target.value)} placeholder="e.g. Spouse, Sister" /></Field>
           <Field label="Phone number"><input className={inputCls} inputMode="tel" value={cur.phone} onChange={(e) => set('phone', e.target.value)} /></Field>
           <Field label="Address (optional)"><input className={inputCls} value={cur.address ?? ''} onChange={(e) => set('address', e.target.value)} /></Field>
           <BigButton loading={save.isPending} disabled={!cur.name || !cur.relationship || !cur.phone} onClick={() => save.mutate(undefined)}>Save</BigButton>
-        </Card>)}
+        </Card></>)}
     </CoopPage>
   )
 }
@@ -102,6 +112,7 @@ export function ClosePage() {
 /* ───────── complaints ───────── */
 const CATS: [string, string][] = [['loan', 'My loan'], ['contribution', 'A contribution'], ['withdrawal', 'A withdrawal'], ['dividend', 'Dividend'], ['guarantee', 'A guarantee'], ['payout', 'A loan payout'], ['other', 'Something else']]
 export function ComplaintsPage() {
+  const nav = useNavigate()
   const { data } = useCoopQ<any[]>('complaints', '/coop/complaints')
   const [open, setOpen] = useState(false)
   const [f, setF] = useState({ subject: '', body: '', category: 'other' })
@@ -111,10 +122,11 @@ export function ComplaintsPage() {
       <BigButton onClick={() => setOpen(true)}><Mail className="h-4 w-4" />Write a complaint</BigButton>
       <SectionTitle>My complaints</SectionTitle>
       {!data ? <Skel /> : !data.length ? <p className="text-sm text-green-700 dark:text-night-200">You have not sent any complaint.</p> : (
-        <div className="space-y-2">{data.map((c) => (
-          <Card key={c.id}><div className="flex items-start justify-between gap-2"><div><p className="font-bold text-green-900 dark:text-white">{c.subject}</p><p className="text-xs text-green-600 dark:text-night-300">{dShort(c.created_at)}{c.due_at && c.status !== 'closed' ? ` · answer due ${dShort(c.due_at)}` : ''}</p></div><Pill tone={c.status === 'closed' ? 'green' : 'amber'}>{c.status === 'closed' ? 'Answered' : 'Open'}</Pill></div>
-            <p className="mt-2 text-sm text-green-800 dark:text-night-100">{c.body}</p>
-            {c.resolution && <p className="mt-2 rounded-xl bg-green-100 p-2 text-sm text-green-900 dark:bg-night-600 dark:text-white"><b>Answer:</b> {c.resolution}</p>}</Card>))}</div>)}
+        <ViewAll items={data} render={(c: any) => (
+          <Card key={c.id} onClick={() => nav(`/coop/complaints/${c.id}`)}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-bold text-green-900 dark:text-white">{c.subject}</p><p className="text-xs text-green-600 dark:text-night-300">{dShort(c.created_at)}{c.due_at && c.status !== 'closed' ? ` · answer due ${dShort(c.due_at)}` : ''}</p></div>
+            <Pill tone={c.status === 'closed' ? 'green' : c.status === 'answered' ? 'blue' : 'amber'}>{c.status === 'closed' ? 'Resolved' : c.status === 'answered' ? 'Replied' : 'Open'}</Pill></div>
+            <p className="mt-2 line-clamp-2 text-sm text-green-800 dark:text-night-100">{c.notes?.length ? c.notes[c.notes.length - 1].body : c.body}</p>
+            <p className="mt-1 flex items-center gap-1 text-[11px] font-bold text-green-600 dark:text-night-300"><MessageSquare className="h-3 w-3" />Open conversation</p></Card>)} />)}
       <Sheet open={open} onClose={() => setOpen(false)} title="Write a complaint">
         <div className="space-y-3">
           <Field label="About"><select className={inputCls} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{CATS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
@@ -123,6 +135,22 @@ export function ComplaintsPage() {
           <BigButton loading={send.isPending} disabled={f.subject.length < 3 || f.body.length < 3} onClick={() => send.mutate(undefined)}>Send</BigButton>
         </div>
       </Sheet>
+    </CoopPage>
+  )
+}
+
+export function ComplaintThreadPage() {
+  const { id } = useParams()
+  const { data, error, refetch } = useQuery<any>({ queryKey: ['coop', 'complaint', id], enabled: !!id, refetchInterval: 4000, retry: 1, queryFn: async () => (await api.get(`/coop/complaints/${id}`)).data })
+  const send = useCoopAction((t: string) => post(`/coop/complaints/${id}/messages`, { body: t }), { onSuccess: () => { refetch() } })
+  return (
+    <CoopPage title={data?.subject ?? 'Complaint'} subtitle="Conversation with the directors" back="/coop/complaints"
+      right={data ? <Pill tone={data.status === 'closed' ? 'green' : data.status === 'answered' ? 'blue' : 'amber'}>{data.status === 'closed' ? 'Resolved' : data.status === 'answered' ? 'Replied' : 'Open'}</Pill> : undefined}>
+      {error && !data ? <LoadError error={error} onRetry={() => refetch()} /> : !data ? <Skel h="h-48" /> : (<>
+        {data.due_at && data.status === 'open' && <p className="mb-2 text-center text-[11px] font-semibold text-green-600 dark:text-night-300">The directors will reply by {dShort(data.due_at)}</p>}
+        <ChatThread viewer="member" first={{ author: 'You', body: data.body, at: data.created_at }} notes={data.notes} onSend={(t) => send.mutate(t)} sending={send.isPending}
+          locked={data.status === 'closed'} lockedText={data.resolution ? `Resolved: ${data.resolution}` : 'This complaint is resolved.'} />
+      </>)}
     </CoopPage>
   )
 }
@@ -176,6 +204,7 @@ export function StatementPage() {
   const [year, setYear] = useState<number | null>(null)
   const y = year ?? thisYear
   const { data } = useCoopQ<any>('statement', '/coop/statement', { year: y })
+  const [entry, setEntry] = useState<any>(null)
   const [busy, setBusy] = useState(false)
   const download = async () => {
     setBusy(true)
@@ -193,10 +222,9 @@ export function StatementPage() {
           <Card><div className="flex justify-between text-sm"><span>Opening balance</span><b>{formatNaira(data.opening_kobo)}</b></div><div className="mt-1 flex justify-between text-sm"><span>Closing balance</span><b>{formatNaira(data.closing_kobo)}</b></div>
             <div className="mt-3"><BigButton tone="ghost" loading={busy} onClick={download}><Download className="h-4 w-4" />Download PDF</BigButton></div></Card>
           <SectionTitle>Entries</SectionTitle>
-          {!data.entries.length ? <p className="text-sm text-green-700 dark:text-night-200">No entries in {y}.</p> : <div className="space-y-2">{data.entries.map((e: any, i: number) => (
-            <Card key={i}><div className="flex items-center justify-between"><div><p className="text-sm font-bold capitalize text-green-900 dark:text-white">{e.type.replace(/_/g, ' ')}</p><p className="text-xs text-green-600 dark:text-night-300">{dShort(e.date)}</p></div>
-              <div className="text-right"><p className={`font-extrabold ${e.delta_kobo < 0 ? 'text-red-600' : 'text-green-700 dark:text-green-300'}`}>{e.delta_kobo < 0 ? '−' : '+'}{formatNaira(Math.abs(e.delta_kobo))}</p><p className="text-[11px] text-green-600 dark:text-night-300">{formatNaira(e.balance_kobo)}</p></div></div></Card>))}</div>}
-          {data.loans.length > 0 && <><SectionTitle>Loans</SectionTitle><div className="space-y-2">{data.loans.map((l: any) => <Card key={l.loan_no}><div className="flex justify-between text-sm"><b>{l.loan_no}</b><span className="capitalize">{l.status.replace(/_/g, ' ')}</span></div><p className="text-xs text-green-700 dark:text-night-200">{formatNaira(l.principal_kobo)} + {formatNaira(l.interest_kobo)} interest · paid {formatNaira(l.paid_kobo)}</p></Card>)}</div></>}
+          {!data.entries.length ? <p className="text-sm text-green-700 dark:text-night-200">No entries in {y}.</p> : <ViewAll items={[...data.entries].reverse()} render={(e: any) => <EntryRow key={e.id} e={e} onClick={() => setEntry(e)} />} />}
+          <EntryDetailSheet e={entry} onClose={() => setEntry(null)} />
+          {data.loans.length > 0 && <><SectionTitle>Loans</SectionTitle><ViewAll items={data.loans} render={(l: any) => <Card key={l.loan_no}><div className="flex justify-between text-sm"><b>{l.loan_no}</b><span className="capitalize">{l.status.replace(/_/g, ' ')}</span></div><p className="text-xs text-green-700 dark:text-night-200">{formatNaira(l.principal_kobo)} + {formatNaira(l.interest_kobo)} interest · paid {formatNaira(l.paid_kobo)}</p></Card>} /></>}
         </>)}
     </CoopPage>
   )

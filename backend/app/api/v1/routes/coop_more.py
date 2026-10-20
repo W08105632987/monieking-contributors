@@ -129,6 +129,26 @@ async def my_complaints(user: CurrentUser, rules: Rules = Ctx, db: AsyncSession 
     return [await cases.case_view(db, c, for_member=True) for c in await cases.list_cases(db, kind="complaint", member_id=m.id)]
 
 
+@router.get("/complaints/{case_id}")
+async def complaint_thread(case_id: uuid.UUID, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):
+    m = await service.require_member(db, user)
+    c = await db.get(CoopCase, case_id)
+    if not c or c.kind != "complaint" or c.member_id != m.id:
+        raise CoopError("Complaint not found", 404)
+    return await cases.case_view(db, c, for_member=True)
+
+
+class ChatBody(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+@router.post("/complaints/{case_id}/messages")
+async def complaint_message(case_id: uuid.UUID, body: ChatBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):
+    m = await service.require_member(db, user)
+    c = await cases.member_message(db, rules, m, user, case_id, body.body)
+    return await cases.case_view(db, c, for_member=True)
+
+
 @router.post("/complaints")
 async def new_complaint(body: ComplaintBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):
     m = await service.require_member(db, user)

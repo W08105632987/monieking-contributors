@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, FastForward, RotateCcw, XCircle } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
 import { post, useCoopAction } from '../api'
-import { BigButton, Card, CoopPage, Pill, SectionTitle, Skel, Stat, loanTone } from '../ui'
+import { BigButton, Card, CoopPage, LoadError, Pill, SectionTitle, Skel, Stat, loanTone } from '../ui'
 import { useAdmin } from './dapi'
 import ApprovalsTab from './ApprovalsTab'
 import SettingsTab from './SettingsTab'
@@ -15,7 +15,7 @@ const TABS = [['overview', 'Overview'], ['approvals', 'Approvals'], ['payouts', 
 export default function DirectorCoopPage() {
   const nav = useNavigate()
   const [tab, setTab] = useState<(typeof TABS)[number][0]>('overview')
-  const { data: ov } = useAdmin('overview', '/coop/admin/overview')
+  const { data: ov, error: ovError, refetch } = useAdmin('overview', '/coop/admin/overview')
   return (
     <CoopPage title="Cooperative" subtitle="Director console" back="/director/more">
       <div className="no-scrollbar -mx-4 mb-3 flex gap-2 overflow-x-auto px-4">
@@ -24,7 +24,8 @@ export default function DirectorCoopPage() {
           return <button key={k} onClick={() => setTab(k)} className={`flex flex-shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold ${tab === k ? 'bg-green-700 text-white dark:bg-green-600' : 'border border-green-200 bg-white text-green-800 dark:border-night-400 dark:bg-night-700 dark:text-night-100'}`}>{l}{n ? <span className="rounded-full bg-amber-400 px-1.5 text-[10px] font-extrabold text-green-950">{n}</span> : null}</button>
         })}
       </div>
-      {tab === 'overview' && <Overview ov={ov} go={setTab} />}
+      {ovError && !ov && <LoadError error={ovError} onRetry={() => refetch()} />}
+      {tab === 'overview' && !(ovError && !ov) && <Overview ov={ov} go={setTab} />}
       {tab === 'approvals' && <ApprovalsTab />}
       {tab === 'payouts' && <PayoutsTab stepUp={!!ov?.step_up} />}
       {tab === 'requests' && <RequestsTab stepUp={!!ov?.step_up} />}

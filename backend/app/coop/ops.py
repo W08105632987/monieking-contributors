@@ -1,14 +1,17 @@
 """Operations: money position, reconciliation, background jobs and the go-live checklist."""
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.coop import cases, defs, insights, ledger, service, yearend
+from app.coop import cases, defs, insights, ledger, service, settings_store, yearend
 from app.coop.models import CoopJobRun, CoopJournal, CoopMember, CoopReconciliation, CoopSweep
 from app.coop.service import naira
 from app.coop.settings_store import Rules
@@ -27,7 +30,7 @@ async def money_position(db: AsyncSession, rules: Rules) -> dict:
     contributions, locked = t.get("contribution", 0), t.get("locked", 0)
     repaid_p = await yearend.principal_repaid(db)
     outstanding = t.get("loan_out", 0) - repaid_p - t.get("loan_written_off", 0)
-    expected_cash = contributions + sum(pools.values()) + t.get("running_cost", 0) + t.get("operating", 0) - outstanding
+    expected_cash = contributions + sum(pools.values()) + t.get("running_cost", 0) + t.get("operating", 0) + t.get("withdrawal_pending", 0) - outstanding
     sw_in = int((await db.execute(select(func.coalesce(func.sum(CoopSweep.amount_kobo), 0)).where(CoopSweep.direction == "to_coop_account"))).scalar_one())
     sw_out = int((await db.execute(select(func.coalesce(func.sum(CoopSweep.amount_kobo), 0)).where(CoopSweep.direction == "from_coop_account"))).scalar_one())
     swept = sw_in - sw_out
@@ -36,7 +39,7 @@ async def money_position(db: AsyncSession, rules: Rules) -> dict:
             "funds": {"member_contributions_kobo": contributions, "of_which_locked_kobo": locked, "free_kobo": contributions - locked,
                       "dividend_pool_kobo": sum(pools.values()), "pool_interest_kobo": pools["pool_interest"], "pool_overdue_kobo": pools["pool_overdue"],
                       "pool_withdrawal_kobo": pools["pool_withdrawal"], "pool_carry_kobo": pools["pool_carry"],
-                      "running_cost_kobo": t.get("running_cost", 0), "operating_kobo": t.get("operating", 0), "loans_outstanding_kobo": outstanding},
+                      "withdrawals_held_kobo": t.get("withdrawal_pending", 0), "running_cost_kobo": t.get("running_cost", 0), "operating_kobo": t.get("operating", 0), "loans_outstanding_kobo": outstanding},
             "expected_cash_kobo": expected_cash, "swept_to_coop_account_kobo": swept,
             "to_sweep_kobo": expected_cash - swept if mode == "sub_account" else 0,
             "note": ("Everything stays in the single settlement account. The figures above are the cooperative's share of it."
@@ -122,6 +125,35 @@ async def run_jobs(db: AsyncSession, rules: Rules, force: bool = False) -> dict:
             db.add(CoopJobRun(name=name, last_run_at=now, last_result=res))
         await db.flush()
     return out
+
+
+_gate = {"next": 0.0}
+_tasks: set = set()
+
+
+async def kick_jobs(db: AsyncSession, rules: Rules):
+    """Called from busy screens. In production the jobs run in the background (a screen never waits for them) and at most
+    one check per minute per process is started. Under test they run inline so results are predictable."""
+    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("COOP_JOBS_INLINE") == "1":
+        return await run_jobs(db, rules)
+    now = time.monotonic()
+    if now < _gate["next"]:
+        return None
+    _gate["next"] = now + 60
+
+    async def _bg():
+        try:
+            from app.core.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as s:
+                r = await settings_store.load_rules(s)
+                await run_jobs(s, r)
+                await s.commit()
+        except Exception:
+            logging.getLogger(__name__).exception("coop background jobs failed")
+    t = asyncio.get_running_loop().create_task(_bg())
+    _tasks.add(t)
+    t.add_done_callback(_tasks.discard)
+    return None
 
 
 async def job_status(db: AsyncSession) -> list[dict]:

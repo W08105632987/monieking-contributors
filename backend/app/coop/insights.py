@@ -25,9 +25,8 @@ def wa_link(phone: str, text: str = "Hello, I found you on the MonieKing guarant
     return f"https://wa.me/{p}?text={quote(text)}"
 
 
-async def stats(db: AsyncSession, rules: Rules, m: CoopMember) -> dict:
+def _stats_from(rules: Rules, m: CoopMember, loans: list, g_rows: list, contrib: int, locked: int) -> dict:
     today = rules.today()
-    loans = (await db.execute(select(CoopLoan).where(CoopLoan.member_id == m.id, CoopLoan.status.in_(("repaying", "awaiting_final_release", "repaid", "written_off"))))).scalars().all()
     reached = on_time = 0
     for l in loans:
         if l.status == "written_off":
@@ -38,16 +37,45 @@ async def stats(db: AsyncSession, rules: Rules, m: CoopMember) -> dict:
                 on_time += 1
         elif l.due_date and today > l.due_date + timedelta(days=l.overdue_grace_days):
             reached += 1
-    g_active = await _guarantee_stats(db, m.id)
-    contrib = await ledger.balance(db, m.id, "contribution")
-    locked = await ledger.balance(db, m.id, "locked")
+    total = sum(1 for g, ls, a in g_rows if g in ("signed", "released"))
+    act = [a for g, ls, a in g_rows if g == "signed" and ls in LOCKING]
     rel = logic.reliability_pct(on_time, reached, int(rules.get("reliability_min_history")))
     return {"member_since": m.registered_at.date().isoformat(), "months_member": round((rules.now() - m.registered_at).days / 30.4, 1),
             "loans_taken": len(loans), "loans_repaid": sum(1 for l in loans if l.status in ("repaid", "awaiting_final_release")),
             "reliability_pct": rel, "has_history": rel is not None,
-            "guarantees_active": g_active["active"], "guarantees_total": g_active["total"],
-            "guaranteed_active_kobo": g_active["active_kobo"],
+            "guarantees_active": len(act), "guarantees_total": total, "guaranteed_active_kobo": sum(act),
             "contribution_kobo": contrib, "locked_kobo": locked, "free_kobo": contrib - locked}
+
+
+_HIST = ("repaying", "awaiting_final_release", "repaid", "written_off")
+
+
+async def stats(db: AsyncSession, rules: Rules, m: CoopMember) -> dict:
+    loans = (await db.execute(select(CoopLoan).where(CoopLoan.member_id == m.id, CoopLoan.status.in_(_HIST)))).scalars().all()
+    g_rows = (await db.execute(select(CoopGuarantee.status, CoopLoan.status, CoopGuarantee.amount_kobo)
+                               .join(CoopLoan, CoopLoan.id == CoopGuarantee.loan_id).where(CoopGuarantee.guarantor_id == m.id))).all()
+    bal = dict((await db.execute(select(CoopJournal.ledger, func.coalesce(func.sum(CoopJournal.delta_kobo), 0)).where(
+        CoopJournal.member_id == m.id, CoopJournal.ledger.in_(("contribution", "locked"))).group_by(CoopJournal.ledger))).all())
+    return _stats_from(rules, m, list(loans), list(g_rows), int(bal.get("contribution", 0)), int(bal.get("locked", 0)))
+
+
+async def stats_many(db: AsyncSession, rules: Rules, members: list) -> dict:
+    """Same numbers as stats(), for many members in four queries instead of four per member."""
+    if not members:
+        return {}
+    ids = [m.id for m in members]
+    loans: dict = defaultdict(list)
+    for l in (await db.execute(select(CoopLoan).where(CoopLoan.member_id.in_(ids), CoopLoan.status.in_(_HIST)))).scalars().all():
+        loans[l.member_id].append(l)
+    grows: dict = defaultdict(list)
+    for gid, gs, ls, amt in (await db.execute(select(CoopGuarantee.guarantor_id, CoopGuarantee.status, CoopLoan.status, CoopGuarantee.amount_kobo)
+                                              .join(CoopLoan, CoopLoan.id == CoopGuarantee.loan_id).where(CoopGuarantee.guarantor_id.in_(ids)))).all():
+        grows[gid].append((gs, ls, amt))
+    bal: dict = defaultdict(dict)
+    for mid, led, v in (await db.execute(select(CoopJournal.member_id, CoopJournal.ledger, func.coalesce(func.sum(CoopJournal.delta_kobo), 0)).where(
+            CoopJournal.member_id.in_(ids), CoopJournal.ledger.in_(("contribution", "locked"))).group_by(CoopJournal.member_id, CoopJournal.ledger))).all():
+        bal[mid][led] = int(v)
+    return {m.id: _stats_from(rules, m, loans[m.id], grows[m.id], bal[m.id].get("contribution", 0), bal[m.id].get("locked", 0)) for m in members}
 
 
 async def _guarantee_stats(db: AsyncSession, member_id) -> dict:
@@ -76,7 +104,7 @@ async def profile(db: AsyncSession, rules: Rules, viewer_user: User, viewer: Opt
         raise CoopError("You cannot view this profile", 403)
     tu = await db.get(User, target.user_id)
     s = await stats(db, rules, target)
-    out = {"member_id": str(target.id), "name": tu.full_name, "card_no": target.card_no, "status": target.status,
+    out = {"member_id": str(target.id), "name": tu.full_name, "avatar_url": tu.avatar_url, "card_no": target.card_no, "status": target.status,
            "member_since": s["member_since"], "months_member": s["months_member"], "loans_taken": s["loans_taken"],
            "loans_repaid": s["loans_repaid"], "reliability_pct": s["reliability_pct"], "has_history": s["has_history"],
            "guarantees_active": s["guarantees_active"], "guarantees_total": s["guarantees_total"],
@@ -93,7 +121,8 @@ async def profile(db: AsyncSession, rules: Rules, viewer_user: User, viewer: Opt
 async def contribution_history(db: AsyncSession, member_id, limit: int = 30) -> list[dict]:
     rows = (await db.execute(select(CoopJournal).where(CoopJournal.member_id == member_id, CoopJournal.ledger == "contribution")
                              .order_by(CoopJournal.id.desc()).limit(limit))).scalars().all()
-    return [{"date": r.effective_at.date().isoformat(), "type": r.entry_type, "delta_kobo": r.delta_kobo, "balance_kobo": r.balance_after} for r in rows]
+    return [{"id": r.id, "date": r.effective_at.date().isoformat(), "at": r.effective_at.isoformat(), "type": r.entry_type, "delta_kobo": r.delta_kobo,
+             "balance_kobo": r.balance_after, "before_kobo": r.balance_after - r.delta_kobo, "note": r.note, "reference": r.reference} for r in rows]
 
 
 async def pool_list(db: AsyncSession, rules: Rules, viewer: CoopMember) -> list[dict]:
@@ -106,7 +135,7 @@ async def pool_list(db: AsyncSession, rules: Rules, viewer: CoopMember) -> list[
         s = await stats(db, rules, m)
         free = s["free_kobo"]
         avail = min(m.pool_offer_kobo, free) if m.pool_offer_kobo else free
-        out.append({"member_id": str(m.id), "name": u.full_name, "card_no": m.card_no, "months_member": s["months_member"],
+        out.append({"member_id": str(m.id), "name": u.full_name, "avatar_url": u.avatar_url, "card_no": m.card_no, "months_member": s["months_member"],
                     "offer_kobo": m.pool_offer_kobo, "available_kobo": max(avail, 0), "reliability_pct": s["reliability_pct"],
                     "has_history": s["has_history"], "guarantees_active": s["guarantees_active"], "guarantees_total": s["guarantees_total"],
                     "loans_taken": s["loans_taken"], "note": m.pool_note, "whatsapp_link": wa_link(u.phone_number) if m.pool_whatsapp_ok else None})
@@ -276,35 +305,36 @@ async def dividend(db: AsyncSession, rules: Rules, me: Optional[CoopMember], ext
 
 # ── director overview + reconciliation ────────────────────────────────────
 async def reconciliation(db: AsyncSession) -> list[dict]:
+    """The accountant's checks. Every check is one grouped query, so the cost does not grow with members or loans."""
     checks = []
-    # 1 locked == sum of signed guarantees on open loans
-    locked = await ledger_total(db, "locked")
+    t = await ledger.money_totals(db)
+    # 1 locked == sum of signed guarantees
+    locked = t.get("locked", 0)
     g_open = int((await db.execute(select(func.coalesce(func.sum(CoopGuarantee.amount_kobo), 0)).where(CoopGuarantee.status == "signed"))).scalar_one())
     checks.append({"name": "Locked money equals signed guarantees", "ok": locked == g_open, "detail": f"{naira(locked)} locked, {naira(g_open)} in signed guarantees"})
     # 2 nobody has negative free funds
-    neg = 0
-    for (mid,) in (await db.execute(select(CoopMember.id))).all():
-        if await ledger.free_funds(db, mid) < 0:
-            neg += 1
+    free = (func.coalesce(func.sum(CoopJournal.delta_kobo).filter(CoopJournal.ledger == "contribution"), 0)
+            - func.coalesce(func.sum(CoopJournal.delta_kobo).filter(CoopJournal.ledger == "locked"), 0))
+    neg = (await db.execute(select(func.count()).select_from(
+        select(CoopJournal.member_id).where(CoopJournal.member_id.is_not(None)).group_by(CoopJournal.member_id).having(free < 0).subquery()))).scalar_one()
     checks.append({"name": "No member has negative free funds", "ok": neg == 0, "detail": f"{neg} member(s) with a problem"})
-    # 3 loan paid totals match journal
+    # 3 loan paid totals match the journal
+    jp = {lid: int(v) for lid, v in (await db.execute(select(CoopJournal.loan_id, func.coalesce(func.sum(CoopJournal.delta_kobo), 0)).where(
+        CoopJournal.ledger == "loan_repaid", CoopJournal.loan_id.is_not(None)).group_by(CoopJournal.loan_id))).all()}
     bad = 0
-    for l in (await db.execute(select(CoopLoan))).scalars().all():
-        jp = int((await db.execute(select(func.coalesce(func.sum(CoopJournal.delta_kobo), 0)).where(
-            CoopJournal.loan_id == l.id, CoopJournal.ledger == "loan_repaid"))).scalar_one())
-        if jp != l.principal_paid_kobo + l.interest_paid_kobo + l.charges_paid_kobo or l.principal_paid_kobo > l.principal_kobo or l.interest_paid_kobo > l.interest_kobo:
+    for l in (await db.execute(select(CoopLoan.id, CoopLoan.principal_paid_kobo, CoopLoan.interest_paid_kobo, CoopLoan.charges_paid_kobo,
+                                      CoopLoan.principal_kobo, CoopLoan.interest_kobo))).all():
+        lid, pp, ip, cp, pk, ik = l
+        if jp.get(lid, 0) != pp + ip + cp or pp > pk or ip > ik:
             bad += 1
     checks.append({"name": "Every loan's repayments match the money book", "ok": bad == 0, "detail": f"{bad} loan(s) out of balance"})
-    # 4 pool == interest (net of running cost) + charges recorded
-    pi, rc, po = await ledger_total(db, "pool_interest"), await ledger_total(db, "running_cost"), await ledger_total(db, "loan_repaid")
+    # 4 interest received == pool + running cost
     paid_int = int((await db.execute(select(func.coalesce(func.sum(CoopLoan.interest_paid_kobo), 0)))).scalar_one())
-    rc_interest = int((await db.execute(select(func.coalesce(func.sum(CoopJournal.delta_kobo), 0)).where(
-        CoopJournal.ledger == "running_cost", CoopJournal.entry_type == "running_cost"))).scalar_one())
-    pi_interest = int((await db.execute(select(func.coalesce(func.sum(CoopJournal.delta_kobo), 0)).where(
-        CoopJournal.ledger == "pool_interest", CoopJournal.entry_type == "interest_realised"))).scalar_one())
-    pi, rc = pi_interest, rc_interest
+    by = {(led, et): int(v) for led, et, v in (await db.execute(select(CoopJournal.ledger, CoopJournal.entry_type, func.coalesce(func.sum(CoopJournal.delta_kobo), 0)).where(
+        CoopJournal.ledger.in_(("running_cost", "pool_interest")), CoopJournal.entry_type.in_(("running_cost", "interest_realised"))).group_by(CoopJournal.ledger, CoopJournal.entry_type))).all()}
+    pi, rc = by.get(("pool_interest", "interest_realised"), 0), by.get(("running_cost", "running_cost"), 0)
     checks.append({"name": "Interest received equals pool plus running cost", "ok": pi + rc == paid_int, "detail": f"{naira(paid_int)} received, {naira(pi)} to pool, {naira(rc)} running cost"})
-    # 5 no repaid loan still has locked guarantees
+    # 5 no closed loan still has locked guarantees
     stuck = int((await db.execute(select(func.count()).select_from(CoopGuarantee).join(CoopLoan, CoopLoan.id == CoopGuarantee.loan_id).where(
         CoopGuarantee.status == "signed", CoopLoan.status.in_(("repaid", "rejected", "cancelled", "expired", "declined", "written_off"))))).scalar_one())
     checks.append({"name": "Closed loans have no locked guarantees", "ok": stuck == 0, "detail": f"{stuck} stuck guarantee(s)"})

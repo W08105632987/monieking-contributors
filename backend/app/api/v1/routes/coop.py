@@ -5,13 +5,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.coop import insights, ledger, logic, ops, safety, service, settings_store, yearend
 from app.coop.safety import AuthBody
 from app.coop.errors import CoopError
-from app.coop.models import CoopGuarantee, CoopLoan, CoopMember, CoopMemberBank
+from app.coop.models import CoopGuarantee, CoopLoan, CoopMember, CoopMemberBank, CoopWithdrawal
 from app.coop.settings_store import Rules
 from app.core.database import get_db
 from app.core.dependencies import CurrentUser
@@ -102,7 +102,7 @@ async def status(user: CurrentUser, db: AsyncSession = Depends(get_db)):
     out["pilot"] = await safety.pilot_status(db, rules)
     m = await service.member_of(db, user)
     if m and m.status == "active":
-        await ops.run_jobs(db, rules)
+        await ops.kick_jobs(db, rules)
         out["is_member"] = True
         out["member"] = await _summary(db, rules, m)
         loan = (await db.execute(select(CoopLoan).where(CoopLoan.member_id == m.id, CoopLoan.status.in_(service.ACTIVE_LOAN)).order_by(CoopLoan.created_at.desc()))).scalars().first()
@@ -145,14 +145,39 @@ async def contribute(body: AmountBody, user: CurrentUser, rules: Rules = Ctx, db
 async def withdraw(body: WithdrawBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db),
                    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     m = await service.require_member(db, user)
+    request_mode = service.withdraw_is_request(rules)
     if not body.confirm:
-        return {"preview": True, "step_up": safety.step_up_needed(rules, "member"), **await service.withdraw_preview(db, rules, m, body.amount_kobo)}
+        pv = await service.withdraw_preview(db, rules, m, body.amount_kobo)
+        b = await db.get(CoopMemberBank, m.id) if request_mode else None
+        return {"preview": True, "step_up": safety.step_up_needed(rules, "member"), "mode": rules.get("withdraw_mode"),
+                "account": ({"bank_name": b.bank_name, "account_number": b.account_number, "account_name": b.account_name} if b else None),
+                "needs_bank": bool(request_mode and b is None), **pv}
 
     async def run():
         await safety.require_step_up(db, rules, user, body.auth, "member")
+        if request_mode:
+            w = await service.request_withdrawal(db, rules, m, body.amount_kobo, user.id)
+            return {"preview": False, "mode": "director_payout", "withdrawal": service.withdrawal_view(w),
+                    "amount_kobo": w.amount_kobo, "charge_kobo": w.charge_kobo, "you_receive_kobo": w.net_kobo,
+                    "member": await _summary(db, rules, m)}
         pv = await service.withdraw(db, rules, m, body.amount_kobo, user.id)
-        return {"preview": False, **pv, "member": await _summary(db, rules, m)}
+        return {"preview": False, "mode": "instant", **pv, "member": await _summary(db, rules, m)}
     return await safety.idempotent(db, user, idempotency_key, "withdraw", run)
+
+
+@router.get("/withdrawals")
+async def my_withdrawals(user: CurrentUser, limit: int = Query(10, ge=1, le=50), offset: int = Query(0, ge=0), db: AsyncSession = Depends(get_db)):
+    m = await service.require_member(db, user)
+    total = (await db.execute(select(func.count()).select_from(CoopWithdrawal).where(CoopWithdrawal.member_id == m.id))).scalar_one()
+    rows = (await db.execute(select(CoopWithdrawal).where(CoopWithdrawal.member_id == m.id)
+                             .order_by(CoopWithdrawal.created_at.desc()).limit(limit).offset(offset))).scalars().all()
+    return {"total": total, "items": [service.withdrawal_view(w) for w in rows]}
+
+
+@router.post("/withdrawals/{wid}/cancel")
+async def cancel_withdrawal(wid: uuid.UUID, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):
+    w = await service.cancel_withdrawal(db, rules, wid, user)
+    return service.withdrawal_view(w)
 
 
 @router.get("/transparency")
@@ -203,7 +228,7 @@ async def _loan_detail(db, rules, loan: CoopLoan) -> dict:
     for g in gs:
         gm = await db.get(CoopMember, g.guarantor_id)
         gu = await db.get(User, gm.user_id)
-        guarantors.append({"guarantee_id": str(g.id), "member_id": str(gm.id), "name": gu.full_name, "amount_kobo": g.amount_kobo,
+        guarantors.append({"guarantee_id": str(g.id), "member_id": str(gm.id), "name": gu.full_name, "avatar_url": gu.avatar_url, "amount_kobo": g.amount_kobo,
                            "status": g.status, "signed_at": g.signed_at.isoformat() if g.signed_at else None,
                            "expires_at": g.expires_at.isoformat()})
     approved = loan.status not in ("seeking_guarantors", "awaiting_approval", "expired", "cancelled", "rejected")
@@ -332,7 +357,7 @@ async def invites(user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depe
         bm = await db.get(CoopMember, loan.member_id)
         bu = await db.get(User, bm.user_id)
         out.append({"guarantee_id": str(g.id), "status": g.status, "amount_kobo": g.amount_kobo, "loan_no": loan.loan_no,
-                    "loan_status": loan.status, "principal_kobo": loan.principal_kobo, "borrower": bu.full_name,
+                    "loan_status": loan.status, "principal_kobo": loan.principal_kobo, "borrower": bu.full_name, "borrower_avatar_url": bu.avatar_url,
                     "borrower_member_id": str(bm.id), "invited_at": g.invited_at.isoformat(), "expires_at": g.expires_at.isoformat(),
                     "due_date": loan.due_date.isoformat() if loan.due_date else None})
     return out

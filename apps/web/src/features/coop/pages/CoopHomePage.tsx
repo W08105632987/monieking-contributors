@@ -4,18 +4,20 @@ import { motion } from 'framer-motion'
 import { ArrowDownToLine, BarChart3, ChevronRight, Coins, HeartHandshake, Lock, PiggyBank, Plus, Sparkles, Users } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
 import { useCoopStatus, useLoan } from '../api'
-import { Bar, Card, CoopPage, Empty, loanTone, Pill, SectionTitle, Skel, Stat, pctText } from '../ui'
+import { Bar, Card, CoopPage, Empty, LoadError, loanTone, Pill, SectionTitle, Skel, Stat, pctText } from '../ui'
 import { TopUpSheet, WithdrawSheet } from '../parts'
 
 export default function CoopHomePage() {
   const nav = useNavigate()
-  const { data: s, isLoading } = useCoopStatus()
+  const { data: s, isLoading, error: stError, refetch } = useCoopStatus()
   const [topUp, setTopUp] = useState(false)
   const [wd, setWd] = useState(false)
   const loanId = s?.active_loan?.id
   const { data: loan } = useLoan(loanId)
 
   if (isLoading) return <CoopPage title="Cooperative"><div className="space-y-3"><Skel h="h-40" /><Skel /><Skel /></div></CoopPage>
+
+  if (stError && !s) return <CoopPage title="Cooperative" noBanner><LoadError error={stError} onRetry={() => refetch()} /></CoopPage>
 
   if (!s?.access) {
     return (

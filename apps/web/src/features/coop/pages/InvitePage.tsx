@@ -5,7 +5,8 @@ import { formatNaira } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { post, useCoopAction, useInvite } from '../api'
 import { BigButton, Card, CoopPage, Field, Pill, SectionTitle, Skel, inputCls, useCountdown } from '../ui'
-import { SafetyNote } from '../parts'
+import { ReliabilityBadge, SafetyNote } from '../parts'
+import { Avatar } from '@/components/ui/Avatar'
 
 export default function InvitePage() {
   const { id } = useParams()
@@ -23,7 +24,11 @@ export default function InvitePage() {
   return (
     <CoopPage title="Guarantor request" back="/coop/pool" right={live ? <Pill tone="amber">{left}</Pill> : <Pill tone={d.status === 'signed' ? 'green' : 'grey'}>{d.status}</Pill>}>
       <Card>
-        <p className="text-xs font-semibold uppercase text-green-500 dark:text-night-300">{d.borrower.name} asks you to guarantee</p>
+        <div className="mb-3 flex items-center gap-3"><Avatar name={d.borrower.name} avatarUrl={d.borrower.avatar_url} size={56} />
+          <div className="min-w-0"><p className="truncate font-extrabold text-green-900 dark:text-white">{d.borrower.name}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5"><ReliabilityBadge pct={d.borrower.reliability_pct ?? null} has={!!d.borrower.has_history} />
+              <Pill>{d.borrower.loans_repaid ?? 0}/{d.borrower.loans_taken ?? 0} loans repaid</Pill>{!!d.borrower.months_member && <Pill>Member {d.borrower.months_member} mo</Pill>}</div></div></div>
+        <p className="text-xs font-semibold uppercase text-green-500 dark:text-night-300">asks you to guarantee</p>
         <p className="text-3xl font-extrabold text-green-900 dark:text-white">{formatNaira(d.amount_kobo)}</p>
         <p className="text-sm text-green-700 dark:text-night-200">of a {formatNaira(d.loan.principal_kobo)} loan ({d.loan.loan_no}, {d.loan.term_months} months){d.loan.purpose ? ` for "${d.loan.purpose}"` : ''}</p>
         <button onClick={() => nav(`/coop/members/${d.borrower.member_id}`)} className="mt-3 flex w-full items-center justify-between rounded-xl bg-green-100/70 px-3 py-2.5 text-sm font-bold text-green-800 dark:bg-night-600 dark:text-night-100">See {d.borrower.name.split(' ')[0]}'s contribution history and record<ChevronRight className="h-4 w-4" /></button>

@@ -7,10 +7,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.coop import defs, insights, ledger, logic, ops, safety, service, settings_store
+from app.coop import help_text, defs, insights, ledger, logic, ops, safety, service, settings_store
 from app.coop.errors import CoopError
 from app.coop.models import (CoopCase, CoopEvent, CoopGuarantee, CoopLoan, CoopLoanApproval, CoopMember, CoopPilotMember, CoopRequest,
-                             CoopSettingChange, CoopSettingChangeApproval)
+                             CoopSettingChange, CoopSettingChangeApproval, CoopWithdrawal)
 from app.core.database import get_db
 from app.core.dependencies import DirectorOnly
 from app.models.user import User, UserRole
@@ -26,8 +26,9 @@ R = Depends(_rules)
 
 
 class ProposeBody(BaseModel):
-    value: str
+    value: str = ""
     reason: Optional[str] = None
+    confirm: bool = False
 
 
 class VoteBody(BaseModel):
@@ -49,7 +50,7 @@ class ResetBody(BaseModel):
 
 @router.get("/overview")
 async def overview(director: DirectorOnly, rules=R, db: AsyncSession = Depends(get_db)):
-    await ops.run_jobs(db, rules)
+    await ops.kick_jobs(db, rules)
     counts = dict((await db.execute(select(CoopLoan.status, func.count()).group_by(CoopLoan.status))).all())
     members = (await db.execute(select(func.count()).select_from(CoopMember).where(CoopMember.status == "active"))).scalar_one()
     pilot = (await db.execute(select(func.count()).select_from(CoopPilotMember))).scalar_one()
@@ -63,16 +64,18 @@ async def overview(director: DirectorOnly, rules=R, db: AsyncSession = Depends(g
         u = await db.get(User, uuid.UUID(acc))
         acc_name = u.full_name if u else None
     payouts = (await db.execute(select(func.count()).select_from(CoopLoan).where(CoopLoan.status == "awaiting_payout"))).scalar_one()
+    payouts += (await db.execute(select(func.count()).select_from(CoopWithdrawal).where(CoopWithdrawal.status == "pending"))).scalar_one()
     reqs = (await db.execute(select(func.count()).select_from(CoopRequest).where(CoopRequest.status == "pending"))).scalar_one()
     open_cases = dict((await db.execute(select(CoopCase.kind, func.count()).where(CoopCase.status != "closed").group_by(CoopCase.kind))).all())
     ck = await ops.go_live_checklist(db, rules)
+    totals = await ledger.money_totals(db)
     return {"payouts_waiting": payouts, "requests_pending": reqs, "recovery_open": open_cases.get("recovery", 0), "complaints_open": open_cases.get("complaint", 0),
             "pilot": await safety.pilot_status(db, rules), "live": bool(rules.get("coop_live_funds")), "step_up": safety.step_up_needed(rules, "director"),
             "go_live_ready": ck["ready"], "go_live_missing": [i["label"] for i in ck["items"] if not i["ok"]],
             "members": members, "pilot_members": pilot, "loans": counts, "awaiting_approval": counts.get("awaiting_approval", 0),
             "settings_pending": pending_settings, "overdue_loans": len(overdue),
-            "total_contributions_kobo": await insights.ledger_total(db, "contribution"),
-            "locked_kobo": await insights.ledger_total(db, "locked"), "dividend_pool_kobo": await ledger.pool_total(db),
+            "total_contributions_kobo": totals.get("contribution", 0),
+            "locked_kobo": totals.get("locked", 0), "dividend_pool_kobo": sum(totals.get(l, 0) for l in ledger.POOL_LEDGERS),
             "reconciliation": await insights.reconciliation(db), "provisional_blockers": provisional,
             "live_ready": ck["ready"], "live_blocked_reason": ("Live funds are ON." if rules.get("coop_live_funds") else "Live funds are off. Open the Money tab for the go-live checklist. Unconfirmed rules: %d." % len(provisional)),
             "clock_offset_days": int(rules.get("test_clock_offset_days")), "today": rules.today().isoformat(),
@@ -81,21 +84,21 @@ async def overview(director: DirectorOnly, rules=R, db: AsyncSession = Depends(g
 
 @router.get("/loans")
 async def loans(director: DirectorOnly, status: Optional[str] = None, rules=R, db: AsyncSession = Depends(get_db)):
-    await service.sweep(db, rules)
+    await ops.kick_jobs(db, rules)
     q = select(CoopLoan).order_by(CoopLoan.created_at.desc()).limit(200)
     if status:
         q = q.where(CoopLoan.status == status)
-    out = []
-    for l in (await db.execute(q)).scalars().all():
-        out.append(await _loan_row(db, rules, l, director))
-    return out
+    ls = list((await db.execute(q)).scalars().all())
+    bms = {m.id: m for m in (await db.execute(select(CoopMember).where(CoopMember.id.in_({l.member_id for l in ls})))).scalars().all()} if ls else {}
+    sts = await insights.stats_many(db, rules, list(bms.values()))
+    return [await _loan_row(db, rules, l, director, sts.get(l.member_id)) for l in ls]
 
 
-async def _loan_row(db, rules, l: CoopLoan, director: User) -> dict:
+async def _loan_row(db, rules, l: CoopLoan, director: User, st: dict | None = None) -> dict:
     await db.flush()
     bm = await db.get(CoopMember, l.member_id)
     bu = await db.get(User, bm.user_id)
-    st = await insights.stats(db, rules, bm)
+    st = st or await insights.stats(db, rules, bm)
     t = await service.guarantee_totals(db, l)
     pos = service.position(l, rules.today())
     gs = (await db.execute(select(CoopGuarantee).where(CoopGuarantee.loan_id == l.id, CoopGuarantee.status.in_(("signed", "invited", "viewed"))))).scalars().all()
@@ -128,10 +131,12 @@ async def decide_loan(loan_id: uuid.UUID, body: VoteBody, director: DirectorOnly
 @router.get("/members")
 async def members(director: DirectorOnly, rules=R, db: AsyncSession = Depends(get_db)):
     out = []
-    for m in (await db.execute(select(CoopMember).order_by(CoopMember.registered_at.desc()).limit(300))).scalars().all():
-        u = await db.get(User, m.user_id)
-        s = await insights.stats(db, rules, m)
-        out.append({"member_id": str(m.id), "name": u.full_name, "phone": u.phone_number, "card_no": m.card_no, "status": m.status,
+    ms = list((await db.execute(select(CoopMember).order_by(CoopMember.registered_at.desc()).limit(300))).scalars().all())
+    users = {u.id: u for u in (await db.execute(select(User).where(User.id.in_([m.user_id for m in ms])))).scalars().all()} if ms else {}
+    st = await insights.stats_many(db, rules, ms)
+    for m in ms:
+        u, s = users[m.user_id], st[m.id]
+        out.append({"member_id": str(m.id), "name": u.full_name, "avatar_url": u.avatar_url, "phone": u.phone_number, "card_no": m.card_no, "status": m.status,
                     "nin_bypassed": m.nin_bypassed, "pool_listed": m.pool_listed, **s})
     return out
 
@@ -153,13 +158,13 @@ async def settings(director: DirectorOnly, rules=R, db: AsyncSession = Depends(g
     if acc_pending:
         nu = await db.get(User, uuid.UUID(acc_pending["new_value"])) if acc_pending["new_value"] else None
         acc_pending = {**acc_pending, "new_name": nu.full_name if nu else "(none)"}
-    return {"groups": defs.GROUPS, "settings": settings_store.describe(rules, pending, scheduled), "accountant_pending": acc_pending,
+    return {"guide": {"provisional": help_text.PROVISIONAL_EXPLAINED, "effects": help_text.EFFECT_EXPLAINED}, "groups": defs.GROUPS, "settings": settings_store.describe(rules, pending, scheduled), "accountant_pending": acc_pending,
             "role_pending": {k: v for k, v in pending.items() if k in defs.ROLE_KEYS}}
 
 
 @router.post("/settings/{key}/propose")
 async def propose(key: str, body: ProposeBody, director: DirectorOnly, rules=R, db: AsyncSession = Depends(get_db)):
-    ch = await settings_store.propose(db, rules, director, key, body.value, body.reason)
+    ch = await settings_store.propose(db, rules, director, key, body.value, body.reason, body.confirm)
     return {"id": str(ch.id), "status": ch.status, "effective_on": ch.effective_on.isoformat() if ch.effective_on else None}
 
 
@@ -258,4 +263,5 @@ async def reset(body: ResetBody, director: DirectorOnly, rules=R, db: AsyncSessi
     await db.execute(text("ALTER SEQUENCE coop_card_seq RESTART WITH 1"))
     await db.execute(text("ALTER SEQUENCE coop_loan_seq RESTART WITH 1"))
     await db.execute(text("DELETE FROM coop_settings WHERE key = 'test_clock_offset_days'"))
+    settings_store.invalidate_rules_cache()
     return {"ok": True}

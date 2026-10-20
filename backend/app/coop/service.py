@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.coop import audit, contract, ledger, logic, rail, safety
 from app.coop.errors import CoopError
-from app.coop.models import (CoopGuarantee, CoopLoan, CoopLoanApproval, CoopMember, CoopMemberBank, CoopPilotMember, CoopJournal,
+from app.coop.models import (CoopWithdrawal, CoopGuarantee, CoopLoan, CoopLoanApproval, CoopMember, CoopMemberBank, CoopPilotMember, CoopJournal,
                              CoopRequest)
 from app.coop.settings_store import Rules
 from app.models.user import User, UserRole
@@ -154,6 +154,123 @@ async def withdraw(db: AsyncSession, rules: Rules, m: CoopMember, amount: int, a
     await rail.credit_member(db, rules, m.user_id, pv["you_receive_kobo"], f"wd:{ref}", "withdrawal", actor)
     await audit.record(db, "member", m.id, "withdrawal", actor, pv)
     return pv
+
+
+# ── withdrawal requests paid by a director ───────────────────────────────
+def withdraw_is_request(rules: Rules) -> bool:
+    return rules.get("withdraw_mode") == "director_payout"
+
+
+def _bank_snapshot(b: CoopMemberBank) -> dict:
+    return {"bank_code": b.bank_code, "bank_name": b.bank_name, "account_number": b.account_number,
+            "account_name": b.account_name, "name_match": b.name_match}
+
+
+async def request_withdrawal(db: AsyncSession, rules: Rules, m: CoopMember, amount: int, actor) -> CoopWithdrawal:
+    """Hold the money now; a director sends it to the member's bank and records it (or rejects, and the money goes back)."""
+    b = await db.get(CoopMemberBank, m.id)
+    if b is None:
+        raise CoopError("Add your bank account first, so we know where to send the money.", 409, "no_bank")
+    pv = await withdraw_preview(db, rules, m, amount)
+    w = CoopWithdrawal(member_id=m.id, amount_kobo=amount, charge_kobo=pv["charge_kobo"], net_kobo=pv["you_receive_kobo"],
+                       charge_bps=pv["charge_bps"], status="pending", payout_account=_bank_snapshot(b))
+    if not b.name_match and rules.get("payout_name_match") == "hold":
+        w.hold_reason = "The bank account name does not match the member's name. A director must clear it."
+    db.add(w)
+    await db.flush()
+    await ledger.post(db, rules, member_id=m.id, ledger="contribution", entry_type="withdrawal", delta=-amount,
+                      reference=f"wdr:{w.id}", actor=actor, note="Withdrawal requested")
+    await ledger.post(db, rules, member_id=m.id, ledger="withdrawal_pending", entry_type="withdrawal_hold", delta=amount,
+                      reference=f"wdh:{w.id}", actor=actor, note="Held until a director pays it")
+    await audit.record(db, "withdrawal", w.id, "requested", actor, pv)
+    u = await db.get(User, m.user_id)
+    await notify_directors(db, rules, "Withdrawal to pay",
+                           f"{u.full_name if u else m.card_no} asked to withdraw {naira(amount)}. Send {naira(w.net_kobo)} to their bank account, then mark it paid.",
+                           "/director/coop", only_treasurer=True)
+    return w
+
+
+async def _locked_withdrawal(db: AsyncSession, wid) -> CoopWithdrawal:
+    w = (await db.execute(select(CoopWithdrawal).where(CoopWithdrawal.id == wid).with_for_update())).scalars().first()
+    if not w:
+        raise CoopError("Withdrawal not found", 404)
+    if w.status != "pending":
+        raise CoopError(f"This withdrawal is already {w.status}", 409)
+    return w
+
+
+async def pay_withdrawal(db: AsyncSession, rules: Rules, wid, director: User, reference: str | None, evidence: str | None) -> CoopWithdrawal:
+    w = await _locked_withdrawal(db, wid)
+    if w.hold_reason:
+        raise CoopError(w.hold_reason, 409, "payout_held")
+    if rules.get("payout_executor") == "treasurer" and str(director.id) != rules.get("treasurer_user_id"):
+        raise CoopError("Only the director with treasurer duty can send payouts", 403, "not_treasurer")
+    if rules.get("payout_evidence_required") and not ((reference or "").strip() and (evidence or "").strip()):
+        raise CoopError("Enter the bank transfer reference and the receipt link or note")
+    m = await db.get(CoopMember, w.member_id)
+    await ledger.post(db, rules, member_id=m.id, ledger="withdrawal_pending", entry_type="withdrawal_paid", delta=-w.amount_kobo,
+                      reference=f"wdp:{w.id}", actor=director.id, note="Withdrawal paid")
+    if w.charge_kobo > 0:
+        await ledger.post(db, rules, member_id=None, ledger="pool_withdrawal", entry_type="withdrawal_charge", delta=w.charge_kobo,
+                          reference=f"wdc:{w.id}", actor=director.id, note=f"Early withdrawal charge from {m.card_no}")
+        m.disqualified_year = logic.accounting_year(rules.today())
+    w.status, w.decided_by, w.decided_at = "paid", director.id, rules.now()
+    w.reference, w.evidence = (reference or "").strip()[:120] or None, (evidence or "").strip() or None
+    await audit.record(db, "withdrawal", w.id, "paid", director.id, {"net": w.net_kobo, "charge": w.charge_kobo, "ref": w.reference})
+    await notify(db, m.user_id, "Your withdrawal has been paid", f"{naira(w.net_kobo)} has been sent to your bank account.", "/coop/withdrawals")
+    return w
+
+
+async def _return_withdrawal(db: AsyncSession, rules: Rules, w: CoopWithdrawal, m: CoopMember, actor, note: str) -> None:
+    await ledger.post(db, rules, member_id=m.id, ledger="withdrawal_pending", entry_type="withdrawal_released", delta=-w.amount_kobo,
+                      reference=f"wdr-:{w.id}", actor=actor, note=note)
+    await ledger.post(db, rules, member_id=m.id, ledger="contribution", entry_type="withdrawal_returned", delta=w.amount_kobo,
+                      reference=f"wdb:{w.id}", actor=actor, note=note)
+
+
+async def reject_withdrawal(db: AsyncSession, rules: Rules, wid, director: User, reason: str) -> CoopWithdrawal:
+    if not (reason or "").strip():
+        raise CoopError("Please say why you are rejecting it. The member will see this.")
+    w = await _locked_withdrawal(db, wid)
+    m = await db.get(CoopMember, w.member_id)
+    await _return_withdrawal(db, rules, w, m, director.id, "Withdrawal rejected: money returned")
+    w.status, w.decided_by, w.decided_at, w.reason = "rejected", director.id, rules.now(), reason.strip()
+    await audit.record(db, "withdrawal", w.id, "rejected", director.id, {"reason": w.reason})
+    await notify(db, m.user_id, "Your withdrawal was not paid", f"{naira(w.amount_kobo)} is back in your contribution. Reason: {w.reason}", "/coop/withdrawals")
+    return w
+
+
+async def cancel_withdrawal(db: AsyncSession, rules: Rules, wid, user: User) -> CoopWithdrawal:
+    m = await member_of(db, user)
+    w = await _locked_withdrawal(db, wid)
+    if not m or w.member_id != m.id:
+        raise CoopError("Withdrawal not found", 404)
+    await _return_withdrawal(db, rules, w, m, user.id, "Withdrawal cancelled by the member: money returned")
+    w.status, w.decided_by, w.decided_at, w.reason = "cancelled", user.id, rules.now(), "Cancelled by the member"
+    await audit.record(db, "withdrawal", w.id, "cancelled", user.id)
+    return w
+
+
+async def clear_withdrawal_hold(db: AsyncSession, rules: Rules, wid, director: User, note: str) -> CoopWithdrawal:
+    w = await _locked_withdrawal(db, wid)
+    if not w.hold_reason:
+        raise CoopError("This withdrawal is not on hold", 409)
+    if not (note or "").strip():
+        raise CoopError("Please say why the name mismatch is acceptable")
+    w.hold_reason = None
+    await audit.record(db, "withdrawal", w.id, "hold_cleared", director.id, {"note": note})
+    return w
+
+
+def withdrawal_view(w: CoopWithdrawal, member_name: str | None = None, card_no: str | None = None, phone: str | None = None, for_director: bool = False) -> dict:
+    out = {"id": str(w.id), "amount_kobo": w.amount_kobo, "charge_kobo": w.charge_kobo, "net_kobo": w.net_kobo, "status": w.status,
+           "created_at": w.created_at.isoformat(), "decided_at": w.decided_at.isoformat() if w.decided_at else None,
+           "reason": w.reason, "reference": w.reference,
+           "account": {k: (w.payout_account or {}).get(k) for k in ("bank_name", "account_number", "account_name")} if w.payout_account else None}
+    if for_director:
+        out.update({"member": member_name, "card_no": card_no, "phone": phone, "hold_reason": w.hold_reason, "evidence": w.evidence,
+                    "name_match": (w.payout_account or {}).get("name_match"), "bank_code": (w.payout_account or {}).get("bank_code")})
+    return out
 
 
 async def close_preview(db: AsyncSession, rules: Rules, m: CoopMember) -> dict:
@@ -388,12 +505,16 @@ async def open_invite(db: AsyncSession, rules: Rules, g: CoopGuarantee, user: Us
     text_ = contract.render(contract_vars(rules, loan, g, gm, user, bm, bu)) if g.status in LIVE_INVITE or g.status == "signed" else None
     if g.status == "signed" and g.contract_text:
         text_ = g.contract_text
+    from app.coop import insights
+    bs = await insights.stats(db, rules, bm)
     free = await ledger.free_funds(db, gm.id)
     need_funds = max(g.amount_kobo, loan.principal_kobo * int(rules.get("guarantor_min_funds_pct")) // 100)
     return {"guarantee_id": str(g.id), "status": g.status, "amount_kobo": g.amount_kobo, "expires_at": g.expires_at.isoformat(),
             "loan": {"loan_no": loan.loan_no, "principal_kobo": loan.principal_kobo, "interest_kobo": loan.interest_kobo,
                      "term_months": loan.term_months, "status": loan.status, "purpose": loan.purpose},
-            "borrower": {"member_id": str(bm.id), "name": bu.full_name, "card_no": bm.card_no},
+            "borrower": {"member_id": str(bm.id), "name": bu.full_name, "card_no": bm.card_no, "avatar_url": bu.avatar_url,
+                         "reliability_pct": bs["reliability_pct"], "has_history": bs["has_history"], "loans_taken": bs["loans_taken"],
+                         "loans_repaid": bs["loans_repaid"], "months_member": bs["months_member"]},
             "contract_text": text_, "contract_version": contract.VERSION, "ticks": [{"key": k, "label": l} for k, l in contract.TICKS],
             "free_kobo": free, "needs_free_kobo": need_funds, "eligible": free >= need_funds}
 

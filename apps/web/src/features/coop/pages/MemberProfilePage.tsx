@@ -1,3 +1,5 @@
+import { Avatar } from '@/components/ui/Avatar'
+import { EntryRow, ViewAll } from '../lists'
 import { useParams } from 'react-router-dom'
 import { MessageCircle, Phone, ShieldCheck } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
@@ -5,7 +7,6 @@ import { useProfile } from '../api'
 import { Card, CoopPage, Pill, SectionTitle, Skel, Stat, dShort } from '../ui'
 import { ReliabilityBadge } from '../parts'
 
-const TYPE: Record<string, string> = { registration: 'Joined', contribution: 'Contribution', withdrawal: 'Withdrawal' }
 
 export default function MemberProfilePage() {
   const { id } = useParams()
@@ -16,6 +17,7 @@ export default function MemberProfilePage() {
   return (
     <CoopPage title={p.name} subtitle={p.card_no} back>
       <Card>
+        <div className="mb-3 flex items-center gap-3"><Avatar name={p.name} avatarUrl={p.avatar_url} size={64} /><div><p className="text-lg font-extrabold text-green-900 dark:text-white">{p.name}</p><p className="text-xs text-green-600 dark:text-night-300">{p.card_no}</p></div></div>
         <div className="flex flex-wrap items-center gap-2"><ReliabilityBadge pct={p.reliability_pct} has={p.has_history} />{p.nin_linked && <Pill tone="green"><ShieldCheck className="h-3 w-3" />NIN verified</Pill>}{p.pool_listed && <Pill tone="blue">In guarantors' pool</Pill>}</div>
         <div className="mt-4 grid grid-cols-2 gap-4">
           <Stat label="Member since" value={dShort(p.member_since)} sub={`${p.months_member} months`} />
@@ -33,9 +35,7 @@ export default function MemberProfilePage() {
           <Card><div className="grid grid-cols-3 gap-3"><Stat label="Held" value={formatNaira(p.private.contribution_kobo)} /><Stat label="Locked" value={formatNaira(p.private.locked_kobo)} /><Stat label="Free" value={formatNaira(p.private.free_kobo)} /></div>
             <p className="mt-3 flex items-center gap-2 text-sm text-green-800 dark:text-night-100"><Phone className="h-4 w-4" />{p.private.phone}{p.private.state ? ` · ${p.private.state}` : ''}</p></Card>
           <SectionTitle>Contribution history</SectionTitle>
-          <div className="space-y-2 pb-2">{p.private.history.map((h, i) => (
-            <Card key={i}><div className="flex items-center justify-between"><div><p className="text-sm font-bold text-green-900 dark:text-white">{TYPE[h.type] ?? h.type}</p><p className="text-xs text-green-600 dark:text-night-300">{dShort(h.date)}</p></div>
-              <p className={`font-extrabold ${h.delta_kobo < 0 ? 'text-red-600' : 'text-green-700 dark:text-green-300'}`}>{h.delta_kobo < 0 ? '−' : '+'}{formatNaira(Math.abs(h.delta_kobo))}</p></div></Card>))}</div>
+          <ViewAll items={p.private.history} render={(h) => <EntryRow key={h.id} e={h} />} />
         </>
       )}
     </CoopPage>

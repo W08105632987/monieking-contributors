@@ -1,3 +1,4 @@
+import { StepUpHost } from './auth'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -76,6 +77,7 @@ export function CoopPage({ title, subtitle, back, right, children, noBanner }: {
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
       <CoopBrandBar />
+      <StepUpHost />
       <header className="flex items-center gap-3 px-4 pb-3 pt-1">
         {back && (
           <button
@@ -274,4 +276,18 @@ export function useCountdown(iso?: string | null) {
   if (h >= 48) return `${Math.floor(h / 24)} days left`
   if (h >= 1) return `${h}h left`
   return `${Math.max(1, Math.floor(ms / 60_000))} min left`
+}
+
+/** Shown instead of an endless loading skeleton when the server could not answer. */
+export function LoadError({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  const status = (error as any)?.response?.status as number | undefined
+  const detail = (error as any)?.response?.data?.detail
+  return (
+    <div role="alert" className="mt-3 rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
+      <p className="font-extrabold">The cooperative could not load{status ? ` (error ${status})` : ''}.</p>
+      {typeof detail === 'string' && <p className="mt-1">{detail}</p>}
+      {(!status || status >= 500) && <p className="mt-1 text-xs">The server could not answer. If this keeps happening after an update, the cooperative database update (migration 047) may not have been run yet. Check the server log.</p>}
+      {onRetry && <button onClick={onRetry} className="mt-3 rounded-full bg-red-600 px-4 py-1.5 text-xs font-bold text-white">Try again</button>}
+    </div>
+  )
 }

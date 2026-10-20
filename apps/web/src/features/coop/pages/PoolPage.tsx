@@ -1,3 +1,4 @@
+import { Avatar } from '@/components/ui/Avatar'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { HeartHandshake, MessageCircle, Users } from 'lucide-react'
@@ -27,7 +28,7 @@ export default function PoolPage() {
       ) : (
         <div className="space-y-3">{pool.map((p) => (
           <Card key={p.member_id}>
-            <div className="flex items-start justify-between"><button onClick={() => nav(`/coop/members/${p.member_id}`)} className="text-left"><p className="font-extrabold text-green-900 dark:text-white">{p.name}</p><p className="text-xs text-green-600 dark:text-night-300">Member {p.months_member} months · {p.card_no}</p></button>
+            <div className="flex items-start justify-between gap-2"><button onClick={() => nav(`/coop/members/${p.member_id}`)} className="flex items-center gap-3 text-left"><Avatar name={p.name} avatarUrl={p.avatar_url} size={44} /><span><p className="font-extrabold text-green-900 dark:text-white">{p.name}</p><p className="text-xs text-green-600 dark:text-night-300">Member {p.months_member} months · {p.card_no}</p></span></button>
               <div className="text-right"><p className="text-[10px] font-semibold uppercase text-green-500">Can guarantee</p><p className="font-extrabold text-green-700 dark:text-green-300">{formatNaira(p.available_kobo)}</p></div></div>
             <div className="mt-2 flex flex-wrap gap-1.5"><ReliabilityBadge pct={p.reliability_pct} has={p.has_history} /><Pill>{p.guarantees_total} guaranteed</Pill><Pill>{p.loans_taken} own loans</Pill></div>
             {p.note && <p className="mt-2 text-sm italic text-green-700 dark:text-night-200">"{p.note}"</p>}
@@ -44,7 +45,7 @@ export default function PoolPage() {
       ) : (
         <div className="space-y-2">{invites.map((i) => (
           <Card key={i.guarantee_id} onClick={() => nav(`/coop/invites/${i.guarantee_id}`)}>
-            <div className="flex items-start justify-between"><div><p className="font-bold text-green-900 dark:text-white">{i.borrower}</p><p className="text-sm text-green-700 dark:text-night-200">{formatNaira(i.amount_kobo)} of {formatNaira(i.principal_kobo)} loan</p></div>
+            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><Avatar name={i.borrower} avatarUrl={i.borrower_avatar_url} size={40} /><div><p className="font-bold text-green-900 dark:text-white">{i.borrower}</p><p className="text-sm text-green-700 dark:text-night-200">{formatNaira(i.amount_kobo)} of {formatNaira(i.principal_kobo)} loan</p></div></div>
               <Pill tone={i.status === 'signed' ? 'green' : ['invited', 'viewed'].includes(i.status) ? 'amber' : 'grey'}>{i.status === 'signed' ? 'Signed' : ['invited', 'viewed'].includes(i.status) ? 'Needs you' : i.status}</Pill></div>
             <p className="mt-1 text-xs text-green-600 dark:text-night-300">{['invited', 'viewed'].includes(i.status) ? <><Countdown iso={i.expires_at} /> to decide</> : `Sent ${dShort(i.invited_at)}`}</p>
           </Card>))}</div>

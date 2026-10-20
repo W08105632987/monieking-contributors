@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CalendarClock, ChevronDown, Lock } from 'lucide-react'
+import { BadgeCheck, CalendarClock, ChevronDown, HelpCircle, Lock } from 'lucide-react'
 import { post, useCoopAction } from '../api'
 import { BigButton, Card, Field, Pill, SectionTitle, Sheet, Skel, dShort, inputCls } from '../ui'
 import { showValue, useAdmin, type AccountantPending, type SettingItem } from './dapi'
@@ -8,16 +8,23 @@ const toStored = (s: SettingItem, v: string) => (s.kind === 'kobo' ? String(Math
 const fromStored = (s: SettingItem) => (s.kind === 'kobo' || s.kind === 'bps' ? String(Number(s.value) / 100) : s.value)
 
 export default function SettingsTab() {
-  const { data } = useAdmin<{ groups: string[]; settings: SettingItem[]; accountant_pending: AccountantPending | null }>('settings', '/coop/admin/settings')
+  const { data } = useAdmin<{ groups: string[]; settings: SettingItem[]; accountant_pending: AccountantPending | null; guide?: { provisional: string; effects: Record<string, string> } }>('settings', '/coop/admin/settings')
   const acc = data?.accountant_pending ?? null
   const { data: dirs } = useAdmin<{ id: string; name: string; is_accountant: boolean }[]>('directors', '/coop/admin/directors')
   const { data: hist } = useAdmin<any[]>('history', '/coop/admin/settings/history')
   const [open, setOpen] = useState<string | null>('Loans')
   const [edit, setEdit] = useState<SettingItem | null>(null)
+  const [onlyProv, setOnlyProv] = useState(false)
+  const [guide, setGuide] = useState(false)
+  const [helpOpen, setHelpOpen] = useState<string | null>(null)
+  const [confirmFor, setConfirmFor] = useState<SettingItem | null>(null)
   const [val, setVal] = useState('')
   const [why, setWhy] = useState('')
   const propose = useCoopAction((v: { key: string; value: string; reason: string }) => post(`/coop/admin/settings/${v.key}/propose`, { value: v.value, reason: v.reason }), {
     success: 'Change proposed', onSuccess: () => { setEdit(null); setWhy('') },
+  })
+  const confirmAsIs = useCoopAction((key: string) => post(`/coop/admin/settings/${key}/propose`, { confirm: true, reason: why || 'Confirmed as it is' }), {
+    success: 'Sent for approval as confirmed', onSuccess: () => { setConfirmFor(null); setWhy('') },
   })
   const vote = useCoopAction((v: { id: string; decision: string }) => post(`/coop/admin/settings/changes/${v.id}/vote`, { decision: v.decision }), { success: 'Vote recorded' })
   if (!data) return <Skel h="h-48" />
@@ -27,9 +34,19 @@ export default function SettingsTab() {
   return (
     <>
       <p className="mb-3 text-sm text-green-700 dark:text-night-200">Every rule lives here. A change needs the approval of directors, and each one is saved in the history below.</p>
+      <Card className="mb-3">
+        <button onClick={() => setGuide(!guide)} className="flex w-full items-center justify-between text-left"><span className="flex items-center gap-2 font-extrabold text-green-900 dark:text-white"><HelpCircle className="h-5 w-5 text-green-600" />Provisional or confirmed: what it means</span><ChevronDown className={`h-5 w-5 text-green-500 transition ${guide ? 'rotate-180' : ''}`} /></button>
+        {guide && (
+          <div className="mt-3 space-y-2 text-sm text-green-800 dark:text-night-100">
+            <p>{data.guide?.provisional}</p>
+            <p className="pt-1 text-xs font-bold uppercase text-green-600 dark:text-night-300">When a change starts working</p>
+            {Object.entries(data.guide?.effects ?? {}).map(([k, v]) => <p key={k} className="text-xs"><b>{k === 'immediate' ? 'Immediately' : k === 'new_loans' ? 'New loans only' : 'Next accounting year'}:</b> {v}</p>)}
+          </div>)}
+        <label className="mt-3 flex items-center gap-2 text-sm font-semibold text-green-900 dark:text-white"><input type="checkbox" checked={onlyProv} onChange={(e) => setOnlyProv(e.target.checked)} className="h-4 w-4 accent-green-600" />Show only rules still waiting for a decision ({data.settings.filter((s) => !s.confirmed && !s.readonly).length})</label>
+      </Card>
       <div className="space-y-2">
         {data.groups.map((g) => {
-          const items = data.settings.filter((s) => s.group === g)
+          const items = data.settings.filter((s) => s.group === g && (!onlyProv || (!s.confirmed && !s.readonly)))
           if (!items.length) return null
           const prov = items.filter((s) => !s.confirmed).length
           return (
@@ -49,7 +66,18 @@ export default function SettingsTab() {
                           {s.readonly ? <span className="flex items-center gap-1 text-[11px] text-green-500"><Lock className="h-3 w-3" />Locked</span> : <button onClick={() => start(s)} className="text-xs font-extrabold text-green-700 underline dark:text-night-100">Change</button>}</div>
                       </div>
                       <p className="mt-1 text-[11px] text-green-600 dark:text-night-300">Takes effect: {s.effect_label}</p>
-                      {s.note && <p className="mt-1 text-xs text-green-700 dark:text-night-200">{s.note}</p>}
+                      {s.help?.what && <p className="mt-1 text-xs text-green-800 dark:text-night-100">{s.help.what}</p>}
+                      {(s.help?.what || s.note) && <button onClick={() => setHelpOpen(helpOpen === s.key ? null : s.key)} className="mt-1 text-[11px] font-extrabold text-green-700 underline dark:text-night-200">{helpOpen === s.key ? 'Hide details' : 'What are my choices?'}</button>}
+                      {helpOpen === s.key && (
+                        <div className="mt-2 space-y-1.5 rounded-xl bg-green-100/70 p-3 text-xs text-green-900 dark:bg-night-600 dark:text-night-100">
+                          {Object.entries(s.help?.options ?? {}).map(([o, d]) => <p key={o}><b>{o}:</b> {d}</p>)}
+                          {s.help?.tip && <p><b>Think about:</b> {s.help.tip}</p>}
+                          {!s.confirmed && <p><b>Why provisional:</b> {s.note || 'The Board has not decided this yet. It works with this value meanwhile.'}</p>}
+                          {s.required_for_live && <p className="font-bold text-amber-800 dark:text-amber-300">Should be decided before live funds are switched on.</p>}
+                          <p><b>Starts working:</b> {data.guide?.effects?.[s.effect] ?? s.effect_label}</p>
+                        </div>)}
+                      {!s.confirmed && !s.readonly && !s.pending && !s.key.endsWith('_user_id') && (
+                        <button onClick={() => { setConfirmFor(s); setWhy('') }} className="mt-2 flex items-center gap-1.5 rounded-full border border-green-300 px-3 py-1.5 text-xs font-extrabold text-green-800 active:scale-95 dark:border-night-400 dark:text-night-100"><BadgeCheck className="h-4 w-4" />Confirm as it is ({showValue(s)})</button>)}
                       {s.pending && (
                         <div className="mt-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
                           <p className="font-bold">Proposed: {showValue({ ...s, value: s.pending.new_value })} · {s.pending.approvals} of {s.pending.needed} approvals</p>
@@ -81,10 +109,20 @@ export default function SettingsTab() {
           <p className="mt-1 text-xs text-green-700 dark:text-night-200">{h.old} → {h.new}{h.reason ? ` · "${h.reason}"` : ''}</p></Card>))}
         {hist && !hist.length && <p className="text-sm text-green-600 dark:text-night-300">No changes yet.</p>}</div>
 
+      <Sheet open={!!confirmFor} onClose={() => setConfirmFor(null)} title="Confirm this rule as it is">
+        {confirmFor && (
+          <div className="space-y-3">
+            <p className="text-sm text-green-800 dark:text-night-100"><b>{confirmFor.label}</b> stays at <b>{showValue(confirmFor)}</b>. Nothing changes for members. It stops being marked as provisional, and it is recorded that the directors decided it.</p>
+            <Field label="Reason or Board reference (optional)"><input value={why} onChange={(e) => setWhy(e.target.value)} maxLength={200} className={inputCls} placeholder="e.g. Board meeting 12 Oct" /></Field>
+            <BigButton loading={confirmAsIs.isPending} onClick={() => confirmAsIs.mutate(confirmFor.key)}>Confirm as it is</BigButton>
+            <p className="text-center text-[11px] text-green-600 dark:text-night-300">You count as the first approval. Another director must approve, like any rule change.</p>
+          </div>)}
+      </Sheet>
       <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit?.label ?? ''}>
         {edit && (
           <div className="space-y-3">
             <p className="text-sm text-green-700 dark:text-night-200">Now: <b>{showValue(edit)}</b>. {edit.effect_label === 'Immediately' ? 'Takes effect as soon as enough directors approve.' : edit.effect_label === 'New loans only' ? 'Loans already created keep the rule they were approved with.' : 'Scheduled for the start of the next accounting year.'}</p>
+            {edit.help?.what && <p className="rounded-xl bg-green-100/70 p-3 text-xs text-green-900 dark:bg-night-600 dark:text-night-100">{edit.help.what}</p>}
             {edit.kind === 'bool' ? (
               <div className="flex gap-2">{['true', 'false'].map((b) => <button key={b} onClick={() => setVal(b)} className={`flex-1 rounded-xl py-3 text-sm font-bold ${val === b ? 'bg-green-700 text-white' : 'border border-green-200 text-green-800 dark:border-night-400 dark:text-night-100'}`}>{b === 'true' ? 'On' : 'Off'}</button>)}</div>
             ) : edit.kind === 'enum' ? (
@@ -92,8 +130,10 @@ export default function SettingsTab() {
             ) : (
               <Field label={`New value${unit(edit) ? ` (${unit(edit)})` : ''}`}><input inputMode="decimal" value={val} onChange={(e) => setVal(e.target.value.replace(/[^\d.]/g, ''))} className={inputCls} autoFocus /></Field>
             )}
+            {Object.keys(edit.help?.options ?? {}).length > 0 && <div className="space-y-1 text-xs text-green-800 dark:text-night-100">{Object.entries(edit.help!.options).map(([o, d]) => <p key={o}><b>{o}:</b> {d}</p>)}</div>}
+            {edit.help?.tip && <p className="text-xs italic text-green-700 dark:text-night-200">{edit.help.tip}</p>}
             <Field label="Reason (kept in the record)"><input value={why} onChange={(e) => setWhy(e.target.value)} maxLength={200} className={inputCls} placeholder="e.g. Board resolution of 12 Oct" /></Field>
-            <BigButton loading={propose.isPending} disabled={!val || !why.trim()} onClick={() => propose.mutate({ key: edit.key, value: toStored(edit, val), reason: why })}>Propose this change</BigButton>
+            <BigButton loading={propose.isPending} disabled={!val || !why.trim() || val === fromStored(edit)} onClick={() => propose.mutate({ key: edit.key, value: toStored(edit, val), reason: why })}>Propose this change</BigButton>
             <p className="text-center text-[11px] text-green-600 dark:text-night-300">You count as the first approval. Another director must approve before it takes effect.</p>
           </div>)}
       </Sheet>

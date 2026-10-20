@@ -8,13 +8,15 @@ Director-controlled rule book: reading, proposing, approving and scheduling chan
 """
 from __future__ import annotations
 
+import os
+import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.coop import audit, defs, logic
+from app.coop import audit, defs, help_text, logic
 from app.coop.models import CoopSetting, CoopSettingChange, CoopSettingChangeApproval
 
 
@@ -51,14 +53,36 @@ class Rules:
         return self.now().date()
 
 
+# The rule book is read on every cooperative request. It changes rarely, so each process keeps a short-lived copy
+# (a change made on this process shows at once; another process sees it within the TTL). Off while testing.
+_TTL = 0.0 if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("COOP_RULES_TTL") == "0" else float(os.environ.get("COOP_RULES_TTL", "10"))
+_cache: dict = {"at": 0.0, "overrides": None, "next_due": None}
+
+
+def invalidate_rules_cache() -> None:
+    _cache["overrides"] = None
+
+
 async def load_rules(db: AsyncSession) -> Rules:
+    now = time.monotonic()
+    fresh = _TTL > 0 and _cache["overrides"] is not None and now - _cache["at"] < _TTL
+    if fresh:
+        rules = Rules(dict(_cache["overrides"]))
+        nd = _cache["next_due"]
+        if nd is None or nd > rules.today():
+            return rules
     rows = (await db.execute(select(CoopSetting))).scalars().all()
     rules = Rules({r.key: r.value for r in rows})
     await _apply_due(db, rules)
+    if _TTL > 0:
+        _cache["overrides"] = dict(rules.overrides)
+        _cache["at"] = now
+        _cache["next_due"] = (await db.execute(select(func.min(CoopSettingChange.effective_on)).where(CoopSettingChange.status == "scheduled"))).scalar()
     return rules
 
 
 async def _upsert(db: AsyncSession, key: str, value: str, by: uuid.UUID | None) -> None:
+    invalidate_rules_cache()
     row = await db.get(CoopSetting, key)
     if row:
         row.value, row.updated_by, row.updated_at = value, by, datetime.now(timezone.utc)
@@ -81,7 +105,8 @@ async def _apply_due(db: AsyncSession, rules: Rules) -> None:
         await audit.record(db, "setting", ch.key, "scheduled_change_applied", None, {"new": ch.new_value})
 
 
-async def propose(db: AsyncSession, rules: Rules, director: "User", key: str, value, reason: str | None) -> CoopSettingChange:
+async def propose(db: AsyncSession, rules: Rules, director: "User", key: str, value, reason: str | None, confirm: bool = False) -> CoopSettingChange:
+    """`confirm=True` keeps the current value and only marks the rule as decided (no longer provisional)."""
     d = defs.BY_KEY.get(key)
     if not d or (d.hidden and key not in defs.ROLE_KEYS):
         raise defs.SettingError("Unknown setting")
@@ -97,14 +122,20 @@ async def propose(db: AsyncSession, rules: Rules, director: "User", key: str, va
                 raise defs.SettingError("Choose a director")
     if d.readonly:
         raise defs.SettingError("This setting cannot be changed in the preview")
-    new = defs.normalise_value(d, value)
-    if new == rules.raw(key):
-        raise defs.SettingError("That is already the current value")
+    if confirm:
+        if rules.is_confirmed(key):
+            raise defs.SettingError("This rule is already confirmed")
+        new = rules.raw(key)
+        reason = (reason or "").strip() or "Confirmed as it is"
+    else:
+        new = defs.normalise_value(d, value)
+        if new == rules.raw(key):
+            raise defs.SettingError("That is already the current value. Use 'Confirm as it is' to mark it as decided.")
     pending = (await db.execute(select(CoopSettingChange).where(
         CoopSettingChange.key == key, CoopSettingChange.status == "pending"))).scalars().first()
     if pending:
         raise defs.SettingError("A change to this rule is already waiting for approval")
-    ch = CoopSettingChange(key=key, old_value=rules.raw(key), new_value=new, effect=d.effect,
+    ch = CoopSettingChange(key=key, old_value=rules.raw(key), new_value=new, effect=(defs.EFFECT_IMMEDIATE if confirm else d.effect),
                            reason=(reason or "").strip() or None, proposed_by=director.id)
     db.add(ch)
     await db.flush()
@@ -136,6 +167,7 @@ async def decide(db: AsyncSession, rules: Rules, director: "User", change_id: uu
 
 
 async def _maybe_finish(db: AsyncSession, rules: Rules, ch: CoopSettingChange, actor: uuid.UUID) -> None:
+    invalidate_rules_cache()
     need = int(rules.get("approvals_settings"))
     have = (await db.execute(select(func.count()).select_from(CoopSettingChangeApproval).where(
         CoopSettingChangeApproval.change_id == ch.id, CoopSettingChangeApproval.decision == "approve"))).scalar_one()
@@ -171,7 +203,7 @@ def describe(rules: Rules, pending: dict, scheduled: dict) -> list[dict]:
             "key": d.key, "group": d.group, "label": d.label, "kind": d.kind, "unit": d.unit,
             "value": cur, "default": d.default, "options": list(d.options), "min": d.min, "max": d.max,
             "confirmed": rules.is_confirmed(d.key), "effect": d.effect, "effect_label": defs.EFFECT_LABEL[d.effect],
-            "note": d.note, "readonly": d.readonly, "required_for_live": d.required_for_live,
+            "note": d.note, "help": help_text.help_for(d.key), "readonly": d.readonly, "required_for_live": d.required_for_live,
             "pending": pending.get(d.key), "scheduled": scheduled.get(d.key),
         })
     return out

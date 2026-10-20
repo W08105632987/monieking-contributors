@@ -1,3 +1,4 @@
+import { Avatar } from '@/components/ui/Avatar'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, Banknote, CheckCircle2, Circle, Clock, Landmark, Lock, MessageCircle, UserPlus } from 'lucide-react'
@@ -58,7 +59,7 @@ export default function LoanDetailPage() {
       <div className="mt-2 space-y-2">
         {l.guarantors.map((g) => (
           <Card key={g.guarantee_id} onClick={() => nav(`/coop/members/${g.member_id}`)}>
-            <div className="flex items-center justify-between"><div><p className="font-bold text-green-900 dark:text-white">{g.name}</p><p className="text-sm text-green-700 dark:text-night-200">{formatNaira(g.amount_kobo)}</p></div>
+            <div className="flex items-center justify-between"><div className="flex items-center gap-3"><Avatar name={g.name} avatarUrl={g.avatar_url} size={40} /><div><p className="font-bold text-green-900 dark:text-white">{g.name}</p><p className="text-sm text-green-700 dark:text-night-200">{formatNaira(g.amount_kobo)}</p></div></div>
               <Pill tone={G_TONE[g.status]}>{G_LABEL[g.status]}</Pill></div>
           </Card>))}
       </div>
@@ -148,11 +149,18 @@ function OfferCard({ l }: { l: LoanDetail }) {
   const o = l.offer!
   const left = useCountdown(o.expires_at)
   const { data: st } = useCoopStatus()
-  const accept = useCoopAction(() => postIdem(`/coop/loans/${l.id}/accept`, {}, newKey()), { success: 'Offer accepted' })
+  const stepUp = !!st?.rules?.step_up_required && st.rules.step_up_required !== 'off'
+  const { ask, sheet } = useAuthPrompt()
+  const accept = useCoopAction(async () => {
+    const auth = await ask(stepUp)
+    if (auth === null) throw new Error('Cancelled')
+    return postIdem(`/coop/loans/${l.id}/accept`, { ...(auth ? { auth } : {}) }, newKey())
+  }, { success: 'Offer accepted' })
   const decline = useCoopAction(() => post(`/coop/loans/${l.id}/decline-offer`), { success: 'Offer declined. Your guarantors were released.' })
   const feePct = st?.rules?.transfer_fee_bps ? pctText(st.rules.transfer_fee_bps) : ''
   return (
     <Card className="mt-3 border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10">
+      {sheet}
       <div className="flex items-center justify-between"><p className="flex items-center gap-1.5 font-extrabold text-green-900 dark:text-white"><Banknote className="h-5 w-5" />Your loan is approved</p>{o.expires_at && <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">{left}</span>}</div>
       <div className="mt-3 space-y-1 text-sm text-green-900 dark:text-night-100">
         <p className="flex justify-between"><span>Loan amount</span><b>{formatNaira(o.principal_kobo)}</b></p>
@@ -218,7 +226,7 @@ function GuarantorPicker({ open, onClose, loan }: { open: boolean; onClose: () =
           <div className="space-y-2">{pool.filter((p) => !live.has(p.member_id)).map((p) => (
             <button key={p.member_id} onClick={() => { setSel(p.member_id); setAmt(String(Math.max(Math.min(p.available_kobo, open_), 0) / 100)) }}
               className="w-full rounded-2xl border border-green-100 p-3 text-left dark:border-night-500">
-              <div className="flex items-center justify-between"><p className="font-bold text-green-900 dark:text-white">{p.name}</p><b className="text-green-700 dark:text-green-300">{formatNaira(p.available_kobo)}</b></div>
+              <div className="flex items-center justify-between"><p className="flex items-center gap-2 font-bold text-green-900 dark:text-white"><Avatar name={p.name} avatarUrl={p.avatar_url} size={32} />{p.name}</p><b className="text-green-700 dark:text-green-300">{formatNaira(p.available_kobo)}</b></div>
               <div className="mt-1 flex flex-wrap gap-1.5"><ReliabilityBadge pct={p.reliability_pct} has={p.has_history} /><Pill>{p.guarantees_total} guaranteed</Pill></div>
             </button>))}</div>)
       ) : (

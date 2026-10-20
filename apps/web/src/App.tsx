@@ -131,6 +131,9 @@ const CoopMePage          = lazy(() => import('@/features/coop/pages/MePage'))
 const CoopBankPage        = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.BankPage })))
 const CoopKinPage         = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.KinPage })))
 const CoopClosePage       = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.ClosePage })))
+const CoopComplaintThreadPage = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.ComplaintThreadPage })))
+const CoopWithdrawalsPage = lazy(() => import('@/features/coop/pages/WithdrawalsPage'))
+const CoopLoanHistoryPage = lazy(() => import('@/features/coop/pages/LoansPage').then((m) => ({ default: m.LoanHistoryPage })))
 const CoopComplaintsPage  = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.ComplaintsPage })))
 const CoopConsentsPage    = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.ConsentsPage })))
 const CoopMyDividendsPage = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.MyDividendsPage })))
@@ -283,6 +286,9 @@ export default function App() {
             <Route path="/coop/bank" element={<AuthGuard allowedRoles={['customer']}><CoopBankPage /></AuthGuard>} />
             <Route path="/coop/next-of-kin" element={<AuthGuard allowedRoles={['customer']}><CoopKinPage /></AuthGuard>} />
             <Route path="/coop/close" element={<AuthGuard allowedRoles={['customer']}><CoopClosePage /></AuthGuard>} />
+            <Route path="/coop/complaints/:id" element={<AuthGuard allowedRoles={['customer']}><CoopComplaintThreadPage /></AuthGuard>} />
+            <Route path="/coop/withdrawals" element={<AuthGuard allowedRoles={['customer']}><CoopWithdrawalsPage /></AuthGuard>} />
+            <Route path="/coop/loans/history" element={<AuthGuard allowedRoles={['customer']}><CoopLoanHistoryPage /></AuthGuard>} />
             <Route path="/coop/complaints" element={<AuthGuard allowedRoles={['customer']}><CoopComplaintsPage /></AuthGuard>} />
             <Route path="/coop/consents" element={<AuthGuard allowedRoles={['customer']}><CoopConsentsPage /></AuthGuard>} />
             <Route path="/coop/dividends" element={<AuthGuard allowedRoles={['customer']}><CoopMyDividendsPage /></AuthGuard>} />

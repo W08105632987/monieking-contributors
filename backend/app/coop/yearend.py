@@ -305,7 +305,7 @@ async def monthly_report(db: AsyncSession, rules: Rules, year: int, month: int) 
     loans = (await db.execute(select(CoopLoan).where(CoopLoan.status == "repaying"))).scalars().all()
     overdue = [l for l in loans if service.position(l, rules.today())["overdue"]]
     return {"year": year, "month": month, "contributions_in_kobo": g("contribution", "registration") + g("contribution", "contribution"),
-            "withdrawals_kobo": -g("contribution", "withdrawal"), "closures_kobo": -g("contribution", "closure_payout"),
+            "withdrawals_kobo": -g("contribution", "withdrawal") - g("contribution", "withdrawal_returned"), "closures_kobo": -g("contribution", "closure_payout"),
             "new_members": new_members, "loans_paid_out_kobo": g("loan_out", "disbursed"), "transfer_fees_kobo": g("operating", "transfer_fee"),
             "principal_repaid_kobo": g("loan_repaid", "repay_principal"), "interest_received_kobo": g("loan_repaid", "repay_interest"),
             "overdue_charges_received_kobo": g("loan_repaid", "repay_charge"), "running_cost_in_kobo": g("running_cost", "running_cost") + g("running_cost", "membership_fee") + g("running_cost", "closure_charge"),
@@ -360,7 +360,8 @@ async def member_statement(db: AsyncSession, rules: Rules, m: CoopMember, user: 
     loans = (await db.execute(select(CoopLoan).where(CoopLoan.member_id == m.id).order_by(CoopLoan.created_at))).scalars().all()
     divs = await member_dividends(db, rules, m)
     return {"name": user.full_name, "card_no": m.card_no, "year": year, "opening_kobo": prior,
-            "entries": [{"date": e.effective_at.date().isoformat(), "type": e.entry_type, "delta_kobo": e.delta_kobo, "balance_kobo": e.balance_after, "note": e.note} for e in es],
+            "entries": [{"id": e.id, "date": e.effective_at.date().isoformat(), "at": e.effective_at.isoformat(), "type": e.entry_type, "delta_kobo": e.delta_kobo,
+                        "balance_kobo": e.balance_after, "before_kobo": e.balance_after - e.delta_kobo, "note": e.note, "reference": e.reference} for e in es],
             "closing_kobo": prior + sum(e.delta_kobo for e in es),
             "loans": [{"loan_no": l.loan_no, "status": l.status, "principal_kobo": l.principal_kobo, "interest_kobo": l.interest_kobo,
                        "paid_kobo": l.principal_paid_kobo + l.interest_paid_kobo + l.charges_paid_kobo} for l in loans],
