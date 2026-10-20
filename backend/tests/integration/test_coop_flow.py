@@ -263,6 +263,8 @@ async def _run():
         await call("ada", "POST", f"/coop/loans/{l5['id']}/cancel")
 
         # ── early withdrawal: charge to the pool, dividend lost ──
+        sw = await call("dir1", "POST", "/coop/admin/settings/withdraw_mode/propose", json={"value": "instant", "reason": "test"})
+        await call("dir2", "POST", f"/coop/admin/settings/changes/{sw['id']}/vote", json={"decision": "approve"})
         w = await call("chika", "POST", "/coop/withdrawals", json={"amount_kobo": K(10_000)})
         assert w["preview"] is True and w["charge_kobo"] == K(1_000) and w["you_receive_kobo"] == K(9_000)
         await call("chika", "POST", "/coop/withdrawals", 409, json={"amount_kobo": K(900_000), "confirm": True})

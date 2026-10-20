@@ -16,6 +16,7 @@ from app.coop.settings_store import Rules
 from app.models.user import User
 
 RECOVERY_STEPS = ("call", "sms", "letter", "visit", "guarantor_notice", "payment_plan", "legal", "note")
+CHAT_KINDS = ("response", "message")
 COMPLAINT_CATEGORIES = ("loan", "contribution", "withdrawal", "dividend", "guarantee", "payout", "other")
 
 
@@ -49,7 +50,7 @@ async def add_note(db: AsyncSession, case_id, author: User, kind: str, body: str
         raise CoopError("Case not found", 404)
     if case.status == "closed":
         raise CoopError("This case is closed", 409)
-    if kind not in RECOVERY_STEPS + ("response",):
+    if kind not in RECOVERY_STEPS + CHAT_KINDS:
         raise CoopError("Unknown step type")
     if not (body or "").strip():
         raise CoopError("Write what was done")
@@ -72,7 +73,7 @@ async def close_case(db: AsyncSession, rules: Rules, case_id, director: User, re
     await audit.record(db, "case", case.id, "closed", director.id, {"resolution": case.resolution})
     if case.kind == "complaint" and case.member_id:
         m = await db.get(CoopMember, case.member_id)
-        await notify(db, m.user_id, "Your complaint was resolved", case.resolution[:200], "/coop/complaints")
+        await notify(db, m.user_id, "Your complaint was resolved", case.resolution[:200], f"/coop/complaints/{case.id}")
     return case
 
 
@@ -101,9 +102,25 @@ async def respond(db: AsyncSession, rules: Rules, case_id, director: User, body:
     await add_note(db, case.id, director, "response", body, visible=True)
     case.status = "answered"
     m = await db.get(CoopMember, case.member_id)
-    await notify(db, m.user_id, "The directors replied to your complaint", body[:200], "/coop/complaints")
+    await notify(db, m.user_id, "The directors replied to your complaint", body[:200], f"/coop/complaints/{case.id}")
     return case
 
+
+async def member_message(db: AsyncSession, rules: Rules, m: CoopMember, user: User, case_id, body: str) -> CoopCase:
+    """The member writes back in the complaint conversation."""
+    case = await db.get(CoopCase, case_id)
+    if not case or case.kind != "complaint" or case.member_id != m.id:
+        raise CoopError("Complaint not found", 404)
+    if case.status == "closed":
+        raise CoopError("This complaint is closed. Start a new one if you need to.", 409, "closed")
+    if not (body or "").strip():
+        raise CoopError("Write your message")
+    db.add(CoopCaseNote(case_id=case.id, author_id=user.id, kind="message", body=body.strip()[:2000], visible_to_member=True))
+    if case.status == "answered":
+        case.status = "open"
+    await db.flush()
+    await service.notify_directors(db, rules, "Complaint message", f"{user.full_name}: {body.strip()[:120]}", "/director/coop")
+    return case
 
 async def case_view(db: AsyncSession, case: CoopCase, for_member: bool = False) -> dict:
     notes = (await db.execute(select(CoopCaseNote).where(CoopCaseNote.case_id == case.id).order_by(CoopCaseNote.created_at))).scalars().all()
@@ -115,12 +132,15 @@ async def case_view(db: AsyncSession, case: CoopCase, for_member: bool = False) 
            "created_at": case.created_at.isoformat(), "due_at": case.due_at.isoformat() if case.due_at else None,
            "closed_at": case.closed_at.isoformat() if case.closed_at else None, "resolution": case.resolution}
     ns = []
+    ids = {n.author_id for n in notes if n.author_id}
+    names = {uid: nm for uid, nm in (await db.execute(select(User.id, User.full_name).where(User.id.in_(ids)))).all()} if ids else {}
     for n in notes:
         if for_member and not n.visible_to_member:
             continue
-        au = await db.get(User, n.author_id) if n.author_id else None
-        ns.append({"id": str(n.id), "kind": n.kind, "body": n.body, "author": au.full_name if au else "System", "at": n.created_at.isoformat(),
-                   "visible_to_member": n.visible_to_member})
+        mine = bool(m and n.author_id == m.user_id)
+        ns.append({"id": str(n.id), "kind": n.kind, "body": n.body, "author": ("You" if (for_member and mine) else names.get(n.author_id, "System")),
+                   "at": n.created_at.isoformat(), "visible_to_member": n.visible_to_member, "from_member": mine,
+                   "from_director": n.kind == "response"})
     out["notes"] = ns
     if not for_member:
         out["member"] = {"id": str(m.id), "name": mu.full_name, "card_no": m.card_no, "phone": mu.phone_number} if m else None

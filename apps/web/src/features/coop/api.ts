@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
+import { askStepUp, isStepUpError } from './stepup-bus'
 
 /* ───────── types (kobo everywhere, same as the backend) ───────── */
 export interface PublicRules {
@@ -26,7 +27,17 @@ export interface MemberSummary {
   pool_listed: boolean; pool_offer_kobo: number; pool_whatsapp_ok: boolean; pool_note: string | null
   nin_bypassed: boolean; disqualified_this_year: boolean
   has_bank?: boolean; fee_paid?: boolean; next_of_kin?: { name: string; relationship: string; phone: string; address?: string } | null
-  history?: { date: string; type: string; delta_kobo: number; balance_kobo: number }[]
+  history?: LedgerEntry[]
+}
+
+export interface LedgerEntry {
+  id: number; date: string; at: string; type: string; delta_kobo: number; balance_kobo: number; before_kobo: number; note: string | null; reference: string | null
+}
+
+export interface WithdrawalRow {
+  id: string; amount_kobo: number; charge_kobo: number; net_kobo: number; status: 'pending' | 'paid' | 'rejected' | 'cancelled'
+  created_at: string; decided_at: string | null; reason: string | null; reference: string | null
+  account: { bank_name: string | null; account_number: string; account_name: string } | null
 }
 
 export interface LoanCard {
@@ -42,7 +53,7 @@ export interface ScheduleRow {
 }
 
 export interface LoanGuarantor {
-  guarantee_id: string; member_id: string; name: string; amount_kobo: number; status: string
+  guarantee_id: string; member_id: string; name: string; avatar_url?: string | null; amount_kobo: number; status: string
   signed_at: string | null; expires_at: string
 }
 
@@ -68,31 +79,31 @@ export interface CoopStatus {
 export interface PoolEntry {
   member_id: string; name: string; card_no: string; months_member: number; offer_kobo: number
   available_kobo: number; reliability_pct: number | null; has_history: boolean; guarantees_active: number
-  guarantees_total: number; loans_taken: number; note: string | null; whatsapp_link: string | null
+  guarantees_total: number; loans_taken: number; note: string | null; whatsapp_link: string | null; avatar_url?: string | null
 }
 
 export interface InviteRow {
   guarantee_id: string; status: string; amount_kobo: number; loan_no: string; loan_status: string
-  principal_kobo: number; borrower: string; borrower_member_id: string; invited_at: string
+  principal_kobo: number; borrower: string; borrower_avatar_url?: string | null; borrower_member_id: string; invited_at: string
   expires_at: string; due_date: string | null
 }
 
 export interface InviteDetail {
   guarantee_id: string; status: string; amount_kobo: number; expires_at: string
   loan: { loan_no: string; principal_kobo: number; interest_kobo: number; term_months: number; status: string; purpose: string | null }
-  borrower: { member_id: string; name: string; card_no: string }
+  borrower: { member_id: string; name: string; card_no: string; avatar_url?: string | null; reliability_pct?: number | null; has_history?: boolean; loans_taken?: number; loans_repaid?: number; months_member?: number }
   contract_text: string | null; contract_version: string; ticks: { key: string; label: string }[]
   free_kobo: number; needs_free_kobo: number; eligible: boolean
 }
 
 export interface ProfileData {
-  member_id: string; name: string; card_no: string; status: string; member_since: string; months_member: number
+  member_id: string; name: string; avatar_url?: string | null; card_no: string; status: string; member_since: string; months_member: number
   loans_taken: number; loans_repaid: number; reliability_pct: number | null; has_history: boolean
   guarantees_active: number; guarantees_total: number; pool_listed: boolean; pool_offer_kobo: number
   pool_note: string | null; nin_linked: boolean; you_are: 'self' | 'director' | 'guarantor' | 'member'
   whatsapp_link?: string
   private?: { phone: string; state: string | null; contribution_kobo: number; locked_kobo: number; free_kobo: number
-    history: { date: string; type: string; delta_kobo: number; balance_kobo: number }[] }
+    history: LedgerEntry[] }
 }
 
 export interface Transparency {
@@ -130,6 +141,7 @@ export function useCoopStatus() {
     queryKey: [...KEY, 'status'],
     queryFn: async () => (await api.get('/coop/status')).data,
     staleTime: 15_000,
+    retry: 1,
   })
 }
 export const useMe = () => useQuery<MemberSummary>({ queryKey: [...KEY, 'me'], queryFn: async () => (await api.get('/coop/me')).data })
@@ -171,16 +183,32 @@ export function useCoopAction<TVars, TRes = any>(fn: (v: TVars) => Promise<TRes>
       if (opts?.success) toast.success(opts.success)
       opts?.onSuccess?.(r)
     },
-    onError: (e) => toast.error(getErrorMessage(e)),
+    onError: (e) => { if ((e as Error)?.message !== 'Cancelled') toast.error(getErrorMessage(e)) },
   })
 }
 
-export const post = async <T = any>(url: string, body?: unknown) => (await api.post<T>(url, body)).data
-export const put = async <T = any>(url: string, body?: unknown) => (await api.put<T>(url, body)).data
+/**
+ * If the server asks for the withdrawal password ("step_up_required"), ask for it once and repeat the request with it.
+ * This is a safety net on top of each screen asking first, so no money action can fail with a prompt-less error.
+ */
+async function withAuthRetry<T>(send: (extra?: { auth: object }) => Promise<T>): Promise<T> {
+  try {
+    return await send()
+  } catch (e) {
+    if (!isStepUpError(e)) throw e
+    const auth = await askStepUp()
+    if (!auth) throw new Error('Cancelled')
+    return send({ auth })
+  }
+}
+const withAuth = (body: unknown, extra?: { auth: object }) => (extra ? { ...(body as object ?? {}), ...extra } : body)
+
+export const post = async <T = any>(url: string, body?: unknown) => withAuthRetry((x) => api.post<T>(url, withAuth(body, x)).then((r) => r.data))
+export const put = async <T = any>(url: string, body?: unknown) => withAuthRetry((x) => api.put<T>(url, withAuth(body, x)).then((r) => r.data))
 
 /** Money actions carry a fresh Idempotency-Key so a double tap or a retry cannot move money twice. */
 export const postIdem = async <T = any>(url: string, body: unknown, key: string) =>
-  (await api.post<T>(url, body, { headers: { 'Idempotency-Key': key } })).data
+  withAuthRetry((x) => api.post<T>(url, withAuth(body, x), { headers: { 'Idempotency-Key': x ? `${key}-auth` : key } }).then((r) => r.data))
 
 export const useCoopQ = <T = any>(name: string, url: string, params?: Record<string, unknown>, enabled = true) =>
   useQuery<T>({ queryKey: [...KEY, name, params], enabled, queryFn: async () => (await api.get(url, { params })).data })

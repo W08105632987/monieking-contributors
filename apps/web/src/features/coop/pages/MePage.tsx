@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowDownToLine, BarChart3, ChevronRight, Coins, FileText, Heart, Landmark, LogOut, MessageSquare, Plus } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpRight, BarChart3, ChevronRight, Coins, FileText, Heart, Landmark, LogOut, MessageSquare, Plus } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
 import { useCoopStatus, useMe } from '../api'
-import { Card, CoopPage, Pill, SectionTitle, Skel, Stat, dShort, pctText } from '../ui'
+import { Card, CoopPage, Pill, SectionTitle, Skel, Stat, pctText } from '../ui'
 import { ReliabilityBadge, TopUpSheet, WithdrawSheet } from '../parts'
-
-const TYPE: Record<string, string> = { registration: 'Joined', contribution: 'Contribution', withdrawal: 'Withdrawal' }
+import { EntryDetailSheet, EntryRow, ViewAll } from '../lists'
+import type { LedgerEntry } from '../api'
 
 export default function MePage() {
   const nav = useNavigate()
@@ -14,6 +14,7 @@ export default function MePage() {
   const { data: m } = useMe()
   const [topUp, setTopUp] = useState(false)
   const [wd, setWd] = useState(false)
+  const [entry, setEntry] = useState<LedgerEntry | null>(null)
   if (!m || !s?.rules) return <CoopPage title="Me"><Skel h="h-48" /></CoopPage>
   const r = s.rules
   return (
@@ -34,6 +35,7 @@ export default function MePage() {
       <div className="space-y-2">
         {([['/coop/bank', Landmark, 'Bank details', m.has_bank ? 'Where your loan is paid' : 'Add the account for your loan'],
           ['/coop/next-of-kin', Heart, 'Next of kin', m.next_of_kin ? m.next_of_kin.name : 'Not added yet'],
+          ['/coop/withdrawals', ArrowUpRight, 'My withdrawals', 'Requests and where they stand'],
           ['/coop/dividends', Coins, 'My dividends', 'Yearly share and disputes'],
           ['/coop/statement', FileText, 'Statement', 'Entries and PDF download'],
           ['/coop/complaints', MessageSquare, 'Complaints', 'Tell the directors'],
@@ -59,13 +61,9 @@ export default function MePage() {
       </Card>
 
       <SectionTitle>My history</SectionTitle>
-      <div className="space-y-2 pb-2">
-        {(m.history ?? []).map((h, i) => (
-          <Card key={i}><div className="flex items-center justify-between">
-            <div><p className="text-sm font-bold text-green-900 dark:text-white">{TYPE[h.type] ?? h.type}</p><p className="text-xs text-green-600 dark:text-night-300">{dShort(h.date)}</p></div>
-            <p className={`font-extrabold ${h.delta_kobo < 0 ? 'text-red-600' : 'text-green-700 dark:text-green-300'}`}>{h.delta_kobo < 0 ? '−' : '+'}{formatNaira(Math.abs(h.delta_kobo))}</p></div></Card>
-        ))}
-      </div>
+      <div className="pb-2"><ViewAll items={m.history ?? []} label="View all history" render={(h) => <EntryRow key={h.id} e={h} onClick={() => setEntry(h)} />}
+        empty={<p className="text-sm text-green-700 dark:text-night-200">Nothing yet. Your contributions and withdrawals will show here.</p>} /></div>
+      <EntryDetailSheet e={entry} onClose={() => setEntry(null)} />
       <TopUpSheet open={topUp} onClose={() => setTopUp(false)} />
       <WithdrawSheet open={wd} onClose={() => setWd(false)} member={m} rules={r} />
     </CoopPage>

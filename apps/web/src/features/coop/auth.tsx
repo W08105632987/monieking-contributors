@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Fingerprint, KeyRound } from 'lucide-react'
 import { isBiometricAvailable, getStepUpAssertion } from '@/lib/webauthn'
 import { FEATURE_FLAGS } from '@/config/featureFlags'
 import { BigButton, Field, Sheet, inputCls } from './ui'
+import { setStepUpHandler } from './stepup-bus'
 
 export type AuthPayload = { auth_method: 'password' | 'biometric'; withdrawal_password?: string; webauthn_assertion?: object }
 
@@ -44,6 +45,16 @@ export function useAuthPrompt() {
     </Sheet>
   )
   return { ask, sheet }
+}
+
+/** Mounted once per cooperative page: answers "please confirm it is you" for any request that needs it. */
+export function StepUpHost() {
+  const { ask, sheet } = useAuthPrompt()
+  useEffect(() => {
+    setStepUpHandler(() => ask(true))
+    return () => setStepUpHandler(null)
+  }, [ask])
+  return <>{sheet}</>
 }
 
 /** A new key per user action: a double tap or a retry after a bad connection cannot move money twice. */

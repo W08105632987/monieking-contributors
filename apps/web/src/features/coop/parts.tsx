@@ -1,3 +1,4 @@
+import { Avatar } from '@/components/ui/Avatar'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, ShieldCheck, Star } from 'lucide-react'
@@ -41,12 +42,17 @@ export function TopUpSheet({ open, onClose }: { open: boolean; onClose: () => vo
   )
 }
 
+type WdPreview = { charge_kobo: number; you_receive_kobo: number; loses_dividend: boolean; mode: 'director_payout' | 'instant'; needs_bank: boolean
+  account: { bank_name: string | null; account_number: string; account_name: string } | null }
+
 export function WithdrawSheet({ open, onClose, member, rules }: { open: boolean; onClose: () => void; member: MemberSummary; rules: PublicRules }) {
+  const nav = useNavigate()
   const [v, setV] = useState('')
-  const [preview, setPreview] = useState<{ charge_kobo: number; you_receive_kobo: number; loses_dividend: boolean } | null>(null)
+  const [preview, setPreview] = useState<WdPreview | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const reset = () => { setPreview(null); setErr('') }
+  const [sent, setSent] = useState(false)
+  const reset = () => { setPreview(null); setErr(''); setSent(false) }
   const check = async () => {
     setBusy(true); setErr('')
     try { setPreview((await api.post('/coop/withdrawals', { amount_kobo: toKobo(v) })).data) }
@@ -56,16 +62,27 @@ export function WithdrawSheet({ open, onClose, member, rules }: { open: boolean;
   const { data: st } = useCoopStatus()
   const stepUp = st?.rules?.step_up_required && st.rules.step_up_required !== 'off'
   const { ask, sheet } = useAuthPrompt()
+  const request = preview?.mode === 'director_payout'
   const run = useCoopAction(async () => {
     const auth = await ask(!!stepUp)
     if (auth === null) throw new Error('Cancelled')
     return postIdem('/coop/withdrawals', { amount_kobo: toKobo(v), confirm: true, ...(auth ? { auth } : {}) }, newKey())
   }, {
-    success: st?.test_mode === false ? 'Withdrawal recorded' : 'Withdrawal recorded (test money)', onSuccess: () => { setV(''); reset(); onClose() },
+    success: request ? undefined : (st?.test_mode === false ? 'Withdrawal recorded' : 'Withdrawal recorded (test money)'),
+    onSuccess: () => { setV(''); if (request) setSent(true); else { reset(); onClose() } },
   })
+  const close = () => { reset(); onClose() }
   return (
-    <Sheet open={open} onClose={() => { reset(); onClose() }} title="Withdraw contribution">
+    <Sheet open={open} onClose={close} title={sent ? 'Request sent' : 'Withdraw contribution'}>
       {sheet}
+      {sent ? (
+        <div className="space-y-3 text-sm text-green-900 dark:text-night-100">
+          <p className="rounded-xl bg-green-100 p-3 font-semibold dark:bg-night-600">Your request is with the directors. The money is set aside for you and will show as Pending until a director sends it to your bank account and marks it paid.</p>
+          <p className="text-xs text-green-700 dark:text-night-200">You will get a notification when it is paid, or if it cannot be paid (then the money goes back to your contribution).</p>
+          <BigButton onClick={() => { close(); nav('/coop/withdrawals') }}>See my requests</BigButton>
+          <BigButton tone="ghost" onClick={close}>Done</BigButton>
+        </div>
+      ) : (<>
       <p className="mb-3 text-sm text-green-700 dark:text-night-200">You can withdraw only money that is not locked behind a guarantee. You have <b>{formatNaira(member.free_kobo)}</b> free.</p>
       <Field label="Amount"><MoneyInput value={v} onChange={(x) => { setV(x); reset() }} /></Field>
       {err && <p className="mt-2 text-sm font-semibold text-red-600">{err}</p>}
@@ -78,20 +95,29 @@ export function WithdrawSheet({ open, onClose, member, rules }: { open: boolean;
             <p className="mt-1">You receive: <b>{formatNaira(preview.you_receive_kobo)}</b></p>
             {preview.loses_dividend && <p className="mt-2 font-bold">You will not share this year's dividend if you withdraw.</p>}
           </div>
-          <BigButton tone="red" loading={run.isPending} onClick={() => run.mutate(undefined as never)}>Confirm withdrawal</BigButton>
+          {request && preview.account && (
+            <div className="rounded-xl border border-green-200 p-3 text-sm text-green-900 dark:border-night-400 dark:text-night-100">
+              <p className="text-xs font-bold uppercase text-green-600 dark:text-night-300">Sent to</p>
+              <p className="font-bold">{preview.account.account_name}</p>
+              <p className="text-xs">{preview.account.bank_name} · {preview.account.account_number}</p>
+              <p className="mt-2 text-xs text-green-700 dark:text-night-200">A director sends this by bank transfer and marks it paid. Until then it shows as Pending.</p>
+            </div>)}
+          {preview.needs_bank ? (
+            <div className="space-y-2"><p className="text-sm font-semibold text-red-600">Add your bank account first so we know where to send the money.</p>
+              <BigButton onClick={() => { close(); nav('/coop/bank') }}>Add bank account</BigButton></div>
+          ) : (
+            <BigButton tone="red" loading={run.isPending} onClick={() => run.mutate(undefined as never)}>{request ? 'Send withdrawal request' : 'Confirm withdrawal'}</BigButton>)}
         </div>
-      )}
+      )}</>)}
     </Sheet>
   )
 }
 
-export function MemberRow({ to, name, sub, right }: { to: string; name: string; sub: string; right?: React.ReactNode }) {
+export function MemberRow({ to, name, sub, right, avatarUrl }: { to: string; name: string; sub: string; right?: React.ReactNode; avatarUrl?: string | null }) {
   const nav = useNavigate()
   return (
     <button onClick={() => nav(to)} className="flex w-full items-center gap-3 rounded-2xl border border-green-100 bg-white p-3 text-left shadow-card dark:border-night-500 dark:bg-night-700">
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-extrabold text-green-800 dark:bg-night-600 dark:text-night-100">
-        {name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
-      </div>
+      <Avatar name={name} avatarUrl={avatarUrl} size={40} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-green-900 dark:text-white">{name}</p>
         <p className="truncate text-xs text-green-600 dark:text-night-200">{sub}</p>

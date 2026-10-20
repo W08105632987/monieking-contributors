@@ -240,6 +240,26 @@ class CoopRequestVote(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class CoopWithdrawal(Base):
+    """A member's withdrawal request. The money is held (ledger withdrawal_pending) until a director pays or rejects it."""
+    __tablename__ = "coop_withdrawals"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("coop_members.id"), nullable=False)
+    amount_kobo: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    charge_kobo: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    net_kobo: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    charge_bps: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    payout_account: Mapped[dict | None] = mapped_column(JSONB)
+    hold_reason: Mapped[str | None] = mapped_column(String(300))
+    reference: Mapped[str | None] = mapped_column(String(120))
+    evidence: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class CoopCase(Base):
     __tablename__ = "coop_cases"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)

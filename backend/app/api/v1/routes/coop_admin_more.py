@@ -3,7 +3,7 @@ import uuid
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -93,7 +93,7 @@ OPENABLE = ("waiver", "restructure", "write_off", "general_debit", "reversal", "
 # ── payouts (Treasurer) ──
 @router.get("/payouts")
 async def payouts(director: DirectorOnly, rules=R, db: AsyncSession = Depends(get_db)):
-    await service.sweep(db, rules)
+    await ops.kick_jobs(db, rules)
     ls = (await db.execute(select(CoopLoan).where(CoopLoan.status.in_(("awaiting_acceptance", "awaiting_payout"))).order_by(CoopLoan.approved_at))).scalars().all()
     out = []
     for l in ls:
@@ -114,6 +114,59 @@ async def confirm_payout(loan_id: uuid.UUID, body: PayoutBody, director: Directo
     await safety.require_step_up(db, rules, director, body.auth, "director")
     l = await service.confirm_payout(db, rules, loan_id, director, body.reference, body.evidence)
     return {"id": str(l.id), "status": l.status}
+
+
+@router.get("/withdrawals")
+async def withdrawals(director: DirectorOnly, rules=R, db: AsyncSession = Depends(get_db), status: str = Query("pending"),
+                      q: str = Query(""), limit: int = Query(10, ge=1, le=50), offset: int = Query(0, ge=0),
+                      min_kobo: Optional[int] = Query(None), max_kobo: Optional[int] = Query(None),
+                      date_from: Optional[str] = Query(None), date_to: Optional[str] = Query(None)):
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import func, or_
+    from app.coop.models import CoopWithdrawal as W
+    base = select(W, CoopMember, User).join(CoopMember, CoopMember.id == W.member_id).join(User, User.id == CoopMember.user_id)
+    if status != "all":
+        base = base.where(W.status == status)
+    if q.strip():
+        like = f"%{q.strip()}%"
+        base = base.where(or_(User.full_name.ilike(like), User.phone_number.ilike(like), CoopMember.card_no.ilike(like)))
+    if min_kobo is not None:
+        base = base.where(W.amount_kobo >= min_kobo)
+    if max_kobo is not None:
+        base = base.where(W.amount_kobo <= max_kobo)
+    try:
+        if date_from:
+            base = base.where(W.created_at >= datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc))
+        if date_to:
+            base = base.where(W.created_at < datetime.fromisoformat(date_to).replace(tzinfo=timezone.utc) + timedelta(days=1))
+    except ValueError:
+        raise CoopError("Dates must look like 2026-10-31")
+    total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    rows = (await db.execute(base.order_by(W.created_at.desc()).limit(limit).offset(offset))).all()
+    counts = {k: int(c) for k, c in (await db.execute(select(W.status, func.count()).group_by(W.status))).all()}
+    can_send = rules.get("payout_executor") == "any_director" or str(director.id) == rules.get("treasurer_user_id")
+    return {"total": total, "counts": counts, "can_send": can_send, "evidence_required": bool(rules.get("payout_evidence_required")),
+            "step_up": safety.step_up_needed(rules, "director"),
+            "items": [service.withdrawal_view(w, u.full_name, m.card_no, u.phone_number, True) for w, m, u in rows]}
+
+
+@router.post("/withdrawals/{wid}/pay")
+async def pay_withdrawal(wid: uuid.UUID, body: PayoutBody, director: DirectorOnly, rules=R, db: AsyncSession = Depends(get_db)):
+    await safety.require_step_up(db, rules, director, body.auth, "director")
+    w = await service.pay_withdrawal(db, rules, wid, director, body.reference, body.evidence)
+    return service.withdrawal_view(w)
+
+
+@router.post("/withdrawals/{wid}/reject")
+async def reject_withdrawal(wid: uuid.UUID, body: NoteBody, director: DirectorOnly, rules=R, db: AsyncSession = Depends(get_db)):
+    w = await service.reject_withdrawal(db, rules, wid, director, body.note)
+    return service.withdrawal_view(w)
+
+
+@router.post("/withdrawals/{wid}/clear-hold")
+async def clear_withdrawal_hold(wid: uuid.UUID, body: NoteBody, director: DirectorOnly, rules=R, db: AsyncSession = Depends(get_db)):
+    w = await service.clear_withdrawal_hold(db, rules, wid, director, body.note)
+    return service.withdrawal_view(w)
 
 
 @router.post("/loans/{loan_id}/clear-hold")

@@ -7,6 +7,8 @@ import { post, postIdem, useCoopAction } from '../api'
 import { newKey, useAuthPrompt } from '../auth'
 import { Bar, BigButton, Card, Empty, Field, MoneyInput, Pill, SectionTitle, Sheet, Skel, Stat, dShort, inputCls, toKobo } from '../ui'
 import { useAdmin } from './dapi'
+import { WithdrawalsPanel } from './WithdrawalsPanel'
+import { ChatThread } from '../chat'
 
 const chip = (on: boolean) => `flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${on ? 'bg-green-700 text-white' : 'border border-green-200 bg-white text-green-800 dark:border-night-400 dark:bg-night-700 dark:text-night-100'}`
 const Chips = <T extends string>({ value, onChange, items }: { value: T; onChange: (v: T) => void; items: [T, string][] }) => (
@@ -28,6 +30,18 @@ function useDirAct<V>(fn: (v: V, auth?: any) => Promise<any>, stepUp: boolean, s
 
 /* ═════════ Payouts (Treasurer queue) ═════════ */
 export function PayoutsTab({ stepUp }: { stepUp: boolean }) {
+  const [kind, setKind] = useState<'loans' | 'withdrawals'>('loans')
+  const { data: wc } = useAdmin<any>('withdrawals-count', '/coop/admin/withdrawals', { status: 'pending', limit: 1 })
+  const waiting = wc?.counts?.pending ?? 0
+  return (
+    <>
+      <Chips value={kind} onChange={setKind} items={[['loans', 'Loan payouts'], ['withdrawals', waiting ? `Withdrawals (${waiting})` : 'Withdrawals']]} />
+      {kind === 'loans' ? <LoanPayouts stepUp={stepUp} /> : <WithdrawalsPanel stepUp={stepUp} />}
+    </>
+  )
+}
+
+function LoanPayouts({ stepUp }: { stepUp: boolean }) {
   const { data } = useAdmin<any[]>('payouts', '/coop/admin/payouts')
   const [sel, setSel] = useState<any>(null)
   const [ref, setRef] = useState('')
@@ -160,7 +174,7 @@ export function CasesTab() {
       {!data ? <Skel h="h-40" /> : !data.length ? <Empty icon={<ShieldCheck className="h-7 w-7" />} title="No cases" text="Nothing in this list." /> : (
         <div className="space-y-2">{data.map((c) => (
           <Card key={c.id} onClick={() => setSel(c.id)}>
-            <div className="flex items-start justify-between gap-2"><div><p className="font-bold text-green-900 dark:text-white">{c.subject}</p><p className="text-xs text-green-600 dark:text-night-300">{c.member?.name}{c.loan_no ? ` · ${c.loan_no}` : ''} · {dShort(c.created_at)}</p></div><Pill tone={c.status === 'closed' ? 'green' : c.due_at && new Date(c.due_at) < new Date() ? 'red' : 'amber'}>{c.status === 'closed' ? 'Closed' : 'Open'}</Pill></div>
+            <div className="flex items-start justify-between gap-2"><div><p className="font-bold text-green-900 dark:text-white">{c.subject}</p><p className="text-xs text-green-600 dark:text-night-300">{c.member?.name}{c.loan_no ? ` · ${c.loan_no}` : ''} · {dShort(c.created_at)}</p></div><Pill tone={c.status === 'closed' ? 'green' : c.due_at && new Date(c.due_at) < new Date() ? 'red' : 'amber'}>{c.status === 'closed' ? 'Closed' : c.status === 'answered' ? 'Replied' : 'Open'}</Pill></div>
             {c.due_at && c.status !== 'closed' && <p className="mt-1 text-xs text-green-700 dark:text-night-200">Answer due {dShort(c.due_at)}</p>}
           </Card>))}</div>)}
       {sel && <CaseSheet id={sel} onClose={() => setSel(null)} />}
@@ -183,26 +197,43 @@ function RecoverySheet({ open, onClose }: { open: boolean; onClose: () => void }
 }
 
 function CaseSheet({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data: c } = useAdmin<any>(`case-${id}`, `/coop/admin/cases/${id}`)
+  const { data: c } = useAdmin<any>(`case-${id}`, `/coop/admin/cases/${id}`, undefined, 4000)
   const [body, setBody] = useState('')
-  const [vis, setVis] = useState(false)
   const [res, setRes] = useState('')
-  const note = useCoopAction(() => post(`/coop/admin/cases/${id}/notes`, { kind: 'note', body, visible_to_member: vis }), { success: 'Note added', onSuccess: () => setBody('') })
-  const close = useCoopAction(() => post(`/coop/admin/cases/${id}/${c.kind === 'complaint' ? 'respond' : 'close'}`, { resolution: res }), { success: c?.kind === 'complaint' ? 'Answer sent' : 'Case closed', onSuccess: onClose })
+  const [closing, setClosing] = useState(false)
+  const note = useCoopAction(() => post(`/coop/admin/cases/${id}/notes`, { kind: 'note', body, visible_to_member: false }), { success: 'Internal note added', onSuccess: () => setBody('') })
+  const reply = useCoopAction((t: string) => post(`/coop/admin/cases/${id}/respond`, { resolution: t }))
+  const close = useCoopAction(() => post(`/coop/admin/cases/${id}/close`, { resolution: res }), { success: c?.kind === 'complaint' ? 'Complaint resolved' : 'Case closed', onSuccess: onClose })
+  const complaint = c?.kind === 'complaint'
   return (
     <Sheet open onClose={onClose} title={c?.subject ?? 'Case'}>
-      {!c ? <Skel /> : (
+      {!c ? <Skel /> : complaint ? (
+        <div className="space-y-3">
+          <p className="text-xs text-green-600 dark:text-night-300">{c.member?.name} · {c.member?.card_no} · {c.member?.phone}{c.loan_no ? ` · ${c.loan_no}` : ''}</p>
+          <div className="max-h-[48vh] overflow-y-auto pr-1">
+            <ChatThread viewer="director" first={{ author: c.member?.name ?? 'Member', body: c.body, at: c.created_at }} notes={c.notes.filter((n: any) => n.visible_to_member)}
+              onSend={(t) => reply.mutate(t)} sending={reply.isPending} locked={c.status === 'closed'} lockedText={`Resolved: ${c.resolution ?? ''}`} placeholder="Reply to the member" />
+          </div>
+          {c.notes.some((n: any) => !n.visible_to_member) && <div className="space-y-1">{c.notes.filter((n: any) => !n.visible_to_member).map((n: any) => <p key={n.id} className="rounded-xl bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200"><b>Internal ({n.author}):</b> {n.body}</p>)}</div>}
+          {c.status !== 'closed' && (<>
+            <details className="text-sm"><summary className="cursor-pointer font-bold text-green-700 dark:text-night-200">Add a private note (the member cannot see it)</summary>
+              <div className="mt-2 space-y-2"><Area value={body} onChange={setBody} /><BigButton tone="ghost" loading={note.isPending} disabled={!body.trim()} onClick={() => note.mutate(undefined)}>Save private note</BigButton></div></details>
+            {!closing ? <BigButton tone="ghost" onClick={() => setClosing(true)}>Mark as resolved</BigButton> : (
+              <div className="space-y-2"><Field label="Final note to the member"><Area value={res} onChange={setRes} /></Field>
+                <BigButton loading={close.isPending} disabled={!res.trim()} onClick={() => close.mutate(undefined)}>Resolve and close</BigButton></div>)}
+          </>)}
+        </div>
+      ) : (
         <div className="space-y-3">
           <p className="text-sm text-green-800 dark:text-night-100">{c.body}</p>
           {c.loan && <p className="text-xs text-green-700 dark:text-night-200">Owes {formatNaira(c.loan.total_due_kobo)} · {c.loan.overdue_days} days overdue</p>}
-          {c.notes.map((n: any) => <div key={n.id} className="rounded-xl bg-green-100/70 p-2 text-sm dark:bg-night-600"><p className="text-xs text-green-600 dark:text-night-300">{n.author} · {dShort(n.at)}{n.visible_to_member ? ' · visible to member' : ''}</p><p className="text-green-900 dark:text-white">{n.body}</p></div>)}
+          {c.notes.map((n: any) => <div key={n.id} className="rounded-xl bg-green-100/70 p-2 text-sm dark:bg-night-600"><p className="text-xs text-green-600 dark:text-night-300">{n.author} · {dShort(n.at)}</p><p className="text-green-900 dark:text-white">{n.body}</p></div>)}
           {c.status !== 'closed' ? (
             <>
               <Field label="Add a note"><Area value={body} onChange={setBody} /></Field>
-              {c.kind === 'complaint' && <label className="flex gap-2 text-xs text-green-800 dark:text-night-100"><input type="checkbox" checked={vis} onChange={(e) => setVis(e.target.checked)} />Show this note to the member</label>}
               <BigButton tone="ghost" loading={note.isPending} disabled={!body.trim()} onClick={() => note.mutate(undefined)}>Add note</BigButton>
-              <Field label={c.kind === 'complaint' ? 'Final answer to the member' : 'How was it resolved?'}><Area value={res} onChange={setRes} /></Field>
-              <BigButton loading={close.isPending} disabled={!res.trim()} onClick={() => close.mutate(undefined)}>{c.kind === 'complaint' ? 'Send answer and close' : 'Close case'}</BigButton>
+              <Field label="How was it resolved?"><Area value={res} onChange={setRes} /></Field>
+              <BigButton loading={close.isPending} disabled={!res.trim()} onClick={() => close.mutate(undefined)}>Close case</BigButton>
             </>) : <p className="text-sm font-bold text-green-700 dark:text-night-200">Closed: {c.resolution}</p>}
         </div>)}
     </Sheet>

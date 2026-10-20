@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-export const useAdmin = <T = any>(key: string, url: string, params?: Record<string, unknown>) =>
-  useQuery<T>({ queryKey: ['coop', 'admin', key, params], queryFn: async () => (await api.get(url, { params })).data })
+export const useAdmin = <T = any>(key: string, url: string, params?: Record<string, unknown>, poll?: number) =>
+  useQuery<T>({ queryKey: ['coop', 'admin', key, params], retry: 1, refetchInterval: poll, queryFn: async () => (await api.get(url, { params })).data })
 
 export interface SettingItem {
   key: string; group: string; label: string; kind: string; unit: string; value: string; default: string; options: string[]
   min: number | null; max: number | null; confirmed: boolean; effect: string; effect_label: string; note: string
   readonly: boolean; required_for_live: boolean
+  help?: { what: string; options: Record<string, string>; tip: string }
   pending: null | { id: string; new_value: string; reason: string | null; approvals: number; needed: number; you_voted: boolean }
   scheduled: null | { id: string; new_value: string; effective_on: string | null }
 }
