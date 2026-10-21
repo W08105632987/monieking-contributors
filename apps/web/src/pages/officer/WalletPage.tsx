@@ -14,18 +14,11 @@ import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { formatNaira, timeAgo, formatDateTime, copyToClipboard } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { txLabel } from '@/lib/txLabel'
+import { DisputeModal } from '@/components/disputes/DisputeModal'
 import type { WalletTransaction } from '@/types'
 import { FEATURE_FLAGS } from '@/config/featureFlags'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
-
-const TX_CATEGORY_LABEL: Record<string, string> = {
-  wallet_funding:       'Wallet funded',
-  contribution:         'Contribution posted',
-  officer_contribution: 'Cash contribution posted',
-  withdrawal:           'Withdrawal',
-  charge:               'Withdrawal charge',
-  reversal:             'Reversal',
-}
 
 const OFFICER_WALLET_WITHDRAWAL_CHARGE_KOBO = 5_000 // ₦50, flat
 
@@ -179,7 +172,7 @@ function TxItem({ tx, onClick }: { tx: WalletTransaction; onClick: () => void })
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-green-900 dark:text-white text-sm font-semibold truncate">
-          {TX_CATEGORY_LABEL[tx.category] ?? tx.category}
+          {txLabel(tx)}
         </p>
         <p className="text-green-400 dark:text-night-300 text-xs mt-0.5 truncate flex items-center gap-1">
           <Clock className="w-3 h-3 flex-shrink-0" /> {timeAgo(tx.created_at)}
@@ -200,6 +193,8 @@ function TxItem({ tx, onClick }: { tx: WalletTransaction; onClick: () => void })
 
 // ── Transaction detail sheet ────────────────────────────────────────
 function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => void }) {
+  const navigate = useNavigate()
+  const [showDispute, setShowDispute] = useState(false)
   const isCredit = tx.type === 'credit'
   const rows = [
     { label: 'Status',        value: 'Successful' },
@@ -237,7 +232,7 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
             {isCredit ? '+' : '-'}{formatNaira(tx.amount_kobo)}
           </p>
           <p className="text-green-500 dark:text-night-200 text-sm font-semibold mt-1">
-            {TX_CATEGORY_LABEL[tx.category] ?? tx.category}
+            {txLabel(tx)}
           </p>
         </div>
 
@@ -251,7 +246,23 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
             </div>
           ))}
         </div>
+
+        <button
+          onClick={() => navigate(`/transactions/${tx.id}/receipt`)}
+          className="w-full mt-4 text-green-700 dark:text-night-100 font-bold text-sm py-3 rounded-xl bg-green-50 dark:bg-night-600 active:scale-95 transition-all"
+        >
+          View full receipt
+        </button>
+        <button
+          onClick={() => setShowDispute(true)}
+          className="w-full mt-2 text-red-400 dark:text-red-300 font-bold text-sm py-3 rounded-xl border-2 border-red-100 dark:border-red-900/40 active:scale-95 transition-all"
+        >
+          Dispute this transaction (goes to the director)
+        </button>
       </motion.div>
+      {showDispute && (
+        <DisputeModal entityType="wallet_transaction" entityId={tx.id} onClose={() => setShowDispute(false)} />
+      )}
     </div>
   )
 }

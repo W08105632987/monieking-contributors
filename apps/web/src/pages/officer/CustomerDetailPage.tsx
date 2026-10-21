@@ -31,7 +31,7 @@ export default function CustomerDetailPage() {
   const { data: smsFee } = useQuery({
     queryKey: ['sms-fee'],
     queryFn: async () => {
-      const { data } = await api.get<{ monthly_sms_fee_kobo: number; monthly_sms_fee_naira: number }>('/settings/sms-fee')
+      const { data } = await api.get<{ sms_fee_per_sms_kobo: number; sms_fee_per_sms_naira: number }>('/settings/sms-fee')
       return data
     },
   })
@@ -151,7 +151,7 @@ export default function CustomerDetailPage() {
                   )}
                 </div>
                 <p className="text-xs text-green-600 dark:text-night-200 mt-0.5">
-                  {smsFee ? `₦${(smsFee.monthly_sms_fee_kobo / 100).toLocaleString()} / month` : 'Monthly subscription'} · Turn on with customer's consent
+                  {smsFee ? `₦${(smsFee.sms_fee_per_sms_kobo / 100).toLocaleString()} per SMS` : 'Pay per SMS'} · Only if the customer asks for it
                 </p>
               </div>
             </div>
@@ -174,6 +174,16 @@ export default function CustomerDetailPage() {
             </button>
           </div>
         </div>
+
+        {(customer.sms_alerts_enabled || (customer.sms_accrued_kobo ?? 0) > 0) && (
+          <div className="mb-4 rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20 p-4">
+            <p className="text-amber-700 dark:text-amber-300 text-xs font-bold uppercase tracking-wide">SMS charges so far</p>
+            <p className="text-green-900 dark:text-white text-2xl font-extrabold mt-0.5">{formatNaira(customer.sms_accrued_kobo ?? 0)}</p>
+            <p className="text-xs text-green-700 dark:text-night-200 mt-1 leading-relaxed">
+              Nothing is taken from a wallet. Each SMS adds to this amount, and it comes off the customer's card together with the normal charge when they withdraw. Tell the customer this before you turn SMS on — it is their choice.
+            </p>
+          </div>
+        )}
 
         {/* Action buttons */}
         <div className="flex gap-2 mb-6">

@@ -100,7 +100,7 @@ async def _run_sweep(db: AsyncSession) -> int:
                 type=NotificationType.WARNING,
                 title="Dispute SLA Breached — Auto-Escalated",
                 body=f"Dispute #{str(d.id)[:8]} has exceeded the {sla_hours}h SLA and is now in the open Director queue.",
-                related_entity_id=d.id,
+                related_entity_id=d.id, deep_link_url=f"/disputes/{d.id}",
             )
 
     await db.flush()

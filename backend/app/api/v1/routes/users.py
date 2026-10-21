@@ -60,12 +60,30 @@ async def update_my_profile(
     just not in `allowed`, so they're silently ignored like any other
     unrecognized key, same as before this endpoint existed.
     """
+    import re
     allowed = {"next_of_kin_name", "next_of_kin_phone", "state_of_residence", "email"}
+    clean: dict = {}
     for key, value in updates.items():
-        if key in allowed:
-            setattr(current_user, key, value)
+        if key not in allowed:
+            continue
+        value = (value or "").strip() if isinstance(value, str) or value is None else value
+        if key == "next_of_kin_phone" and value:
+            digits = re.sub(r"\D", "", value)
+            if digits.startswith("234") and len(digits) == 13:
+                digits = "0" + digits[3:]
+            if not re.fullmatch(r"0\d{10}", digits):
+                raise HTTPException(status_code=422, detail="Next of kin phone must be an 11-digit Nigerian number")
+            value = digits
+        if key == "next_of_kin_name" and value and len(value) < 2:
+            raise HTTPException(status_code=422, detail="Enter the next of kin's full name")
+        clean[key] = value or None
+    # current_user may be the cached (detached) object — change a real session-attached row so it persists
+    user = await db.get(User, current_user.id)
+    for key, value in clean.items():
+        setattr(user, key, value)
     await db.flush()
-    return await build_user_response(db, current_user)
+    await invalidate_user_cache(str(user.id))
+    return await build_user_response(db, user)
 
 
 @router.get("/banks")
@@ -143,6 +161,7 @@ async def list_users(
     role: str | None = None,
     status_filter: str | None = None,
     card_type: str | None = None,   # "regular" | "food" — customers holding at least one card of this type
+    search: str | None = None,      # name or phone contains
     page: int = 1,
     page_size: int = 20,
 ):
@@ -155,6 +174,9 @@ async def list_users(
         query = query.where(User.role == role)
     if status_filter:
         query = query.where(User.status == status_filter)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.where(User.full_name.ilike(term) | User.phone_number.ilike(term))
     if card_type:
         from app.models.card import ContributionCard
         query = query.where(

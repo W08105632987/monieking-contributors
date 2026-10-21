@@ -33,6 +33,8 @@ class Withdrawal(Base):
     requested_amount_kobo: Mapped[int] = mapped_column(BigInteger, nullable=False)
     charge_kobo:           Mapped[int] = mapped_column(BigInteger, nullable=False)
     net_payable_kobo:      Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # SMS charges that were taken off this withdrawal (already included in charge_kobo)
+    sms_charge_kobo:       Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
 
     # Snapshot of bank details at time of request
     bank_name:      Mapped[str] = mapped_column(String(100), nullable=False)

@@ -8,27 +8,7 @@ import { formatNaira, formatDateTime, timeAgo, groupByDateBucket, cn } from '@/l
 import type { WalletTransaction, PaginatedResponse } from '@/types'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { DisputeModal } from '@/components/disputes/DisputeModal'
-
-const TX_CATEGORY_LABEL: Record<string, string> = {
-  wallet_funding:       'Wallet funded',
-  contribution:         'Contribution',
-  withdrawal:           'Withdrawal',
-  charge:               'Service charge',
-  officer_contribution: 'Cash contribution',
-  reversal:             'Reversal',
-}
-
-/**
- * The specific, human-written description (e.g. "Manual Service: Nin
- * Modification") is always more useful than the generic category label
- * (e.g. "Service charge", which `charge` covers for everything from a
- * NIN modification to a bill payment) — prefer it whenever one exists,
- * falling back to the category label only for transactions with no
- * specific description recorded.
- */
-function txLabel(tx: WalletTransaction): string {
-  return tx.description || TX_CATEGORY_LABEL[tx.category] || tx.category
-}
+import { txLabel } from '@/lib/txLabel'
 
 type Filter = 'all' | 'credit' | 'debit'
 

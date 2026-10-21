@@ -50,6 +50,7 @@ async def get_my_notifications(
             "type":             n.type.value,
             "is_read":          n.is_read,
             "related_entity_id":str(n.related_entity_id) if n.related_entity_id else None,
+            "link":             n.link,
             "created_at":       n.created_at.isoformat(),
         }
         for n in result.scalars().all()

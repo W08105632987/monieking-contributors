@@ -198,7 +198,12 @@ function CardItem({ card, grid, onOpenFoodPass }: { card: ContributionCard; grid
 }
 
 // ── Status badge for completed cards ─────────────────────────────
-function CompletionBadge({ status }: { status: string | null }) {
+function CompletionBadge({ status, collected }: { status: string | null; collected?: boolean }) {
+  if (collected) return (
+    <span className="flex items-center gap-1 text-xs font-bold bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100 px-2.5 py-1 rounded-full">
+      <CheckCircle className="w-3 h-3" /> Collected
+    </span>
+  )
   if (status === 'paid') return (
     <span className="flex items-center gap-1 text-xs font-bold bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100 px-2.5 py-1 rounded-full">
       <CheckCircle className="w-3 h-3" /> Paid
@@ -600,7 +605,7 @@ export default function CardsPage() {
                 completedCards.map(card => (
                   <div key={card.id} className="relative">
                     <div className="absolute top-2 right-2 z-10">
-                      <CompletionBadge status={card.completion_status} />
+                      <CompletionBadge status={card.completion_status} collected={!!card.food_collected_at} />
                     </div>
                     <CardItem card={card} grid={gridsByCardId[card.id]} onOpenFoodPass={handleOpenFoodPass} />
                   </div>

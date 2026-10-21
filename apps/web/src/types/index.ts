@@ -8,6 +8,7 @@ export type WithdrawalStatus = 'pending' | 'claimed' | 'paid' | 'rejected'
 export type TxType = 'credit' | 'debit'
 export type TxCategory =
   | 'wallet_funding'
+  | 'sms_fee'
   | 'contribution'
   | 'withdrawal'
   | 'charge'
@@ -45,6 +46,7 @@ export interface User {
   bvn_last4?: string | null
   nin_last4?: string | null
   sms_alerts_enabled?: boolean
+  sms_accrued_kobo?: number
   onboarding_completed?: boolean
   state_of_residence?: string | null
   referral_code?: string | null
@@ -109,6 +111,7 @@ export interface ContributionCard {
   total_contributed_kobo: number
   status: CardStatus
   completion_status: CardCompletionStatus | null
+  food_collected_at?: string | null
   food_eligibility_lost_at: string | null
   created_at: string
   completed_at: string | null
@@ -158,6 +161,7 @@ export interface AppNotification {
   type: NotificationType
   is_read: boolean
   related_entity_id: string | null
+  link?: string | null
   created_at: string
 }
 

@@ -122,19 +122,29 @@ export default function DirectorDashboardPage() {
   const { user } = useAuthStore()
   useWithdrawalRealtime()
 
+  // Only the work still open is listed; the Paid/Rejected tiles use true server totals
+  // (a "latest 50" list undercounted once history grew).
   const { data: withdrawals = [], isLoading } = useQuery({
-    queryKey: ['director-withdrawals'],
+    queryKey: ['director-withdrawals', 'open'],
     queryFn: async () => {
-      const { data } = await api.get<Withdrawal[]>('/withdrawals?page_size=50')
-      return data
+      const [p, c] = await Promise.all([
+        api.get<Withdrawal[]>('/withdrawals?status_filter=pending&page_size=100'),
+        api.get<Withdrawal[]>('/withdrawals?status_filter=claimed&page_size=100'),
+      ])
+      return [...p.data, ...c.data]
     },
     refetchInterval: 30_000, // auto-refresh every 30s
+  })
+  const { data: wCounts } = useQuery({
+    queryKey: ['director-withdrawals', 'counts'],
+    queryFn: async () => (await api.get<Record<string, number>>('/withdrawals/counts')).data,
+    refetchInterval: 30_000,
   })
 
   const pending   = withdrawals.filter(w => w.status === 'pending')
   const claimed   = withdrawals.filter(w => w.status === 'claimed')
-  const paid      = withdrawals.filter(w => w.status === 'paid')
-  const rejected  = withdrawals.filter(w => w.status === 'rejected')
+  const paid      = { length: wCounts?.paid ?? 0 }
+  const rejected  = { length: wCounts?.rejected ?? 0 }
   const urgent    = pending.filter(w =>
     (Date.now() - new Date(w.requested_at).getTime()) > 1000 * 60 * 60 * 20
   )

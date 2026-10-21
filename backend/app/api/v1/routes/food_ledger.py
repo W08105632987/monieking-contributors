@@ -298,6 +298,33 @@ async def oversight_stats(director: DirectorOnly, db: AsyncSession = Depends(get
     }
 
 
+@router.post("/oversight/ping-all")
+async def ping_all_qualified(
+    director: DirectorOnly,
+    zone_id: uuid.UUID | None = Query(None, description="only customers of this zone"),
+    db: AsyncSession = Depends(get_db),
+):
+    """One tap: remind EVERY qualified food contributor who has not collected yet."""
+    await _backfill_entitlements(db)
+    stmt = (
+        select(FoodEntitlement.customer_id)
+        .where(FoodEntitlement.archived_in_year_id.is_(None), FoodEntitlement.status == EntitlementStatus.ACTIVE)
+        .distinct()
+    )
+    if zone_id:
+        stmt = stmt.join(User, FoodEntitlement.customer_id == User.id).where(User.zone_id == zone_id)
+    ids = list((await db.execute(stmt)).scalars().all())
+    announcement = await get_config_value(db, ANNOUNCEMENT_CONFIG_KEY, default=DEFAULT_ANNOUNCEMENT)
+    for cid in ids:
+        await send_notification(
+            db, user_id=cid, title="Your food package is ready for pickup", body=announcement,
+            type=NotificationType.INFO, deep_link_url="/customer/cards",
+        )
+    await log_action(db, actor_id=director.id, action="food.ping_all", entity_type="food_collection",
+                     entity_id="all", new_value={"count": len(ids), "zone_id": str(zone_id) if zone_id else None})
+    return {"ok": True, "pinged": len(ids)}
+
+
 @router.post("/oversight/{customer_id}/ping")
 async def ping_customer(customer_id: uuid.UUID, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
     customer = await db.get(User, customer_id)

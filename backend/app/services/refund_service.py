@@ -104,6 +104,7 @@ async def expire_unclaimed_jobs(db: AsyncSession, *, system_user_id: uuid.UUID |
             db, user_id=job.user_id, title="Request refunded",
             body=(f"No service worker was available for your {job.service_category.replace('_', ' ').title()} request, "
                   f"so it was closed" + (f" and {naira(refunded)} was returned to your wallet." if refunded else ".")),
-            type=NotificationType.WARNING, related_entity_id=job.id)
+            type=NotificationType.WARNING, related_entity_id=job.id,
+            deep_link_url=f"/customer/manual-services/requests/{job.id}")
     await db.commit()
     return {"expired": count, "refunded_kobo": total, "disabled": False}

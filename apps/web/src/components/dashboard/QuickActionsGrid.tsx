@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ChevronRight, Plus, History, LayoutGrid } from 'lucide-react'
@@ -7,6 +7,8 @@ import { FallbackError } from '@/components/ui/FallbackError'
 import { api } from '@/lib/api'
 import type { IdentityService, IdentityServiceCategory } from '@/types'
 import { CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_ORDER } from '@/lib/identityServices'
+import { normalizeServices } from '@/lib/serviceCatalog'
+import { useTemplateList } from '@/lib/manualServices'
 
 interface QuickActionsGridProps {
   /** When set, this is an officer submitting on a customer's behalf —
@@ -37,13 +39,18 @@ export function QuickActionsGrid({ customerId, title = 'Quick actions' }: QuickA
   // a Notify Me action), not silently hidden. Hiding them was the actual
   // bug behind "NIMC only shows two services" — three more were already
   // seeded, just filtered out before they ever reached the UI.
-  const { data: services = [], isLoading, isError, refetch, isFetching } = useQuery({
+  const { data: rawServices = [], isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['identity-services', 'all'],
     queryFn: async () => {
       const { data } = await api.get<IdentityService[]>('/identity-services')
       return data
     },
   })
+
+  // Same cleanup + on/off switch as the Services page, so the grid and the
+  // Services/More pages always agree (NIN services under NIN, switched-off = off).
+  const { data: templateList } = useTemplateList()
+  const services = useMemo(() => normalizeServices(rawServices, templateList), [rawServices, templateList])
 
   // Grid shows 7 real categories + one "More" tile = 8 slots, matching the
   // original tile count. "Become a vendor" moved into the full Services

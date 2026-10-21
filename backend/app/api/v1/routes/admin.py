@@ -241,6 +241,9 @@ async def charge_monthly_sms_subscriptions(
     If a customer does not have enough balance, their wallet balance enters negative,
     which will be cleared first automatically when they next fund their account.
     """
+    # Replaced by the per-SMS fee (charged as each SMS is sent) — nothing is billed monthly any more.
+    return {"status": "skipped", "message": "SMS is now charged per SMS, not monthly", "charged_count": 0}
+
     from app.services.settings_service import get_config_value
     from app.services.wallet_service import debit_wallet, get_or_create_wallet
     from app.services.notification_service import send_notification

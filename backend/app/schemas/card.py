@@ -49,6 +49,7 @@ class CardResponse(BaseModel):
     status:                 CardStatus
     completion_status:      Optional[CardCompletionStatus]
     food_eligibility_lost_at: Optional[datetime]
+    food_collected_at:      Optional[datetime] = None
     created_at:             datetime
     completed_at:           Optional[datetime]
     latest_withdrawal_id:   Optional[uuid.UUID] = None

@@ -28,7 +28,7 @@ const CATEGORY_TITLE: Record<string, string> = {
   charge:               'Service Payment',
   officer_contribution: 'Cash Contribution',
   reversal:             'Reversal',
-  sms_fee:              'SMS Subscription',
+  sms_fee:              'SMS alerts',
 }
 
 /**

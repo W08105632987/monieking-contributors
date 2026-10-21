@@ -56,6 +56,7 @@ class ContributionCard(Base):
     status:            Mapped[CardStatus]           = mapped_column(Enum(CardStatus, name="card_status", values_callable=lambda x: [e.value for e in x]), default=CardStatus.ACTIVE)
     completion_status: Mapped[CardCompletionStatus | None] = mapped_column(Enum(CardCompletionStatus, name="card_completion_status", values_callable=lambda x: [e.value for e in x]), nullable=True)
 
+    food_collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # food package handed over
     food_eligibility_lost_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at:  Mapped[datetime]       = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     completed_at:Mapped[datetime | None]= mapped_column(DateTime(timezone=True), nullable=True)

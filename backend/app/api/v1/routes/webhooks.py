@@ -128,6 +128,7 @@ async def monnify_payment_webhook(
         body=    f"Your wallet has been credited with ₦{event.amount_kobo // 100:,}. "
                  f"Ref: {event.transaction_reference}",
         type=    NotificationType.SUCCESS,
+        deep_link_url="/customer/wallet/transactions",
     )
 
     await db.flush()

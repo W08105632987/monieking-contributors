@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { NotifViewButton } from '@/components/notifications/NotifViewButton'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Bell, CheckCheck, Wallet,
@@ -306,6 +307,8 @@ export default function WorkerNotificationsPage() {
               <div className="bg-green-50/60 dark:bg-night-700/60 rounded-2xl p-4 border border-green-100 dark:border-night-600 text-xs text-green-900 dark:text-night-100 leading-relaxed whitespace-pre-wrap">
                 {selectedNotif.body}
               </div>
+
+              <NotifViewButton notif={selectedNotif} onNavigate={() => setSelectedNotif(null)} />
 
               <div className="mt-5 flex gap-2">
                 <button

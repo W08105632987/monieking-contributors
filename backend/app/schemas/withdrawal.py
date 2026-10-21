@@ -47,6 +47,7 @@ class WithdrawalResponse(BaseModel):
     source:                WithdrawalSource
     requested_amount_kobo: int
     charge_kobo:           int
+    sms_charge_kobo:       int = 0
     net_payable_kobo:      int
     bank_name:             str
     account_number:        str

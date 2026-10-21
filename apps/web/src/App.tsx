@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthGuard, roleDashboard } from '@/components/layout/AuthGuard'
 import { InactivityMonitor } from '@/components/layout/InactivityMonitor'
 import { MaintenancePage } from '@/components/layout/MaintenancePage'
+import { MaintenanceModeScreen } from '@/components/layout/MaintenanceModeScreen'
+import { useMaintenanceStore } from '@/store/maintenance.store'
 import { useServerHealthStore } from '@/store/serverHealth.store'
 import { InstantMessageTicker } from '@/components/layout/InstantMessageTicker'
 import { InstallPrompt } from '@/components/layout/InstallPrompt'
@@ -12,6 +14,7 @@ import { AnalyticsTracker } from '@/components/analytics/AnalyticsTracker'
 import { useAuth } from '@/hooks/useAuth'
 import { useNotificationsPoll } from '@/hooks/useNotificationsPoll'
 import { useAuthStore } from '@/store/auth.store'
+import { api } from '@/lib/api'
 import { LogoLoader } from '@/components/ui/LogoLoader'
 import { SplashScreen } from '@/components/ui/SplashScreen'
 import { OnboardingCarousel } from '@/components/onboarding/OnboardingCarousel'
@@ -41,6 +44,8 @@ const CustomerWallet       = lazy(() => import('@/pages/customer/WalletPage'))
 const CustomerTransactions = lazy(() => import('@/pages/customer/TransactionsPage'))
 const TransactionReceipt   = lazy(() => import('@/pages/shared/ReceiptPage'))
 const OfficerFoodLedger       = lazy(() => import('@/pages/officer/FoodLedgerPage'))
+const DirectorCardDetail      = lazy(() => import('@/pages/director/CardDetailPage'))
+const DirectorSmsCenter       = lazy(() => import('@/pages/director/SmsCenterPage'))
 const DirectorFoodOversight   = lazy(() => import('@/pages/director/FoodOversightPage'))
 const DirectorFoodCloseYear   = lazy(() => import('@/pages/director/FoodCloseYearPage'))
 const DirectorFoodArchives    = lazy(() => import('@/pages/director/FoodYearArchivesPage'))
@@ -130,6 +135,7 @@ const CoopMemberProfile   = lazy(() => import('@/features/coop/pages/MemberProfi
 const CoopDividendPage    = lazy(() => import('@/features/coop/pages/DividendPage'))
 const CoopMePage          = lazy(() => import('@/features/coop/pages/MePage'))
 const CoopBankPage        = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.BankPage })))
+const MaintenanceSwitchPage = lazy(() => import('@/pages/director/MaintenanceSwitchPage'))
 const CoopKinPage         = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.KinPage })))
 const CoopClosePage       = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.ClosePage })))
 const CoopComplaintThreadPage = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.ComplaintThreadPage })))
@@ -188,10 +194,31 @@ export default function App() {
   // change to make that work.
   const showOnboarding = !isAuthenticated && location.pathname === '/'
 
+  const maint = useMaintenanceStore()
+  const staffSide = user?.role === 'director' || user?.role === 'admin'
+  // Ask the public /maintenance endpoint now and then (faster while it is on) so the screen appears and clears by itself.
+  useEffect(() => {
+    let stop = false
+    const ask = async () => {
+      try {
+        const r = await api.get('/maintenance', { timeout: 6000 })
+        if (!stop) useMaintenanceStore.getState().set({ on: !!r.data.on, message: r.data.message ?? '', eta: r.data.eta ?? null, startedAt: r.data.started_at ?? null })
+      } catch { /* the server-down screen handles real outages */ }
+    }
+    ask()
+    const t = setInterval(ask, maint.on ? 8000 : 30000)
+    return () => { stop = true; clearInterval(t) }
+  }, [maint.on])
+  const onLogin = location.pathname.startsWith('/auth')
+  if (!isDown && maint.on && !staffSide && !onLogin) return <MaintenanceModeScreen />
+
   if (isDown) return <MaintenancePage />
 
   return (
     <>
+      {maint.on && staffSide && (
+        <a href="/director/maintenance" className="fixed inset-x-0 top-0 z-[60] bg-red-600 py-1 text-center text-[11px] font-extrabold text-white">Maintenance is ON: customers are paused. Tap to turn off.</a>
+      )}
       {/* Overlaid on top, not gating the tree below it — the real app
           (auth check, routing, data fetching) mounts and starts its
           real work immediately, in parallel with the splash animation,
@@ -256,6 +283,7 @@ export default function App() {
             {/* Shared across every role — a receipt is viewed the same way regardless of who's looking at it */}
             <Route path="/transactions/:id/receipt" element={<AuthGuard><TransactionReceipt /></AuthGuard>} />
             <Route path="/officer/food-ledger"            element={<AuthGuard allowedRoles={['officer']}><OfficerFoodLedger /></AuthGuard>} />
+            <Route path="/director/sms"                  element={<AuthGuard allowedRoles={['director', 'admin']}><DirectorSmsCenter /></AuthGuard>} />
             <Route path="/director/food/oversight"        element={<AuthGuard allowedRoles={['director']}><DirectorFoodOversight /></AuthGuard>} />
             <Route path="/director/food/close-year"       element={<AuthGuard allowedRoles={['director']}><DirectorFoodCloseYear /></AuthGuard>} />
             <Route path="/director/food/archives"         element={<AuthGuard allowedRoles={['director']}><DirectorFoodArchives /></AuthGuard>} />
@@ -300,6 +328,7 @@ export default function App() {
             <Route path="/coop/members/:id"     element={<AuthGuard allowedRoles={['customer', 'director']}><CoopMemberProfile /></AuthGuard>} />
             <Route path="/coop/dividend"        element={<AuthGuard allowedRoles={['customer']}><CoopDividendPage /></AuthGuard>} />
             <Route path="/coop/me"              element={<AuthGuard allowedRoles={['customer']}><CoopMePage /></AuthGuard>} />
+            <Route path="/director/maintenance" element={<AuthGuard allowedRoles={['director']}><MaintenanceSwitchPage /></AuthGuard>} />
             <Route path="/director/coop"        element={<AuthGuard allowedRoles={['director']}><DirectorCoopPage /></AuthGuard>} />
 
             {/* ── Officer ── */}
@@ -330,6 +359,7 @@ export default function App() {
             <Route path="/director/staff"           element={<AuthGuard allowedRoles={['director']}><DirectorStaff /></AuthGuard>} />
             <Route path="/director/officers/:officerId" element={<AuthGuard allowedRoles={['director']}><DirectorOfficerDetail /></AuthGuard>} />
             <Route path="/director/customers"       element={<AuthGuard allowedRoles={['director']}><DirectorAllCustomers /></AuthGuard>} />
+            <Route path="/director/customers/:customerId/cards/:cardId" element={<AuthGuard allowedRoles={['director']}><DirectorCardDetail /></AuthGuard>} />
             <Route path="/director/customers/:customerId" element={<AuthGuard allowedRoles={['director']}><DirectorCustomerDetail /></AuthGuard>} />
             <Route path="/director/settings"        element={<AuthGuard allowedRoles={['director']}><DirectorSettings /></AuthGuard>} />
             <Route path="/director/verification" element={<AuthGuard allowedRoles={['director']}><DirectorVerificationSettings /></AuthGuard>} />

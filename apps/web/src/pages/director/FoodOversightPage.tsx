@@ -95,6 +95,12 @@ export default function FoodOversightPage() {
     onError: () => toast.error('Could not send reminder'),
   })
 
+  const pingAllMutation = useMutation({
+    mutationFn: async () => (await api.post<{ pinged: number }>('/food-collections/oversight/ping-all')).data,
+    onSuccess: (d) => toast.success(d.pinged ? `Reminder sent to ${d.pinged} customer${d.pinged === 1 ? '' : 's'}` : 'Nobody is waiting to collect'),
+    onError: () => toast.error('Could not send reminders'),
+  })
+
   const saveAnnouncementMutation = useMutation({
     mutationFn: (text: string) => api.patch('/food-collections/announcement', { text }),
     onSuccess: () => {
@@ -129,6 +135,18 @@ export default function FoodOversightPage() {
             <StatCard label="Collected" value={stats.total_collected} accent="text-green-700 dark:text-green-400" />
             <StatCard label="Not yet" value={stats.total_not_collected} accent="text-amber-600 dark:text-amber-400" />
           </div>
+        )}
+
+        {stats && stats.total_not_collected > 0 && (
+          <button
+            onClick={() => {
+              if (window.confirm(`Send the pickup reminder to all ${stats.total_not_collected} qualified customers who have not collected yet?`)) pingAllMutation.mutate()
+            }}
+            disabled={pingAllMutation.isPending}
+            className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm py-3 rounded-xl active:scale-95 transition-all disabled:opacity-60"
+          >
+            {pingAllMutation.isPending ? 'Sending…' : `Ping all ${stats.total_not_collected} who haven't collected`}
+          </button>
         )}
 
         {/* Announcement template */}

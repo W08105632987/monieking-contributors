@@ -9,6 +9,7 @@ import { useIsManualService, useTemplateList, resolveManualKey } from '@/lib/man
 import type { IdentityService, IdentityServiceCategory } from '@/types'
 import { CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_ORDER } from '@/lib/identityServices'
 import { FallbackError } from '@/components/ui/FallbackError'
+import { normalizeServices } from '@/lib/serviceCatalog'
 
 // Phase 1 keeps the existing behaviour: these cards are always shown as open.
 // (The director's on/off switch takes over in the template-engine phase.)
@@ -103,92 +104,7 @@ export default function ServicesPage() {
   const templateEnabled = (code: string): boolean | undefined =>
     templateList?.find((t) => t.service_code === resolveManualKey(code))?.is_enabled
 
-  // Normalize services:
-  // 1. Collapse separate BVN retrieval cards into a single "BVN retrieval" card
-  // 2. Add CAC registration if not in the catalog
-  // 3. Remove stale/duplicate rows
-  // 4. Ensure manual services are active and clean
-  const services = useMemo(() => {
-    const list: IdentityService[] = []
-    let seenBvnRetrieval = false
-    let hasCacRegistration = false
-    let hasNinDelinking = false
-
-    for (const s of rawServices) {
-      // Overload check: combine bvn_retrieval_phone and bvn_retrieval_crm into one
-      if (s.code === 'bvn_retrieval_phone' || s.code === 'bvn_retrieval_crm' || s.code === 'bvn_retrieval') {
-        if (!seenBvnRetrieval) {
-          list.push({
-            ...s,
-            code: 'bvn_retrieval',
-            name: 'BVN retrieval',
-            is_active: templateEnabled('bvn_retrieval') ?? true,
-          })
-          seenBvnRetrieval = true
-        }
-        continue
-      }
-
-      // Skip deprecated or redundant placeholders
-      if (
-        s.code === 'ipe_clearance' ||
-        s.code === 'bvn_self_service_delinking' ||
-        s.code === 'nin_personalisation'
-      ) {
-        continue
-      }
-
-      if (s.code === 'cac_registration') hasCacRegistration = true
-      if (s.code === 'nin_delinking') hasNinDelinking = true
-
-      // Activate all manual services
-      const switched = templateEnabled(s.code)
-      if (switched !== undefined) {
-        // a service template exists: the director's switch decides
-        list.push({ ...s, is_active: switched })
-      } else if (ALWAYS_OPEN.has(s.code)) {
-        list.push({ ...s, is_active: true })
-      } else {
-        list.push(s)
-      }
-    }
-
-    // Ensure CAC registration card exists under CAC+
-    if (!hasCacRegistration) {
-      list.push({
-        id: 'cac_registration',
-        category: 'cac',
-        code: 'cac_registration',
-        name: 'CAC registration',
-        description: 'Business name and company registration',
-        provider: 'manual',
-        provider_endpoint: null,
-        price_kobo: 0,
-        is_active: templateEnabled('cac_registration') ?? true,
-        required_fields: [],
-        updated_at: new Date().toISOString(),
-      })
-    }
-
-    // Ensure NIN delinking exists under NIMC
-    if (!hasNinDelinking) {
-      list.push({
-        id: 'nin_delinking',
-        category: 'nimc',
-        code: 'nin_delinking',
-        name: 'NIN delinking',
-        description: 'Delink phone or SIM from NIN',
-        provider: 'manual',
-        provider_endpoint: null,
-        price_kobo: 0,
-        is_active: templateEnabled('nin_delinking') ?? true,
-        required_fields: [],
-        updated_at: new Date().toISOString(),
-      })
-    }
-
-    return list
-  }, [rawServices, templateList])
+  const services = useMemo(() => normalizeServices(rawServices, templateList), [rawServices, templateList])
 
   const grouped = CATEGORY_ORDER
     .map(cat => ({ category: cat, services: services.filter(s => s.category === cat) }))

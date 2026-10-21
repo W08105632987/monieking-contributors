@@ -15,6 +15,7 @@ import { DisputeModal } from '@/components/disputes/DisputeModal'
 import { timeAgo, formatDateTime, groupByDateBucket } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { AppNotification } from '@/types'
+import { NotifViewButton } from '@/components/notifications/NotifViewButton'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 // ── Icon per notification type ────────────────────────────────────
@@ -133,6 +134,8 @@ function NotifDetailSheet({ notif, onClose }: { notif: AppNotification; onClose:
           {formatDateTime(notif.created_at)}
         </div>
 
+        <NotifViewButton notif={notif} onNavigate={onClose} />
+
         {isDisputableWithdrawal && (
           <button
             onClick={() => setShowDispute(true)}
@@ -237,7 +240,7 @@ export default function NotificationsPage() {
   const { data: smsFee } = useQuery({
     queryKey: ['sms-fee'],
     queryFn: async () => {
-      const { data } = await api.get<{ monthly_sms_fee_kobo: number; monthly_sms_fee_naira: number }>('/settings/sms-fee')
+      const { data } = await api.get<{ sms_fee_per_sms_kobo: number; sms_fee_per_sms_naira: number }>('/settings/sms-fee')
       return data
     },
   })
@@ -317,7 +320,7 @@ export default function NotificationsPage() {
                   )}
                 </div>
                 <p className="text-xs text-green-600 dark:text-night-200 mt-0.5 leading-snug">
-                  {smsFee ? `₦${(smsFee.monthly_sms_fee_kobo / 100).toLocaleString()} / month` : 'Monthly subscription'} · Instant SMS on contributions & payouts
+                  {smsFee ? `₦${(smsFee.sms_fee_per_sms_kobo / 100).toLocaleString()} per SMS` : 'Pay per SMS'} · SMS when your card is marked
                 </p>
               </div>
             </div>

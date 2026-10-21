@@ -1,7 +1,7 @@
 import uuid
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import String, Enum, Boolean, ForeignKey, DateTime, Text, Float, Integer, text
+from sqlalchemy import String, Enum, Boolean, ForeignKey, DateTime, Text, Float, Integer, BigInteger, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -150,6 +150,9 @@ class User(Base):
 
     # SMS transaction notifications preference — see 032_sms_subscription_and_wallet_overdraft.sql
     sms_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # SMS charges piling up for a customer who has no wallet (managed by an officer);
+    # taken off the card at withdrawal together with the normal charge.
+    sms_accrued_kobo: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0", nullable=False)
 
     # Service Worker profile — see 036_service_worker_and_job_pool.sql
     onboarding_completed:  Mapped[bool]         = mapped_column(Boolean, default=False, server_default="false")

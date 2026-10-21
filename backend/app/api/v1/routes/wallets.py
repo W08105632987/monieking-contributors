@@ -337,7 +337,7 @@ async def request_wallet_withdrawal(
         title="Withdrawal successful ✓",
         body=f"₦{net_payable_kobo // 100:,} has been sent to your account {current_user.account_number}.",
         type=NotificationType.SUCCESS,
-        related_entity_id=withdrawal.id,
+        related_entity_id=withdrawal.id, deep_link_url="/customer/wallet/transactions",
     )
 
     await log_action(

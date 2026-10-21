@@ -219,7 +219,7 @@ export default function DisputeDetailPage() {
     : 'Withdrawal dispute'
 
   return (
-    <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
+    <div className="h-dvh flex flex-col overflow-hidden bg-green-50 dark:bg-night-800">
       <header className="flex items-center gap-3 px-4 py-3 shrink-0 bg-white/70 dark:bg-night-800/70 backdrop-blur border-b border-green-100 dark:border-night-700">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-green-100 dark:bg-night-600 rounded-xl flex items-center justify-center">
           <ArrowLeft className="w-4 h-4 text-green-700 dark:text-night-100" />
@@ -446,7 +446,7 @@ export default function DisputeDetailPage() {
 
       {/* Reply input with file attachment button */}
       {canReply && (
-        <div className="px-4 pb-6 space-y-2 shrink-0">
+        <div className="px-4 pt-2 pb-6 space-y-2 shrink-0 bg-green-50 dark:bg-night-800 border-t border-green-100 dark:border-night-600" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
           {/* Internal note toggle for staff/workers */}
           {!isOwner && (isDirector || isWorker || user?.role === 'officer') && (
             <div className="flex items-center justify-between px-1">
@@ -585,4 +585,4 @@ function MessageBubble({ m, isMine }: { m: DisputeMessage; isMine: boolean }) {
       </div>
     </div>
   )
-}
+}

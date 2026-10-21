@@ -66,15 +66,18 @@ function BankDetailsSheet({ currentBankName, currentAccountNumber, currentAccoun
   const [showPassword, setShowPassword] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  const [lookupError, setLookupError] = useState('')
   useEffect(() => {
     setResolvedName('')
-    if (selectedBank && accountNumber.length === 10) {
-      setResolving(true)
-      api.get<{ account_name: string }>('/users/resolve-bank-account', { params: { bank_code: selectedBank.code, account_number: accountNumber } })
-        .then(({ data }) => setResolvedName(data.account_name))
-        .catch(() => toast.error("Couldn't verify this account — check the number and bank"))
-        .finally(() => setResolving(false))
-    }
+    setLookupError('')
+    if (!(selectedBank && accountNumber.length === 10)) { setResolving(false); return }
+    let stale = false   // ignore answers for a number/bank the person has already changed
+    setResolving(true)
+    api.get<{ account_name: string }>('/users/resolve-bank-account', { params: { bank_code: selectedBank.code, account_number: accountNumber } })
+      .then(({ data }) => { if (!stale) setResolvedName(data.account_name) })
+      .catch((e) => { if (!stale) setLookupError(getErrorMessage(e)) })
+      .finally(() => { if (!stale) setResolving(false) })
+    return () => { stale = true }
   }, [selectedBank, accountNumber])
 
   const submitWithPassword = async () => {
@@ -161,6 +164,7 @@ function BankDetailsSheet({ currentBankName, currentAccountNumber, currentAccoun
             />
 
             {resolving && <p className="text-green-400 dark:text-night-300 text-xs">Verifying account…</p>}
+            {lookupError && <p className="text-red-500 dark:text-red-300 text-xs font-semibold">{lookupError}</p>}
             {resolvedName && (
               <div className="flex items-center gap-2 bg-green-50 dark:bg-night-600 rounded-xl px-3 py-2.5">
                 <ShieldCheck className="w-4 h-4 text-green-600 dark:text-green-300 flex-shrink-0" />
