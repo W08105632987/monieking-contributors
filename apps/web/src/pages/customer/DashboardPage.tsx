@@ -235,12 +235,13 @@ export default function DashboardPage() {
                   </div>
                   <Badge
                     variant={
-                      card.completion_status === 'paid' ? 'green'
+                      card.food_collected_at || card.completion_status === 'paid' ? 'green'
                       : card.completion_status === 'partially_paid' ? 'copper'
                       : 'gray'
                     }
                   >
-                    {card.completion_status === 'paid' ? 'Paid'
+                    {card.food_collected_at ? 'Collected'
+                      : card.completion_status === 'paid' ? 'Paid'
                       : card.completion_status === 'partially_paid' ? 'Partially paid'
                       : 'Unpaid'}
                   </Badge>

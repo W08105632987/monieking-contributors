@@ -27,6 +27,7 @@ class Notification(Base):
 
     is_read:          Mapped[bool]           = mapped_column(Boolean, default=False)
     related_entity_id:Mapped[uuid.UUID|None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    link:             Mapped[str|None]       = mapped_column(Text, nullable=True)   # page this notification opens
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

@@ -102,12 +102,12 @@ async def get_overview(
     """
     customer_filters = _customer_filters(zone_id)
 
-    contributor_owners = (
-        select(ContributionCard.owner_id)
-        .join(User, User.id == ContributionCard.owner_id)
-        .where(*customer_filters)
-        .distinct()
-    )
+    # Every customer counts — including ones who never opened a card. The
+    # inactive-customer LIST (get_inactive_customers) includes them, and the
+    # card on the dashboard must show the same number as that list (it used
+    # to count only customers holding a card: "11" on the card vs "31" in
+    # the list).
+    contributor_owners = select(User.id).where(*customer_filters)
     food_owners = (
         select(ContributionCard.owner_id)
         .join(User, User.id == ContributionCard.owner_id)

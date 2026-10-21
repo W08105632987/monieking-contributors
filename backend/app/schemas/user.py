@@ -100,6 +100,7 @@ class UserResponse(BaseModel):
     bvn_last4:  Optional[str] = None
     nin_last4:  Optional[str] = None
     sms_alerts_enabled: bool = False
+    sms_accrued_kobo: int = 0
     onboarding_completed: bool = False
     state_of_residence: Optional[str] = None
     referral_code:      Optional[str] = None

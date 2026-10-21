@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Settings, Megaphone, Image, BarChart3, LineChart, Activity,
-  FileClock, Send, Users, User, AlertTriangle, Fingerprint, UserCheck, Package, Wrench, HeartHandshake,
+  FileClock, Send, Power, Users, User, AlertTriangle, Fingerprint, UserCheck, Package, Wrench, HeartHandshake, MessageSquare,
 } from 'lucide-react'
 
 const actions = [
+  { label: 'Maintenance switch', icon: Power, href: '/director/maintenance', color: 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300' },
+  { label: 'SMS centre', icon: MessageSquare, href: '/director/sms', color: 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300' },
   { label: 'Cooperative', icon: HeartHandshake, href: '/director/coop', color: 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300' },
   { label: 'Service Workers Command', icon: UserCheck, href: '/director/service-workers', color: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300' },
   { label: 'Food Collection Oversight', icon: Package, href: '/director/food/oversight', color: 'bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-300' },

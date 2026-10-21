@@ -205,7 +205,7 @@ async def claim_job(
         title="Service Request Claimed",
         body=f"A service worker has picked up your {category_title} request.",
         type=NotificationType.INFO,
-        related_entity_id=job.id,
+        related_entity_id=job.id, deep_link_url=f"/customer/manual-services/requests/{job.id}",
     )
 
     # Notify officer if submitted by officer on customer's behalf
@@ -220,7 +220,7 @@ async def claim_job(
                     title="Service Request Claimed",
                     body=f"The {category_title} request you submitted for a customer has been picked up by a service worker.",
                     type=NotificationType.INFO,
-                    related_entity_id=job.id,
+                    related_entity_id=job.id, deep_link_url=f"/customer/manual-services/requests/{job.id}",
                 )
         except Exception:
             pass
@@ -350,7 +350,7 @@ async def resolve_job(
         title=f"Service Request {final_status.value.title()}",
         body=f"Your {category_title} request was {outcome_label}.{remarks_snippet}".strip(),
         type=NotificationType.SUCCESS if final_status == ManualServiceStatus.SUCCESSFUL else NotificationType.ERROR,
-        related_entity_id=job.id,
+        related_entity_id=job.id, deep_link_url=f"/customer/manual-services/requests/{job.id}",
     )
 
     # Notify officer if submitted by officer on behalf of customer
@@ -365,7 +365,7 @@ async def resolve_job(
                     title=f"Service Request {final_status.value.title()}",
                     body=f"The {category_title} request you submitted for a customer was {outcome_label}.{remarks_snippet}".strip(),
                     type=NotificationType.SUCCESS if final_status == ManualServiceStatus.SUCCESSFUL else NotificationType.ERROR,
-                    related_entity_id=job.id,
+                    related_entity_id=job.id, deep_link_url=f"/customer/manual-services/requests/{job.id}",
                 )
         except Exception:
             pass
@@ -462,7 +462,7 @@ async def reclaim_expired_jobs(db: AsyncSession) -> int:
             title="Service Request Delayed",
             body=f"Your {category_title} request is experiencing a slight delay and has been returned to the pool for the next available worker.",
             type=NotificationType.WARNING,
-            related_entity_id=job.id,
+            related_entity_id=job.id, deep_link_url=f"/customer/manual-services/requests/{job.id}",
         )
 
     # Check referral hold expiries

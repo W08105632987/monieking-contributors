@@ -291,6 +291,10 @@ async def confirm_food_collection(
     entitlement.status = EntitlementStatus.USED
     entitlement.collected_at = now
     entitlement.collected_by = current_officer.id
+    # the card itself now says "Collected" (instead of "Unpaid")
+    collected_card = await db.get(ContributionCard, entitlement.card_id) if entitlement.card_id else None
+    if collected_card:
+        collected_card.food_collected_at = now
 
     if payload.collection_point_id:
         try:

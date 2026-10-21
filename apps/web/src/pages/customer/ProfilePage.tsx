@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'
-import { api } from '@/lib/api'
+import { api, getErrorMessage } from '@/lib/api'
 import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
@@ -225,10 +225,28 @@ export default function ProfilePage() {
   const { data: smsFee } = useQuery({
     queryKey: ['sms-fee'],
     queryFn: async () => {
-      const { data } = await api.get<{ monthly_sms_fee_kobo: number; monthly_sms_fee_naira: number }>('/settings/sms-fee')
+      const { data } = await api.get<{ sms_fee_per_sms_kobo: number; sms_fee_per_sms_naira: number }>('/settings/sms-fee')
       return data
     },
   })
+
+  const [editingKin, setEditingKin] = useState(false)
+  const [kinName, setKinName]   = useState('')
+  const [kinPhone, setKinPhone] = useState('')
+  const [savingKin, setSavingKin] = useState(false)
+  const saveKin = async () => {
+    setSavingKin(true)
+    try {
+      const { data } = await api.patch('/users/me', { next_of_kin_name: kinName.trim(), next_of_kin_phone: kinPhone })
+      if (user) setUser({ ...user, next_of_kin_name: data.next_of_kin_name, next_of_kin_phone: data.next_of_kin_phone })
+      toast.success('Next of kin updated')
+      setEditingKin(false)
+    } catch (e) {
+      toast.error(getErrorMessage(e))
+    } finally {
+      setSavingKin(false)
+    }
+  }
 
   const toggleSmsMutation = useMutation({
     mutationFn: async (enabled: boolean) => {
@@ -312,6 +330,20 @@ export default function ProfilePage() {
           <InfoRow icon={Phone}    label="Phone number"   value={user.phone_number} />
           <InfoRow icon={Users}    label="Next of kin"    value={user.next_of_kin_name ?? '—'} />
           <InfoRow icon={Phone}    label="Next of kin phone" value={user.next_of_kin_phone ?? '—'} />
+          <button onClick={() => { setKinName(user.next_of_kin_name ?? ''); setKinPhone(user.next_of_kin_phone ?? ''); setEditingKin(true) }}
+            className="w-full text-left text-green-600 dark:text-night-200 text-xs font-bold py-2.5">
+            {user.next_of_kin_name ? 'Change next of kin' : 'Add next of kin'}
+          </button>
+          {editingKin && (
+            <div className="pb-4 space-y-2">
+              <input value={kinName} onChange={e => setKinName(e.target.value)} placeholder="Next of kin full name" className="w-full rounded-lg border-2 border-green-100 dark:border-night-500 bg-transparent px-3 py-2 text-sm text-green-900 dark:text-white" />
+              <input value={kinPhone} inputMode="numeric" onChange={e => setKinPhone(e.target.value.replace(/[^0-9+]/g, '').slice(0, 14))} placeholder="Phone number e.g. 08012345678" className="w-full rounded-lg border-2 border-green-100 dark:border-night-500 bg-transparent px-3 py-2 text-sm text-green-900 dark:text-white" />
+              <div className="flex gap-2">
+                <button onClick={() => setEditingKin(false)} className="flex-1 py-2.5 rounded-xl border-2 border-green-100 dark:border-night-500 text-green-700 dark:text-night-100 text-sm font-bold">Cancel</button>
+                <button disabled={savingKin || kinName.trim().length < 2 || kinPhone.length < 11} onClick={saveKin} className="flex-1 py-2.5 rounded-xl bg-green-900 dark:bg-night-100 text-white dark:text-night-900 text-sm font-bold disabled:opacity-50">{savingKin ? 'Saving…' : 'Save'}</button>
+              </div>
+            </div>
+          )}
 
           <div className="border-t border-green-100 dark:border-night-500 mt-2">
             <KycSection
@@ -407,7 +439,7 @@ export default function ProfilePage() {
                   )}
                 </div>
                 <p className="text-xs text-green-500 dark:text-night-200 mt-0.5">
-                  {smsFee ? `₦${(smsFee.monthly_sms_fee_kobo / 100).toLocaleString()} / month` : 'Monthly subscription'} · Instant alerts
+                  {smsFee ? `₦${(smsFee.sms_fee_per_sms_kobo / 100).toLocaleString()} per SMS` : 'Pay per SMS'} · SMS when your card is marked
                 </p>
               </div>
             </div>

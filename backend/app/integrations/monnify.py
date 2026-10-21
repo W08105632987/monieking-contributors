@@ -276,31 +276,62 @@ class MonnifyProvider(BasePaymentProvider):
     # ── Resolve account name (verify bank + account number, used at
     # registration and when editing bank details — customers never type
     # their own account name) ──────────────────────────────────────
-    async def resolve_account_name(self, account_number: str, bank_code: str) -> str:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/api/v1/disbursements/account/validate",
-                params={"accountNumber": account_number, "bankCode": bank_code},
-                headers=await self._headers(),
-                timeout=15,
-            )
-            resp.raise_for_status()
-            body = resp.json().get("responseBody", {})
-            account_name = body.get("accountName")
-            if not account_name:
-                raise ValueError("Could not verify this account — check the account number and bank")
-            return account_name
+    async def _get_json(self, path: str, params: dict | None = None) -> httpx.Response:
+        """GET with the bearer token; if Monnify says 401 (token expired early /
+        revoked) fetch a fresh token and retry exactly once."""
+        for attempt in (1, 2):
+            async with httpx.AsyncClient(timeout=MONNIFY_TIMEOUT) as client:
+                resp = await client.get(f"{self.base_url}{path}", params=params, headers=await self._headers())
+            if resp.status_code == 401 and attempt == 1:
+                self._access_token = None
+                continue
+            return resp
+        return resp  # pragma: no cover
 
-    # ── Get banks (used to resolve bank codes for transfers) ───────
-    async def get_banks(self) -> list[dict]:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.base_url}/api/v1/banks",
-                headers=await self._headers(),
-                timeout=15,
+    async def resolve_account_name(self, account_number: str, bank_code: str) -> str:
+        """Bank lookup. A wrong number/bank is a ValueError carrying Monnify's own
+        message (shown to the person); only real outages bubble up as 5xx/timeouts."""
+        try:
+            resp = await self._get_json(
+                "/api/v1/disbursements/account/validate",
+                {"accountNumber": account_number, "bankCode": bank_code},
             )
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="The bank lookup is taking too long. Please try again.")
+        except httpx.ConnectError:
+            raise HTTPException(status_code=503, detail="Could not reach the bank lookup service. Please try again.")
+        try:
+            data = resp.json()
+        except Exception:
+            data = {}
+        if 400 <= resp.status_code < 500:
+            msg = (data.get("responseMessage") or "").strip()
+            raise ValueError(msg or "Could not verify this account — check the account number and bank")
+        resp.raise_for_status()
+        account_name = (data.get("responseBody") or {}).get("accountName")
+        if not account_name:
+            raise ValueError("Could not verify this account — check the account number and bank")
+        return account_name
+
+    # ── Get banks (bank picker + transfers) ─────────────────────────
+    # The list changes rarely: cache it for 6h, and if Monnify hiccups serve the
+    # last good copy instead of leaving the picker empty.
+    _banks_cache: tuple[float, list[dict]] | None = None
+
+    async def get_banks(self) -> list[dict]:
+        cached = MonnifyProvider._banks_cache
+        if cached and time.monotonic() - cached[0] < 6 * 3600:
+            return cached[1]
+        try:
+            resp = await self._get_json("/api/v1/banks")
             resp.raise_for_status()
-            return resp.json()["responseBody"]
+            banks = resp.json()["responseBody"]
+        except Exception:
+            if cached:
+                return cached[1]
+            raise
+        MonnifyProvider._banks_cache = (time.monotonic(), banks)
+        return banks
 
     # ── Webhook signature verification ────────────────────────────
     # Two wrinkles here, both confirmed directly against Monnify's current

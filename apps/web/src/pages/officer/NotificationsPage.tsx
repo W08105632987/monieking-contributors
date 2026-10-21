@@ -14,6 +14,7 @@ import { useNotificationsStore } from '@/store/notifications.store'
 import { timeAgo, formatDateTime, groupByDateBucket } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { AppNotification } from '@/types'
+import { NotifViewButton } from '@/components/notifications/NotifViewButton'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 // ── Icon per notification type ────────────────────────────────────
@@ -115,6 +116,8 @@ function NotifDetailSheet({ notif, onClose }: { notif: AppNotification; onClose:
           <Clock className="w-3.5 h-3.5 flex-shrink-0" />
           {formatDateTime(notif.created_at)}
         </div>
+
+        <NotifViewButton notif={notif} onNavigate={onClose} />
       </motion.div>
     </div>
   )

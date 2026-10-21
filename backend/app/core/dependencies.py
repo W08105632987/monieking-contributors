@@ -183,6 +183,16 @@ async def get_current_user(
     if user.status == "suspended":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is suspended")
 
+    # Maintenance switch: everyone except directors and admins is paused. Identity and logout stay open
+    # so the app can still tell who is signed in and show the maintenance screen.
+    role = str(user.role.value) if hasattr(user.role, "value") else str(user.role)
+    if role not in ("director", "admin") and not request.url.path.endswith(("/users/me", "/auth/logout", "/maintenance")):
+        from app.services import maintenance
+        st = await maintenance.state(db)
+        if st["on"]:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                detail={"code": "maintenance", "message": st["message"], "eta": st["eta"]})
+
     return user
 
 

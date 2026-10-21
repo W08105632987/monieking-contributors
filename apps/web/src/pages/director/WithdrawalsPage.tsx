@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, XCircle, Check } from 'lucide-react'
+import { CheckCircle, XCircle, Check, Search, SlidersHorizontal } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
@@ -196,28 +196,61 @@ export default function WithdrawalsPage() {
   useWithdrawalRealtime()
   const [tab, setTab]       = useState<Tab>('pending')
   const [selected, setSelected] = useState<Withdrawal | null>(null)
+  const [search, setSearch]     = useState('')
+  const [debounced, setDebounced] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo]     = useState('')
+  const [minAmt, setMinAmt]     = useState('')
+  const [maxAmt, setMaxAmt]     = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [page, setPage]         = useState(1)
+  const PAGE_SIZE = 10
 
-  const { data: withdrawals = [], isLoading } = useQuery({
-    queryKey: ['director-withdrawals'],
-    queryFn: async () => {
-      const { data } = await api.get<Withdrawal[]>('/withdrawals?page_size=100')
-      return data
-    },
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 350)
+    return () => clearTimeout(t)
+  }, [search])
+  // any filter / tab change goes back to page 1
+  useEffect(() => { setPage(1) }, [tab, debounced, dateFrom, dateTo, minAmt, maxAmt])
+
+  const filterParams = () => {
+    const p = new URLSearchParams()
+    if (debounced) p.set('q', debounced)
+    if (dateFrom)  p.set('date_from', dateFrom)
+    if (dateTo)    p.set('date_to', dateTo)
+    if (minAmt)    p.set('min_naira', minAmt)
+    if (maxAmt)    p.set('max_naira', maxAmt)
+    return p
+  }
+  const activeFilters = [debounced, dateFrom, dateTo, minAmt, maxAmt].filter(Boolean).length
+
+  const { data: counts } = useQuery({
+    queryKey: ['director-withdrawals', 'counts', debounced, dateFrom, dateTo, minAmt, maxAmt],
+    queryFn: async () => (await api.get<Record<Tab, number>>(`/withdrawals/counts?${filterParams().toString()}`)).data,
     refetchInterval: 30_000,
   })
 
-  const byTab: Record<Tab, Withdrawal[]> = {
-    pending:  withdrawals.filter(w => w.status === 'pending').sort((a, b) => new Date(a.requested_at).getTime() - new Date(b.requested_at).getTime()),
-    claimed:  withdrawals.filter(w => w.status === 'claimed'),
-    paid:     withdrawals.filter(w => w.status === 'paid'),
-    rejected: withdrawals.filter(w => w.status === 'rejected'),
-  }
+  const { data: rows = [], isLoading, isFetching } = useQuery({
+    queryKey: ['director-withdrawals', 'list', tab, page, debounced, dateFrom, dateTo, minAmt, maxAmt],
+    queryFn: async () => {
+      const p = filterParams()
+      p.set('status_filter', tab); p.set('page', String(page)); p.set('page_size', String(PAGE_SIZE))
+      const { data } = await api.get<Withdrawal[]>(`/withdrawals?${p.toString()}`)
+      return data
+    },
+    placeholderData: (prev) => prev,
+    refetchInterval: 30_000,
+  })
+
+  const total = counts?.[tab] ?? 0
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const byTab = { [tab]: rows } as Record<Tab, Withdrawal[]>
 
   const tabs: { key: Tab; label: string; color: string }[] = [
-    { key: 'pending',  label: `Pending (${byTab.pending.length})`,   color: 'text-amber-600 dark:text-amber-300' },
-    { key: 'claimed',  label: `Processing (${byTab.claimed.length})`, color: 'text-blue-600' },
-    { key: 'paid',     label: `Paid (${byTab.paid.length})`,          color: 'text-green-600 dark:text-night-200' },
-    { key: 'rejected', label: `Rejected (${byTab.rejected.length})`,  color: 'text-red-500 dark:text-red-300' },
+    { key: 'pending',  label: `Pending (${counts?.pending ?? 0})`,   color: 'text-amber-600 dark:text-amber-300' },
+    { key: 'claimed',  label: `Processing (${counts?.claimed ?? 0})`, color: 'text-blue-600' },
+    { key: 'paid',     label: `Paid (${counts?.paid ?? 0})`,          color: 'text-green-600 dark:text-night-200' },
+    { key: 'rejected', label: `Rejected (${counts?.rejected ?? 0})`,  color: 'text-red-500 dark:text-red-300' },
   ]
 
   return (
@@ -234,7 +267,7 @@ export default function WithdrawalsPage() {
 
       <div className="px-4 mt-2 mb-4">
         <h1 className="text-green-900 dark:text-white text-2xl font-extrabold">Withdrawals</h1>
-        <p className="text-green-500 dark:text-night-200 text-sm mt-0.5">{byTab.pending.length} pending · {byTab.claimed.length} processing</p>
+        <p className="text-green-500 dark:text-night-200 text-sm mt-0.5">{counts?.pending ?? 0} pending · {counts?.claimed ?? 0} processing</p>
       </div>
 
       {/* Tabs — horizontal scroll, with a fade edge so it's obvious there's more to scroll to */}
@@ -253,6 +286,41 @@ export default function WithdrawalsPage() {
           </div>
         </div>
         <div className="pointer-events-none absolute top-0 right-0 h-full w-8 bg-gradient-to-l from-green-50 to-transparent" />
+      </div>
+
+      {/* Search + filters */}
+      <div className="px-4 mb-3 space-y-2">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-green-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search name, phone, account, bank…"
+              className="w-full pl-9 pr-3 py-2.5 rounded-xl border-2 border-green-100 dark:border-night-500 bg-white dark:bg-night-700 text-sm text-green-900 dark:text-white outline-none focus:border-green-600"
+            />
+          </div>
+          <button onClick={() => setShowFilters(v => !v)}
+            className={cn('px-3 rounded-xl border-2 text-xs font-bold flex items-center gap-1.5',
+              showFilters || activeFilters > 0 ? 'border-green-600 text-green-700 dark:text-green-300 bg-green-50 dark:bg-night-600' : 'border-green-100 dark:border-night-500 text-green-600 dark:text-night-200 bg-white dark:bg-night-700')}>
+            <SlidersHorizontal className="w-4 h-4" /> Filters{activeFilters > 0 ? ` (${activeFilters})` : ''}
+          </button>
+        </div>
+        {showFilters && (
+          <div className="grid grid-cols-2 gap-2 bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-2xl p-3">
+            <label className="text-xs text-green-600 dark:text-night-200 font-semibold">From
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="mt-1 w-full rounded-lg border border-green-200 dark:border-night-500 bg-transparent px-2 py-1.5 text-sm text-green-900 dark:text-white" /></label>
+            <label className="text-xs text-green-600 dark:text-night-200 font-semibold">To
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="mt-1 w-full rounded-lg border border-green-200 dark:border-night-500 bg-transparent px-2 py-1.5 text-sm text-green-900 dark:text-white" /></label>
+            <label className="text-xs text-green-600 dark:text-night-200 font-semibold">Min amount (₦)
+              <input inputMode="numeric" value={minAmt} onChange={e => setMinAmt(e.target.value.replace(/[^0-9.]/g, ''))} className="mt-1 w-full rounded-lg border border-green-200 dark:border-night-500 bg-transparent px-2 py-1.5 text-sm text-green-900 dark:text-white" /></label>
+            <label className="text-xs text-green-600 dark:text-night-200 font-semibold">Max amount (₦)
+              <input inputMode="numeric" value={maxAmt} onChange={e => setMaxAmt(e.target.value.replace(/[^0-9.]/g, ''))} className="mt-1 w-full rounded-lg border border-green-200 dark:border-night-500 bg-transparent px-2 py-1.5 text-sm text-green-900 dark:text-white" /></label>
+            {activeFilters > 0 && (
+              <button onClick={() => { setSearch(''); setDateFrom(''); setDateTo(''); setMinAmt(''); setMaxAmt('') }}
+                className="col-span-2 text-xs font-bold text-red-500 py-1">Clear all filters</button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
@@ -305,6 +373,16 @@ export default function WithdrawalsPage() {
                 </motion.button>
               )
             })}
+          </div>
+        )}
+
+        {total > PAGE_SIZE && (
+          <div className="flex items-center justify-between py-4">
+            <button disabled={page <= 1 || isFetching} onClick={() => setPage(p => p - 1)}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-white dark:bg-night-700 border border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 disabled:opacity-40">Previous</button>
+            <span className="text-xs text-green-500 dark:text-night-200 font-semibold">Page {page} of {pageCount} · {total} total</span>
+            <button disabled={page >= pageCount || isFetching} onClick={() => setPage(p => p + 1)}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-white dark:bg-night-700 border border-green-200 dark:border-night-500 text-green-700 dark:text-night-100 disabled:opacity-40">Next</button>
           </div>
         )}
       </div>

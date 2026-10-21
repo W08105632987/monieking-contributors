@@ -22,7 +22,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import selectinload, aliased
 
 from app.core.database import get_db
@@ -57,7 +57,7 @@ async def _notify_all_directors(db: AsyncSession, dispute: Dispute, title: str, 
     for director_id in directors_result.scalars().all():
         await send_notification(
             db, user_id=director_id, type=NotificationType.WARNING,
-            title=title, body=body, related_entity_id=dispute.id,
+            title=title, body=body, related_entity_id=dispute.id, deep_link_url=f"/disputes/{dispute.id}",
         )
 
 
@@ -176,7 +176,7 @@ async def _load_dispute(db: AsyncSession, dispute_id: uuid.UUID) -> Dispute | No
 def _assert_can_view(dispute: Dispute, user: User) -> None:
     if user.role == UserRole.CUSTOMER and dispute.raised_by != user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    if user.role == UserRole.OFFICER and not _officer_has_zone_access(dispute, user):
+    if user.role == UserRole.OFFICER and dispute.raised_by != user.id and not _officer_has_zone_access(dispute, user):
         raise HTTPException(status_code=403, detail="Access denied")
     if user.role == UserRole.SERVICE_WORKER:
         if dispute.assigned_worker_id != user.id and dispute.raised_by != user.id:
@@ -296,10 +296,13 @@ async def _release_commission_for_worker(
 @router.post("", response_model=DisputeResponse, status_code=201)
 async def create_dispute(
     body: CreateDisputeRequest,
-    customer: CustomerOnly,
+    customer: CurrentUser,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
+    is_officer = customer.role == UserRole.OFFICER
+    if customer.role not in (UserRole.CUSTOMER, UserRole.OFFICER):
+        raise HTTPException(status_code=403, detail="Only customers and officers can raise a dispute here")
     if body.entity_type == DisputeEntityType.WALLET_TRANSACTION:
         result = await db.execute(
             select(WalletTransaction.id, Wallet.owner_id)
@@ -313,6 +316,12 @@ async def create_dispute(
         entity = result.scalar_one_or_none()
         owner_id = entity.customer_id if entity else None
 
+    if entity and is_officer and owner_id != customer.id:
+        # An officer may also dispute a withdrawal made for a customer in their own zone.
+        if body.entity_type == DisputeEntityType.WITHDRAWAL and customer.zone_id:
+            owner = await db.get(User, owner_id)
+            if owner and owner.zone_id == customer.zone_id:
+                owner_id = customer.id
     if not entity or owner_id != customer.id:
         raise HTTPException(status_code=404, detail="That transaction or withdrawal wasn't found on your account")
 
@@ -327,7 +336,7 @@ async def create_dispute(
         raise HTTPException(status_code=409, detail="There's already an open dispute for this")
 
     assigned_to: uuid.UUID | None = None
-    if customer.zone_id:
+    if customer.zone_id and not is_officer:
         officer_result = await db.execute(
             select(User).where(User.zone_id == customer.zone_id, User.role == UserRole.OFFICER)
         )
@@ -341,7 +350,8 @@ async def create_dispute(
         reason=      body.reason,
         status=      DisputeStatus.OPEN,
         assigned_to= assigned_to,
-        zone_id=     customer.zone_id,
+        # officer-raised disputes belong to no zone: the zone's officer must never judge their own case
+        zone_id=     None if is_officer else customer.zone_id,
     )
     db.add(dispute)
     await db.flush()
@@ -360,7 +370,7 @@ async def create_dispute(
             db, user_id=assigned_to, type=NotificationType.WARNING,
             title="New dispute raised",
             body=f"{customer.full_name} raised a dispute — tap to review.",
-            related_entity_id=dispute.id,
+            related_entity_id=dispute.id, deep_link_url=f"/disputes/{dispute.id}",
         )
     else:
         await _notify_all_directors(
@@ -392,11 +402,18 @@ async def list_disputes(
         handler = aliased(User)
         query = (
             query
-            .join(handler, Dispute.assigned_to == handler.id)
+            .outerjoin(handler, Dispute.assigned_to == handler.id)
             .where(
-                Dispute.zone_id == current_user.zone_id,
-                Dispute.status != DisputeStatus.ESCALATED,
-                handler.role == UserRole.OFFICER,
+                # disputes in my zone handled by officers — plus any I raised myself
+                # (those go straight to the directors)
+                or_(
+                    and_(
+                        Dispute.zone_id == current_user.zone_id,
+                        Dispute.status != DisputeStatus.ESCALATED,
+                        handler.role == UserRole.OFFICER,
+                    ),
+                    Dispute.raised_by == current_user.id,
+                )
             )
         )
     elif current_user.role == UserRole.SERVICE_WORKER:
@@ -542,7 +559,7 @@ async def add_message(
             db, user_id=notify_id, type=NotificationType.INFO,
             title="New reply on your dispute",
             body=f"{current_user.full_name} replied — tap to view.",
-            related_entity_id=dispute.id,
+            related_entity_id=dispute.id, deep_link_url=f"/disputes/{dispute.id}",
         )
 
     dispute = await _load_dispute(db, dispute.id)
@@ -640,7 +657,7 @@ async def resolve_dispute(
         db, user_id=dispute.raised_by, type=NotificationType.SUCCESS,
         title="Your dispute has been resolved",
         body="Tap to see the resolution. You can escalate if you disagree." if not is_final else "Tap to see the resolution.",
-        related_entity_id=dispute.id,
+        related_entity_id=dispute.id, deep_link_url=f"/disputes/{dispute.id}",
     )
 
     dispute = await _load_dispute(db, dispute.id)
@@ -811,7 +828,7 @@ async def create_manual_service_dispute(
             db, user_id=assigned_worker_id, type=NotificationType.WARNING,
             title="Service dispute raised",
             body=f"{customer.full_name} has disputed a service you handled — a commission hold has been placed.",
-            related_entity_id=dispute.id,
+            related_entity_id=dispute.id, deep_link_url=f"/disputes/{dispute.id}",
         )
     else:
         await _notify_all_directors(

@@ -47,7 +47,7 @@ async def _notify_customers_officer(
     if officer:
         await send_notification(
             db, user_id=officer.id, title=title, body=body,
-            type=type, related_entity_id=related_entity_id,
+            type=type, related_entity_id=related_entity_id, deep_link_url="/officer/wallet/transactions",
         )
 
 
@@ -131,6 +131,15 @@ async def request_withdrawal(
         charge_kobo      = evaluation["charge_kobo"]
         net_payable_kobo = evaluation["net_payable_kobo"]
 
+        # SMS charges that piled up for a customer without a wallet (managed by an officer)
+        # come off together with the normal charge — but never more than what is left to pay.
+        sms_charge_kobo = 0
+        card_owner = await db.get(User, card.owner_id)
+        if card_owner and (card_owner.sms_accrued_kobo or 0) > 0:
+            sms_charge_kobo = min(card_owner.sms_accrued_kobo, max(net_payable_kobo - 1, 0))
+            charge_kobo      += sms_charge_kobo
+            net_payable_kobo -= sms_charge_kobo
+
         if net_payable_kobo <= 0:
             raise HTTPException(status_code=400, detail="Withdrawal amount too small after charge deduction")
 
@@ -161,6 +170,7 @@ async def request_withdrawal(
             card_id=                body.card_id,
             requested_amount_kobo=  body.amount_kobo,
             charge_kobo=            charge_kobo,
+            sms_charge_kobo=        sms_charge_kobo,
             net_payable_kobo=       net_payable_kobo,
             bank_name=              customer.bank_name or "",
             account_number=         customer.account_number or "",
@@ -190,6 +200,8 @@ async def request_withdrawal(
         # grid, evaluate_withdrawal, and the drained-check below all already
         # correctly read from directly.
         card.total_contributed_kobo -= body.amount_kobo
+        if sms_charge_kobo and card_owner:
+            card_owner.sms_accrued_kobo = (card_owner.sms_accrued_kobo or 0) - sms_charge_kobo
 
         # A withdrawn slot is gone for good — it never reopens room on a
         # completed card. But if every single one of the card's 372 slots has
@@ -231,7 +243,7 @@ async def request_withdrawal(
             body=f"Your withdrawal of ₦{body.amount_kobo // 100:,} is being processed. "
                  f"You will receive ₦{net_payable_kobo // 100:,} after charges.",
             type=NotificationType.INFO,
-            related_entity_id=withdrawal.id,
+            related_entity_id=withdrawal.id, deep_link_url="/customer/wallet/transactions",
         )
         if current_user.id != customer.id:
             # An officer submitted this on the customer's behalf — they get
@@ -243,7 +255,7 @@ async def request_withdrawal(
                 body=f"{customer.full_name}'s withdrawal of ₦{body.amount_kobo // 100:,} is being processed. "
                      f"They will receive ₦{net_payable_kobo // 100:,} after charges.",
                 type=NotificationType.INFO,
-                related_entity_id=withdrawal.id,
+                related_entity_id=withdrawal.id, deep_link_url="/customer/wallet/transactions",
             )
 
         await log_action(
@@ -261,6 +273,53 @@ async def request_withdrawal(
     return result
 
 
+def _withdrawal_filters(status_filter, q, date_from, date_to, min_naira, max_naira):
+    """Shared by the list and the tab counts so they always agree."""
+    from datetime import datetime, timedelta, timezone
+    conds = []
+    if status_filter:
+        conds.append(Withdrawal.status == status_filter)
+    if q and q.strip():
+        term = f"%{q.strip()}%"
+        names = select(User.id).where(User.full_name.ilike(term) | User.phone_number.ilike(term))
+        conds.append(
+            Withdrawal.customer_id.in_(names)
+            | Withdrawal.account_number.ilike(term)
+            | Withdrawal.account_name.ilike(term)
+            | Withdrawal.bank_name.ilike(term)
+        )
+    try:
+        if date_from:
+            conds.append(Withdrawal.requested_at >= datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc))
+        if date_to:
+            conds.append(Withdrawal.requested_at < datetime.fromisoformat(date_to).replace(tzinfo=timezone.utc) + timedelta(days=1))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Dates must look like 2026-10-31")
+    if min_naira is not None:
+        conds.append(Withdrawal.net_payable_kobo >= int(min_naira * 100))
+    if max_naira is not None:
+        conds.append(Withdrawal.net_payable_kobo <= int(max_naira * 100))
+    return conds
+
+
+@router.get("/counts")
+async def withdrawal_counts(
+    staff: DirectorOrAdmin,
+    db: AsyncSession = Depends(get_db),
+    q: str | None = None, date_from: str | None = None, date_to: str | None = None,
+    min_naira: float | None = None, max_naira: float | None = None,
+):
+    """Per-status totals for the tab labels (honours the same search/filters, ignores paging)."""
+    conds = _withdrawal_filters(None, q, date_from, date_to, min_naira, max_naira)
+    rows = (await db.execute(
+        select(Withdrawal.status, func.count()).where(*conds).group_by(Withdrawal.status)
+    )).all()
+    out = {"pending": 0, "claimed": 0, "paid": 0, "rejected": 0}
+    for st, n in rows:
+        out[getattr(st, "value", st)] = n
+    return out
+
+
 @router.get("", response_model=list[WithdrawalResponse])
 async def list_withdrawals(
     staff: DirectorOrAdmin,
@@ -268,11 +327,20 @@ async def list_withdrawals(
     status_filter: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    min_naira: float | None = None,
+    max_naira: float | None = None,
+    sort: str | None = None,
 ):
-    query = select(Withdrawal)
-    if status_filter:
-        query = query.where(Withdrawal.status == status_filter)
-    query = query.order_by(Withdrawal.requested_at.asc()).offset((page - 1) * page_size).limit(page_size)
+    page_size = max(1, min(page_size, 100))
+    page = max(1, page)
+    query = select(Withdrawal).where(*_withdrawal_filters(status_filter, q, date_from, date_to, min_naira, max_naira))
+    # Pending work is oldest-first (longest waiting at the top); history is newest-first.
+    oldest_first = (sort == "oldest") or (sort is None and status_filter in ("pending", "claimed"))
+    query = query.order_by(Withdrawal.requested_at.asc() if oldest_first else Withdrawal.requested_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
     withdrawals = result.scalars().all()
 
@@ -377,7 +445,7 @@ async def mark_withdrawal_paid(
         title="Withdrawal paid ✓",
         body=f"₦{withdrawal.net_payable_kobo // 100:,} has been transferred to your account {withdrawal.account_number}.",
         type=NotificationType.SUCCESS,
-        related_entity_id=withdrawal.id,
+        related_entity_id=withdrawal.id, deep_link_url="/customer/wallet/transactions",
     )
     customer_name_result = await db.execute(select(User.full_name).where(User.id == withdrawal.customer_id))
     customer_name = customer_name_result.scalar_one_or_none() or "A customer"
@@ -386,7 +454,7 @@ async def mark_withdrawal_paid(
         title="Withdrawal approved ✓",
         body=f"{customer_name}'s withdrawal of ₦{withdrawal.net_payable_kobo // 100:,} has been paid out.",
         type=NotificationType.SUCCESS,
-        related_entity_id=withdrawal.id,
+        related_entity_id=withdrawal.id, deep_link_url="/customer/wallet/transactions",
     )
 
     await log_action(
@@ -455,6 +523,10 @@ async def reject_withdrawal(
             # was never touched by the withdrawal (see request_withdrawal above),
             # so there's nothing to undo there.
             card.total_contributed_kobo += withdrawal.requested_amount_kobo
+            if withdrawal.sms_charge_kobo:
+                owner_row = await db.get(User, withdrawal.customer_id)
+                if owner_row:
+                    owner_row.sms_accrued_kobo = (owner_row.sms_accrued_kobo or 0) + withdrawal.sms_charge_kobo
 
             # A card that got archived because this withdrawal drained it
             # completely is no longer drained now that it's reversed.
@@ -478,7 +550,7 @@ async def reject_withdrawal(
         body=f"Your withdrawal of ₦{withdrawal.requested_amount_kobo // 100:,} was rejected. "
              f"Reason: {body.reason}",
         type=NotificationType.ERROR,
-        related_entity_id=withdrawal.id,
+        related_entity_id=withdrawal.id, deep_link_url="/customer/wallet/transactions",
     )
     customer_name_result = await db.execute(select(User.full_name).where(User.id == withdrawal.customer_id))
     customer_name = customer_name_result.scalar_one_or_none() or "A customer"
@@ -488,7 +560,7 @@ async def reject_withdrawal(
         body=f"{customer_name}'s withdrawal of ₦{withdrawal.requested_amount_kobo // 100:,} was rejected. "
              f"Reason: {body.reason}",
         type=NotificationType.ERROR,
-        related_entity_id=withdrawal.id,
+        related_entity_id=withdrawal.id, deep_link_url="/customer/wallet/transactions",
     )
 
     await log_action(

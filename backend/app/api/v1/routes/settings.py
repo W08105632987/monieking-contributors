@@ -29,11 +29,14 @@ def _next_jan_1(from_date: date) -> date:
 @router.get("/sms-fee")
 async def get_sms_fee(db: AsyncSession = Depends(get_db)):
     """Fetch the active monthly SMS subscription fee configured by Directors."""
-    val = await get_config_value(db, "monthly_sms_fee_kobo")
-    fee_kobo = int(val) if val else 10000
+    from app.services.sms_service import get_fee_kobo
+    fee_kobo = await get_fee_kobo(db)
     return {
-        "monthly_sms_fee_kobo": fee_kobo,
-        "monthly_sms_fee_naira": fee_kobo / 100,
+        "sms_fee_per_sms_kobo": fee_kobo,
+        "sms_fee_per_sms_naira": fee_kobo / 100,
+        # kept so older app versions don't break; nothing is billed monthly any more
+        "monthly_sms_fee_kobo": 0,
+        "monthly_sms_fee_naira": 0,
     }
 
 

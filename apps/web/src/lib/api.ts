@@ -2,6 +2,7 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { idempotencyKey } from './utils'
 import { useServerHealthStore } from '@/store/serverHealth.store'
 import { useAuthStore } from '@/store/auth.store'
+import { useMaintenanceStore } from '@/store/maintenance.store'
 import type { ApiError } from '@/types'
 
 // ── Base URL ─────────────────────────────────────────────────────
@@ -72,6 +73,12 @@ api.interceptors.response.use(
   async (error: AxiosError<ApiError>) => {
     if (error.code === 'ERR_NETWORK' || (!error.response && error.code !== 'ECONNABORTED')) {
       useServerHealthStore.getState().setDown(true)
+    }
+
+    // Directors switched maintenance on: show the maintenance screen right away.
+    const d: any = error.response?.data?.detail
+    if (error.response?.status === 503 && d && typeof d === 'object' && d.code === 'maintenance') {
+      useMaintenanceStore.getState().set({ on: true, message: d.message ?? '', eta: d.eta ?? null })
     }
 
     const original = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined

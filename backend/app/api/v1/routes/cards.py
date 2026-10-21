@@ -23,7 +23,7 @@ from app.services.withdrawal_auth_service import check_withdrawal_password
 from app.utils.audit import log_action
 from app.models.notification import NotificationType
 from app.services.notification_service import send_notification
-from app.integrations.termii import send_sms
+from app.services.sms_service import send_card_sms
 
 router = APIRouter(tags=["cards"])
 
@@ -379,6 +379,7 @@ async def post_card_contribution(
         body=actor_body,
         type=NotificationType.SUCCESS,
         related_entity_id=body.card_id,
+        deep_link_url=(f"/customer/cards/{body.card_id}" if is_self_contribution else f"/officer/customers/{card.owner_id}/cards/{body.card_id}"),
     )
     if card and not is_self_contribution:
         await send_notification(
@@ -387,6 +388,7 @@ async def post_card_contribution(
             body=f"Your officer posted {amount_str} on your card — {len(records)} day(s) added.",
             type=NotificationType.SUCCESS,
             related_entity_id=body.card_id,
+            deep_link_url=f"/customer/cards/{body.card_id}",
         )
 
     # SMS confirmation — every contribution, not just officer-marked
@@ -408,26 +410,15 @@ async def post_card_contribution(
                 f" by {current_user.full_name if current_user.role == UserRole.OFFICER else 'an officer'}"
                 if is_officer_marked else ""
             )
-            try:
-                await send_sms(
-                    owner.phone_number,
-                    (
-                        f"MonieKing: {amount_str} contributed to Card #{card.card_number} "
-                        f"({card.card_type.value} card){marked_by_clause} — {len(records)} day(s) added "
-                        f"for this contribution. Total contributed on Card #{card.card_number} so far: "
-                        f"₦{card.total_contributed_kobo // 100:,}. Didn't make this contribution? "
-                        f"Contact {'your officer or ' if is_officer_marked else ''}MonieKing support immediately."
-                    ),
-                )
-            except Exception as e:
-                # SMS delivery failing must never roll back or fail a
-                # contribution that already succeeded and was already
-                # debited/recorded — same fail-open principle as every
-                # other non-critical side effect in this codebase (see
-                # wallet_service.py's Redis idempotency comments). The
-                # in-app notification above already covers confirmation
-                # either way.
-                print(f"[contribution-sms] failed to notify {owner.phone_number} for card {card.card_number}: {e}")
+            await send_card_sms(
+                db, owner,
+                (
+                    f"MonieKing: {amount_str} contributed to Card #{card.card_number} "
+                    f"({card.card_type.value} card){marked_by_clause} - {len(records)} day(s) added. "
+                    f"Total on card: N{card.total_contributed_kobo // 100:,}. "
+                    f"Not you? Contact {'your officer or ' if is_officer_marked else ''}MonieKing support."
+                ),
+            )
 
     result = {
         "message":     f"Contribution successful — {len(records)} day(s) recorded",

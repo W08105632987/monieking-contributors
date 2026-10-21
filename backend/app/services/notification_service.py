@@ -4,7 +4,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
-from app.integrations.termii import send_sms
 from app.services.push_service import send_push
 
 logger = logging.getLogger(__name__)
@@ -26,19 +25,13 @@ async def send_notification(
         body=              body,
         type=              type,
         related_entity_id= related_entity_id,
+        link=              deep_link_url if deep_link_url and deep_link_url != "/" else None,
     )
     db.add(notif)
     await db.flush()
 
-    # If the user has active SMS subscription, send real-time SMS alert
-    try:
-        user_res = await db.execute(select(User).where(User.id == user_id))
-        user = user_res.scalar_one_or_none()
-        if user and user.sms_alerts_enabled and user.phone_number:
-            sms_text = f"MonieKing: {title} - {body}"
-            await send_sms(user.phone_number, sms_text)
-    except Exception as e:
-        logger.warning("Failed to dispatch SMS notification for user %s: %s", user_id, e)
+    # NOTE: no SMS here any more. SMS goes out only when a card is marked, or when a
+    # director sends one (see app/services/sms_service.py).
 
     # Push rides the same trigger — every existing call site that creates
     # an in-app notification gets a real OS-level push for free, no need
