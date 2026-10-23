@@ -83,7 +83,17 @@ export default function CleanupCentrePage() {
           <div className="space-y-2 text-xs text-green-800 dark:text-night-100">
             <p><b>{preview.users}</b> test accounts · <b>{preview.total_rows}</b> records in total.</p>
             {preview.people?.length > 0 && <ul className="max-h-40 overflow-y-auto rounded-xl bg-green-50 dark:bg-night-800 p-2 space-y-0.5">{preview.people.map((p: any) => <li key={p.phone_number}>{p.full_name} · {p.phone_number}</li>)}</ul>}
-            {preview.conflicts?.length > 0 && <Notice kind="error">Some test data is tied to real customers' records. Fix this before deleting: {preview.conflicts.slice(0, 3).join('; ')}</Notice>}
+            {preview.conflicts?.length > 0 && (
+              <div className="space-y-2">
+                <Notice kind="error">Some records of test accounts are also tied to real customers, so nothing can be deleted yet. Here is exactly what is tangled:</Notice>
+                <ul className="space-y-1 rounded-xl bg-red-50 p-2 text-[11px] text-red-800 dark:bg-red-950/30 dark:text-red-200">
+                  {preview.conflicts.map((c: any, i: number) => (
+                    <li key={i}><b>{c.rows}</b> record(s) in <b>{c.table.replace(/_/g, ' ')}</b> ({c.column.replace(/_/g, ' ')}): {c.reason}</li>
+                  ))}
+                </ul>
+                <p className="text-[11px] text-green-700 dark:text-night-200">Usual cause: a test account handled a real customer (for example a test officer who recorded real contributions) or a real customer used a test account. Un-mark that person as Test (set them to Real) and upload again, then delete the rest.</p>
+              </div>
+            )}
             {needsAck && <Notice kind="info">{preview.value_users.length} test account(s) still hold money. That money will disappear with them.</Notice>}
             <ActionButton tone="red" disabled={!preview.can_purge || preview.users === 0} onClick={() => setDialog('purge')}><Trash2 className="mr-1 inline h-4 w-4" />Delete test accounts…</ActionButton>
           </div>
