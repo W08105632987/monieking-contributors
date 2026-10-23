@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { runDownload } from '@/lib/download'
 import { useQuery } from '@tanstack/react-query'
 import {
   Users, UtensilsCrossed, Repeat, UserPlus, ArrowUpCircle, ArrowDownCircle,
@@ -93,15 +94,10 @@ function exportCsv(data: CustomerStatsOverview, label: string) {
     ['Total value currently active (₦)', String(data.total_value_active_kobo / 100)],
   ]
   const csv = rows.map(r => r.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `customer-statistics-${label.replace(/\s+/g, '_')}.csv`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  void runDownload(`Customer statistics - ${label}.csv`, async (report) => {
+    report(60)
+    return new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  }, 'Preparing your spreadsheet')
 }
 
 const RANGE_OPTIONS: { value: StatsRangeKey; label: string }[] = [

@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Settings, Megaphone, Image, BarChart3, LineChart, Activity,
-  FileClock, Send, Power, Users, User, AlertTriangle, Fingerprint, UserCheck, Package, Wrench, HeartHandshake, MessageSquare,
+  FileClock, Send, Power, Users, User, AlertTriangle, Fingerprint, UserCheck, Package, Wrench, HeartHandshake, MessageSquare, Smartphone, PartyPopper,
 } from 'lucide-react'
 
 const actions = [
@@ -13,6 +13,8 @@ const actions = [
   { label: 'Business Settings', icon: Settings,   href: '/director/settings',   color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
   { label: 'Identity Services & Pricing', icon: Fingerprint, href: '/director/identity-services', color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
   { label: 'NIN & BVN Verification', icon: Fingerprint, href: '/director/verification', color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
+  { label: 'Airtime, Data & Bills', icon: Smartphone, href: '/director/bills-control', color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
+  { label: 'Seasonal themes', icon: PartyPopper, href: '/director/seasonal', color: 'bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-300' },
   { label: 'Techhub Services', icon: Send, href: '/director/provider-services', color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
   { label: 'Service Builder', icon: Wrench, href: '/director/service-builder', color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
   { label: 'Instant Message',   icon: Megaphone,  href: '/director/instant-message', color: 'bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-300' },

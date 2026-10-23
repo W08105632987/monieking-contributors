@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { SeasonalCap } from './SeasonalCap'
 
 interface BrandBlobLogoProps {
   /** Desired rendered height in pixels (default: 36) */
@@ -42,6 +43,7 @@ export function BrandBlobLogo({ height, size, className, hideBlob = false, onCli
       }}
       aria-label="MonieKing"
     >
+      <SeasonalCap size={effectiveHeight} />
       {/* ── Nickelodeon-Inspired Organic Green Splat / Splash SVG ── */}
       {/* Disappears automatically in dark mode (dark:hidden) or when hideBlob is true */}
       {!hideBlob && (

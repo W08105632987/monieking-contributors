@@ -236,7 +236,7 @@ export default function DirectorNotificationsPage() {
         </div>
         {unreadCount > 0 && (
           <button
-            onClick={() => markAllMutation.mutate()}
+            disabled={markAllMutation.isPending} onClick={() => markAllMutation.mutate()}
             className="flex items-center gap-1.5 text-green-600 dark:text-night-100 text-xs font-bold bg-green-100 dark:bg-night-600 px-3 py-2 rounded-full active:scale-95 transition-all"
           >
             <CheckCheck className="w-3.5 h-3.5" />

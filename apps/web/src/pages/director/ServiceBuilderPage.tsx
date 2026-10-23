@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ask } from '@/lib/dialog'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ChevronRight, Plus } from 'lucide-react'
@@ -99,7 +100,7 @@ export default function ServiceBuilderPage() {
                 </button>
                 <button
                   className={smallBtn}
-                  onClick={() => { if (window.confirm(`Archive ${t.title}? It is hidden, never deleted. You must switch it off first.`)) archive.mutate({ code: t.service_code, archived: true }) }}
+                  onClick={async () => { if (await ask('It is hidden, never deleted. You must switch it off first.', { title: `Archive ${t.title}?`, confirmLabel: 'Archive' })) archive.mutate({ code: t.service_code, archived: true }) }}
                 >Archive</button>
                 <ChevronRight className="w-4 h-4 text-green-400" />
               </div>
@@ -110,7 +111,7 @@ export default function ServiceBuilderPage() {
                 {archived.map((t) => (
                   <div key={t.service_code} className={`${cardCls} flex items-center gap-3 opacity-80`}>
                     <p className="flex-1 font-bold text-green-950 dark:text-white truncate">{t.title}</p>
-                    <button className={smallBtn} onClick={() => archive.mutate({ code: t.service_code, archived: false })}>Restore</button>
+                    <button className={smallBtn} disabled={archive.isPending} onClick={() => archive.mutate({ code: t.service_code, archived: false })}>Restore</button>
                   </div>
                 ))}
               </>

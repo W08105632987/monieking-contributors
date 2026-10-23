@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { downloadFromApi } from '@/lib/download'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth.store'
@@ -209,9 +210,7 @@ export function StatementPage() {
   const download = async () => {
     setBusy(true)
     try {
-      const r = await api.get('/coop/statement.pdf', { params: { year: y }, responseType: 'blob' })
-      const url = URL.createObjectURL(r.data)
-      const a = document.createElement('a'); a.href = url; a.download = `monieking-coop-statement-${y}.pdf`; a.click(); URL.revokeObjectURL(url)
+      await downloadFromApi('/coop/statement.pdf', `MonieKing Cooperative Statement ${y}.pdf`, { params: { year: y }, label: 'Preparing your statement' })
     } catch (e) { toast.error(getErrorMessage(e)) } finally { setBusy(false) }
   }
   return (

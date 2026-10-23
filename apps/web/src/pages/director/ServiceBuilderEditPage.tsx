@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ask } from '@/lib/dialog'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Lock } from 'lucide-react'
@@ -60,14 +61,14 @@ export default function ServiceBuilderEditPage() {
     queryFn: async () => (await api.post<PreviewResult>(`/service-templates/${code}/admin/preview`, { form_schema: schema, price_rules: rules })).data,
   })
 
-  const discard = () => {
-    if (!data || !window.confirm('Throw away your unpublished edits?')) return
+  const discard = async () => {
+    if (!data || !(await ask('They cannot be brought back.', { title: 'Throw away your unpublished edits?', tone: 'danger', confirmLabel: 'Throw away', cancelLabel: 'Keep editing' }))) return
     setSchema(data.schema)
     setRules(data.price_rules as PriceRule[])
     setResetKey((k) => k + 1)
   }
-  const leave = () => {
-    if (dirty && !window.confirm('You have unpublished edits that will be lost. Leave anyway?')) return
+  const leave = async () => {
+    if (dirty && !(await ask('You have unpublished edits that will be lost.', { title: 'Leave anyway?', tone: 'danger', confirmLabel: 'Leave', cancelLabel: 'Stay' }))) return
     navigate('/director/service-builder')
   }
   const refreshAfterChange = () => {
@@ -154,8 +155,8 @@ export default function ServiceBuilderEditPage() {
                   {v.note && <p className="text-xs text-green-800 dark:text-night-100 mt-0.5">{v.note}</p>}
                 </div>
                 {v.version !== data.version && (
-                  <button className={smallBtn} onClick={() => {
-                    if (dirty && !window.confirm('Your unpublished edits will stay here but are not part of this change. Continue?')) return
+                  <button className={smallBtn} onClick={async () => {
+                    if (dirty && !(await ask('Your unpublished edits will stay here but are not part of this change.', { title: 'Continue?' }))) return
                     setSheet({ kind: 'revert', version: v.version })
                   }}>Go back to this</button>
                 )}

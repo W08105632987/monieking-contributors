@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, Check, AlertCircle, Wallet } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import { celebrateContribution } from '@/store/celebrate.store'
 import { idempotencyKey } from '@/lib/utils'
 import { api, getErrorMessage } from '@/lib/api'
 import { useWallet } from '@/hooks/useWallet'
@@ -46,10 +47,10 @@ export default function ContributePage() {
     if (!card || !isValid || !hasBalance || wouldExceed) return
     setLoading(true)
     try {
-      await api.post('/contributions', { card_id: card.id, amount_kobo: amountKobo }, {
+      const { data: res } = await api.post<{ card?: { status?: string; total_days_contributed?: number } }>('/contributions', { card_id: card.id, amount_kobo: amountKobo }, {
         headers: { 'Idempotency-Key': idemKeyRef.current },
       })
-      toast.success(`${days} day${days > 1 ? 's' : ''} contributed successfully!`)
+      celebrateContribution({ daysAdded: days, card: res.card })
       qc.invalidateQueries({ queryKey: ['cards'] })
       qc.invalidateQueries({ queryKey: ['wallet'] })
       qc.invalidateQueries({ queryKey: ['card', cardId] })

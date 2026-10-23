@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { ask } from '@/lib/dialog'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Clock, Pencil, Ban, MapPin, Plus, Trash2, Users, Calendar } from 'lucide-react'
@@ -324,11 +325,11 @@ function ZonesSection() {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
-  const handleDelete = (zone: Zone) => {
+  const handleDelete = async (zone: Zone) => {
     const msg = zone.officer_count > 0
       ? `${zone.officer_count} officer(s) are currently assigned to "${zone.name}" — they'll become unassigned, not deleted. Continue?`
       : `Delete zone "${zone.name}"?`
-    if (window.confirm(msg)) deleteMutation.mutate(zone.id)
+    if (await ask(msg, { title: 'Delete this zone?', tone: 'danger', confirmLabel: 'Delete zone' })) deleteMutation.mutate(zone.id)
   }
 
   return (

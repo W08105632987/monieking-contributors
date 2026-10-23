@@ -1,38 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, motion, type PanInfo } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ShieldCheck, Users, TrendingUp, Sparkles } from "lucide-react";
-import { BrandBlobLogo } from "@/components/brand/BrandBlobLogo";
+import { ArrowRight, ShieldCheck, Users, TrendingUp, Sparkles, Wallet, Crown, User, CalendarDays, Settings, Bot, BadgeCheck, CheckCircle2 } from "lucide-react";
+import { OrbitRing, type OrbitBadge } from "./OrbitRing";
 
 import onb1 from "@/assets/onb-1.jpg";
 import onb2 from "@/assets/onb-2.jpg";
 import onb3 from "@/assets/onb-3.jpg";
 import onb4 from "@/assets/onb-4.jpg";
 
-// ─────────────────────────────────────────────────────────────────────
-// This file is the person's own Lovable-built component, carried over
-// as close to verbatim as technically possible — same JSX, same
-// classes, same copy, same layout logic. Changes are marked inline
-// with "CHANGED:" comments, nothing else touched:
-//
-//   1. The TanStack Router wrapper (createFileRoute/Route.head) is
-//      gone — this app uses React Router, which doesn't have an
-//      equivalent, so it's just not applicable here, not a redesign.
-//   2. Two buttons had no destination at all in the original
-//      (the final slide's primary button did literally nothing when
-//      clicked, and "I already have an account" had no onClick
-//      handler whatsoever) — those two got a navigate() call each,
-//      since a dead button isn't a design choice, it's a bug. The
-//      "Skip" button's behavior (jumps to the last slide, doesn't
-//      leave onboarding) is UNCHANGED from the original — flagged
-//      separately, not silently altered.
-//   3. The light/dark toggle (Sun/Moon button + its two effects) is
-//      removed by explicit request — it independently flipped the
-//      same global `.dark` class this app's own separate real
-//      dark-mode system also controls, and the two could fight over
-//      it. This is dark-mode-only now, permanently — the underlying
-//      color tokens are collapsed to a single palette in index.css
-//      (see the comment there), not conditional on `.dark` anymore.
-// ─────────────────────────────────────────────────────────────────────
+// Premium onboarding: photo hero card (faces stay clear of the copy),
+// swipeable, with the copy in its own panel beneath. Dark-only by design.
 
 const slides = [
   {
@@ -41,6 +19,8 @@ const slides = [
     icon: Sparkles,
     titleLead: "Welcome to",
     titleAccent: "MonieKing",
+    pos: "50% 58%",
+    badges: [{ icon: Wallet, angle: 315, radius: 52 }, { icon: TrendingUp, angle: 42, radius: 52 }, { icon: Crown, angle: 150, radius: 50, accent: true }] as OrbitBadge[],
     body: "Nigeria's digital contribution savings platform — a modern ajo and esusu, right on your phone.",
   },
   {
@@ -49,6 +29,8 @@ const slides = [
     icon: Users,
     titleLead: "Save With People",
     titleAccent: "You Trust",
+    pos: "50% 62%",
+    badges: [{ icon: User, angle: 0, radius: 54 }, { icon: User, angle: 222, radius: 50 }, { icon: User, angle: 138, radius: 50 }, { icon: Users, angle: 295, radius: 52, accent: true }] as OrbitBadge[],
     body: "Create a circle with family, friends or colleagues. Everyone contributes, everyone gets their turn.",
   },
   {
@@ -57,6 +39,8 @@ const slides = [
     icon: TrendingUp,
     titleLead: "Contributions On",
     titleAccent: "Autopilot",
+    pos: "50% 56%",
+    badges: [{ icon: CalendarDays, angle: 318, radius: 52 }, { icon: Settings, angle: 40, radius: 52 }, { icon: Bot, angle: 215, radius: 50, accent: true }] as OrbitBadge[],
     body: "Set your amount and schedule once. We collect, track and pay out — no chasing, no spreadsheets.",
   },
   {
@@ -65,17 +49,30 @@ const slides = [
     icon: ShieldCheck,
     titleLead: "Your Money Stays",
     titleAccent: "Protected",
+    pos: "50% 50%",
+    badges: [{ icon: ShieldCheck, angle: 135, radius: 50, size: 22, accent: true }, { icon: CheckCircle2, angle: 225, radius: 50 }, { icon: BadgeCheck, angle: 35, radius: 52 }] as OrbitBadge[],
     body: "Bank-level security, verified members and a clear record of every naira that moves in your circle.",
   },
 ];
 
-export function OnboardingScreen() {
-  const navigate = useNavigate(); // CHANGED: added — needed for the two wired buttons below, see file header
-  const [index, setIndex] = useState(0);
+interface OnboardingScreenProps {
+  /** When set (e.g. the signed-in "About" modal) the last slide just calls this instead of going to Register. */
+  onFinish?: () => void;
+}
+
+const SWIPE = 55;
+const pad = (n: number) => String(n).padStart(2, "0");
+
+export function OnboardingScreen({ onFinish }: OnboardingScreenProps = {}) {
+  const navigate = useNavigate();
+  const [[index, dir], setPage] = useState<[number, number]>([0, 0]);
   const last = index === slides.length - 1;
 
   const go = useCallback((next: number) => {
-    setIndex(Math.max(0, Math.min(slides.length - 1, next)));
+    setPage(([cur]) => {
+      const n = Math.max(0, Math.min(slides.length - 1, next));
+      return n === cur ? [cur, 0] : [n, n > cur ? 1 : -1];
+    });
   }, []);
 
   useEffect(() => {
@@ -87,135 +84,166 @@ export function OnboardingScreen() {
     return () => window.removeEventListener("keydown", onKey);
   }, [go, index]);
 
+  useEffect(() => {
+    slides.forEach((s) => { const i = new Image(); i.src = s.image; });
+  }, []);
+
+  const onDragEnd = (_: unknown, info: PanInfo) => {
+    if (info.offset.x < -SWIPE || info.velocity.x < -400) go(index + 1);
+    else if (info.offset.x > SWIPE || info.velocity.x > 400) go(index - 1);
+  };
+
+  const finish = () => (onFinish ? onFinish() : navigate("/auth/register"));
+
   const slide = slides[index]!;
-  const Icon = slide.icon;
+  const accentIsBrand = slide.titleAccent === "MonieKing";
 
   return (
-    <main className="relative h-dvh max-h-dvh w-full overflow-hidden bg-black select-none">
-      {/* Full-bleed imagery covering the viewport */}
-      <div className="absolute inset-0 lg:left-[34%]">
-        {slides.map((s, i) => (
-          <img
-            key={s.image}
-            src={s.image}
-            alt=""
-            aria-hidden="true"
-            width={896}
-            height={1536}
-            loading={i === 0 ? "eager" : "lazy"}
-            className="absolute inset-0 h-full w-full object-cover object-[50%_12%] sm:object-[50%_18%] transition-opacity duration-700 ease-out"
-            style={{
-              opacity: i === index ? 1 : 0,
-              transform: i === index ? "scale(1)" : "scale(1.04)",
-              transitionProperty: "opacity, transform",
-              transitionDuration: "900ms",
-            }}
-          />
-        ))}
-        {/* Bottom gradient scrim for rich contrast behind text */}
-        <div
-          className="absolute inset-0 lg:hidden"
-          style={{
-            background:
-              "linear-gradient(to top, #020503 0%, rgba(2,5,3,0.96) 36%, rgba(2,5,3,0.65) 58%, rgba(2,5,3,0.15) 75%, transparent 100%)",
-          }}
-        />
-        <div
-          className="absolute inset-0 hidden lg:block"
-          style={{ background: "var(--gradient-scrim-side)" }}
-        />
-        {/* Top subtle scrim for header readability */}
-        <div
-          className="absolute inset-x-0 top-0 h-24 pointer-events-none"
-          style={{
-            background:
-              "linear-gradient(to bottom, rgba(2,5,3,0.85) 0%, transparent 100%)",
-          }}
-        />
-      </div>
+    <main className="relative h-dvh max-h-dvh w-full overflow-hidden bg-[#02100a] text-white select-none">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(70% 45% at 50% 28%, rgba(16,185,129,0.20), transparent 70%), radial-gradient(60% 40% at 50% 105%, rgba(16,185,129,0.14), transparent 70%), linear-gradient(180deg,#03160e 0%,#02100a 60%,#010a06 100%)",
+        }}
+      />
 
-      <div className="relative mx-auto flex h-full max-h-dvh w-full max-w-md flex-col justify-between px-5 pt-safe pt-3.5 pb-safe pb-5 sm:max-w-xl sm:px-8 sm:pb-7 lg:max-w-6xl lg:px-14 lg:pb-10">
-        {/* Top bar — Clean logo with NO green blob splat, Skip button routes to login */}
-        <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 shrink-0 z-10">
-          <div className="flex min-w-0 items-center gap-3">
-            <BrandBlobLogo height={32} hideBlob={true} />
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => navigate('/auth/login')}
-              className="rounded-full px-3.5 py-1 text-xs sm:text-sm font-semibold text-zinc-300 hover:text-white bg-black/40 hover:bg-black/60 border border-white/10 backdrop-blur-md transition-all active:scale-95"
-            >
-              Skip
-            </button>
-          </div>
-        </header>
-
-        {/* Copy block pinned to the bottom */}
-        <div className="w-full max-w-md sm:max-w-lg lg:max-w-xl shrink-0 mt-auto z-10">
-          <div
-            key={index}
-            className="animate-in fade-in slide-in-from-bottom-3 duration-500"
-          >
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-950/60 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-400 backdrop-blur-md">
-              <Icon className="h-3.5 w-3.5 text-amber-400" aria-hidden="true" />
-              {slide.eyebrow}
-            </span>
-
-            <h1 className="mt-2.5 font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-[1.14] tracking-tight text-white">
-              {slide.titleLead}{" "}
-              <span className="text-amber-400 drop-shadow-[0_2px_12px_rgba(245,158,11,0.35)]">{slide.titleAccent}</span>
-            </h1>
-
-            <p className="mt-2 max-w-sm text-sm sm:text-base leading-relaxed text-zinc-300 line-clamp-3 sm:line-clamp-none">
-              {slide.body}
-            </p>
+      <div className="relative mx-auto flex h-full w-full max-w-md flex-col px-6 pt-safe pt-3 pb-safe pb-5 sm:max-w-xl lg:max-w-6xl lg:flex-row-reverse lg:items-center lg:gap-16 lg:px-12">
+        {/* swipeable stage: picture + words move together */}
+        <motion.div
+          className="flex min-h-0 flex-1 flex-col lg:contents"
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.15}
+          onDragEnd={onDragEnd}
+          style={{ touchAction: "pan-y" }}
+        >
+          <div className="flex min-h-0 w-full flex-1 items-center justify-center py-2 lg:h-[34rem] lg:flex-[1.1] lg:py-0" style={{ containerType: "size" }}>
+            <AnimatePresence mode="wait" custom={dir} initial={false}>
+              <motion.div
+                key={index}
+                custom={dir}
+                variants={{
+                  enter: (d: number) => ({ x: d >= 0 ? 60 : -60, opacity: 0, scale: 0.92 }),
+                  center: { x: 0, opacity: 1, scale: 1 },
+                  exit: (d: number) => ({ x: d >= 0 ? -60 : 60, opacity: 0, scale: 0.94 }),
+                }}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                className="shrink-0"
+                style={{ width: "min(100cqw, 100cqh)", height: "min(100cqw, 100cqh)" }}
+              >
+                <OrbitRing badges={slide.badges}>
+                  <img
+                    src={slide.image}
+                    alt=""
+                    aria-hidden="true"
+                    width={896}
+                    height={1536}
+                    draggable={false}
+                    className="h-full w-full object-cover"
+                    style={{ objectPosition: slide.pos }}
+                  />
+                </OrbitRing>
+              </motion.div>
+            </AnimatePresence>
           </div>
 
-          {/* Progress indicators */}
-          <div className="mt-3.5 sm:mt-4 flex items-center gap-1.5 sm:max-w-md">
+          <div className="shrink-0 pt-3 lg:flex-1 lg:pt-0">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.28, ease: "easeOut" }}
+                className="min-h-[10.5rem] sm:min-h-[11.5rem]"
+              >
+                <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-950/70 px-3 py-1 text-xs font-semibold tabular-nums tracking-wider text-zinc-100">
+                  {pad(index + 1)} / {pad(slides.length)}
+                </span>
+                <h1 className="mt-3 font-display text-[1.9rem] font-extrabold leading-[1.1] tracking-tight sm:text-4xl lg:text-5xl">
+                  <span className="block text-emerald-50">{slide.titleLead}</span>
+                  {accentIsBrand ? (
+                    <span className="block text-emerald-50">Monie<span className="text-amber-400">King</span></span>
+                  ) : (
+                    <span className="block text-amber-400 drop-shadow-[0_2px_14px_rgba(245,158,11,0.35)]">{slide.titleAccent}</span>
+                  )}
+                </h1>
+                <p className="mt-2.5 max-w-sm text-sm leading-relaxed text-emerald-100/80 sm:text-base">{slide.body}</p>
+              </motion.div>
+            </AnimatePresence>
+
+            <div className="mt-3 flex items-center gap-2 lg:hidden">
+              {slides.map((s, i) => (
+                <button
+                  key={s.eyebrow}
+                  type="button"
+                  aria-label={`Go to step ${i + 1}`}
+                  aria-current={i === index}
+                  onClick={() => go(i)}
+                  className="h-2 rounded-full"
+                  style={{
+                    width: i === index ? "1.6rem" : "0.5rem",
+                    background: i === index ? "#f59e0b" : "rgba(255,255,255,0.22)",
+                    transition: "all 400ms cubic-bezier(0.22,1,0.36,1)",
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Buttons stay exactly as they were */}
+        <div className="shrink-0 pt-4 lg:absolute lg:bottom-12 lg:left-12 lg:w-[26rem] lg:pt-0">
+          <div className="mb-3 hidden items-center gap-2 lg:flex">
             {slides.map((s, i) => (
               <button
                 key={s.eyebrow}
                 type="button"
                 aria-label={`Go to step ${i + 1}`}
-                aria-current={i === index}
                 onClick={() => go(i)}
-                className="h-1.5 rounded-full transition-all"
-                style={{
-                  width: i === index ? "2rem" : "0.5rem",
-                  background:
-                    i === index ? "#f59e0b" : "rgba(255,255,255,0.25)",
-                  transitionDuration: "var(--transition-smooth)",
-                }}
+                className="h-2 rounded-full"
+                style={{ width: i === index ? "1.6rem" : "0.5rem", background: i === index ? "#f59e0b" : "rgba(255,255,255,0.22)", transition: "all 400ms cubic-bezier(0.22,1,0.36,1)" }}
               />
             ))}
-            <span className="ml-auto text-xs font-medium tabular-nums text-zinc-400">
-              {index + 1} / {slides.length}
-            </span>
           </div>
-
-          {/* Primary and secondary actions */}
-          <div className="mt-3.5 sm:mt-4 sm:max-w-md space-y-2">
-            <button
+          <div className="space-y-2">
+            <motion.button
               type="button"
-              onClick={() => (last ? navigate('/auth/register') : go(index + 1))}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 px-5 py-3 sm:py-3.5 font-display text-sm sm:text-base font-bold text-black transition-all active:scale-[0.98] shadow-lg shadow-amber-500/25"
+              whileTap={{ scale: 0.97 }}
+              onClick={() => (last ? finish() : go(index + 1))}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 px-5 py-3.5 font-display text-base font-bold text-black shadow-lg shadow-amber-500/25 transition-colors hover:bg-amber-400"
             >
-              {last ? "Get Started" : "Continue"}
+              {last ? (onFinish ? "Done" : "Get Started") : "Continue"}
               <ArrowRight className="h-4 w-4 stroke-[2.5]" aria-hidden="true" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate('/auth/login')}
-              className="w-full rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-zinc-300 hover:text-white backdrop-blur-md transition-colors active:scale-[0.98]"
-            >
-              I already have an account
-            </button>
+            </motion.button>
+            {!onFinish && (
+              <button
+                type="button"
+                onClick={() => navigate("/auth/login")}
+                className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-zinc-300 backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white active:scale-[0.98]"
+              >
+                I already have an account
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {!onFinish && (
+        <button
+          type="button"
+          onClick={() => navigate("/auth/login")}
+          className="absolute right-5 top-3 z-10 rounded-full px-3 py-1 text-xs font-semibold text-zinc-300 transition-all hover:text-white active:scale-95 sm:text-sm"
+          style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}
+        >
+          Skip
+        </button>
+      )}
     </main>
   );
 }

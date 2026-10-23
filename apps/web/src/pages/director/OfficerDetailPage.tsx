@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ask } from '@/lib/dialog'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, MapPin, Phone, Calendar, History, ChevronRight, X } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -125,7 +126,7 @@ export default function OfficerDetailPage() {
             </button>
             {currentZone && (
               <button
-                onClick={() => { if (window.confirm(`Remove ${officer.full_name} from ${currentZone.name}? It will become uncovered.`)) unassignMutation.mutate() }}
+                onClick={async () => { if (await ask(`${currentZone.name} will become uncovered.`, { title: `Remove ${officer.full_name}?`, tone: 'danger', confirmLabel: 'Remove' })) unassignMutation.mutate() }}
                 disabled={unassignMutation.isPending}
                 className="flex-1 border-2 border-red-200 dark:border-red-900 text-red-500 dark:text-red-300 font-bold text-xs rounded-xl py-2.5 disabled:opacity-40"
               >

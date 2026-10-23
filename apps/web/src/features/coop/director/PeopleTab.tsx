@@ -28,7 +28,7 @@ function Pilot() {
       <SectionTitle>On the list ({data?.length ?? 0})</SectionTitle>
       <div className="space-y-2">{!data ? <Skel /> : data.map((p) => (
         <Card key={p.user_id}><div className="flex items-center justify-between"><div><p className="font-bold text-green-900 dark:text-white">{p.name}</p><p className="text-xs text-green-600 dark:text-night-300">{p.phone} · added {dShort(p.added_at)}</p></div>
-          <button onClick={() => remove.mutate(p.user_id)} aria-label="Remove" className="rounded-full p-2 text-red-500"><X className="h-5 w-5" /></button></div></Card>))}</div>
+          <button disabled={remove.isPending} onClick={() => remove.mutate(p.user_id)} aria-label="Remove" className="rounded-full p-2 text-red-500"><X className="h-5 w-5" /></button></div></Card>))}</div>
     </>
   )
 }

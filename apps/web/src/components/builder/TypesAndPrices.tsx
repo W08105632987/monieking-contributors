@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ask, tell } from '@/lib/dialog'
 import { ArrowUp, ArrowDown, Trash2, Plus } from 'lucide-react'
 import type { TemplateSchema } from '@/lib/templateRules'
 import {
@@ -46,13 +47,13 @@ export function TypesEditor({
   if (!schema.selectors.length) {
     return <p className="text-sm text-green-700 dark:text-night-200">This service has one form and one price. There are no types to choose between.</p>
   }
-  const remove = (selKey: string, value: string, label: string) => {
+  const remove = async (selKey: string, value: string, label: string) => {
     const r = removeSelectorOption(schema, rules, selKey, value)
-    if (r.blockedReason) { window.alert(r.blockedReason); return }
+    if (r.blockedReason) { await tell(r.blockedReason, { title: 'This cannot be removed yet' }); return }
     const lines = [`Remove "${label}"? Customers will no longer be able to choose it. Older orders keep their answers.`]
     if (r.droppedRules) lines.push(`${r.droppedRules} price rule(s) that were only for it will be removed.`)
     if (r.droppedFields.length) lines.push(`These fields only showed for it and will be removed: ${r.droppedFields.join(', ')}.`)
-    if (window.confirm(lines.join('\n\n'))) { onChange(r.schema); onRules(r.rules) }
+    if (await ask(lines.join('\n\n'), { title: 'Remove this type?', tone: 'danger', confirmLabel: 'Remove' })) { onChange(r.schema); onRules(r.rules) }
   }
   return (
     <div className="space-y-4">
@@ -130,7 +131,7 @@ export function PriceRulesEditor({
             <div className="flex gap-2 mt-3">
               <button className={smallBtn} onClick={() => onChange(moveRule(rules, i, -1))} aria-label="Move up"><ArrowUp className="w-3.5 h-3.5" /></button>
               <button className={smallBtn} onClick={() => onChange(moveRule(rules, i, 1))} aria-label="Move down"><ArrowDown className="w-3.5 h-3.5" /></button>
-              <button className={`${smallBtn} ml-auto text-red-600 border-red-200`} onClick={() => { if (window.confirm('Remove this price rule? Orders it matched will fall to a later rule.')) onChange(deleteRule(rules, i)) }}>
+              <button className={`${smallBtn} ml-auto text-red-600 border-red-200`} onClick={async () => { if (await ask('Orders it matched will fall to a later rule.', { title: 'Remove this price rule?', tone: 'danger', confirmLabel: 'Remove' })) onChange(deleteRule(rules, i)) }}>
                 <Trash2 className="inline w-3.5 h-3.5 mr-1" />Remove
               </button>
             </div>

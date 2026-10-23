@@ -4,14 +4,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import CustomerOrOfficer
+from app.core.dependencies import CustomerOrOfficer, DirectorOnly
 from app.models.bill_payment import Biller, BillPaymentRequest, BillerCategory
 from app.models.identity_service import InitiatedBy
 from app.schemas.bill_payment import (
     BillerItem, ValidateBillRequest, ValidateBillResponse,
     PayBillRequest, BillPaymentRequestItem,
 )
-from app.services import bill_payment_service
+from app.services import bill_payment_service, bill_config
+from app.integrations.monnify_bills import get_bills_provider, MonnifyBillsError
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/bill-payments", tags=["bill-payments"])
 
@@ -21,6 +23,73 @@ async def get_categories():
     # Static — matches the fixed BillerCategory enum, not a live Monnify
     # call. Keeps the customer-facing card list instant on load.
     return [c.value for c in BillerCategory]
+
+
+class BillsConfigPatch(BaseModel):
+    airtime_enabled: bool | None = None
+    data_enabled: bool | None = None
+    bills_enabled: bool | None = None
+    data_vtu_enabled: bool | None = None
+    data_standard_enabled: bool | None = None
+    networks: dict[str, bool] | None = None
+    min_airtime_naira: int | None = Field(None, ge=10, le=1_000_000)
+    max_airtime_naira: int | None = Field(None, ge=10, le=1_000_000)
+    notice: str | None = Field(None, max_length=300)
+
+
+class ValidatePhoneRequest(BaseModel):
+    phone: str
+    network: str | None = None
+
+
+@router.get("/config")
+async def public_config(db: AsyncSession = Depends(get_db)):
+    """What the Airtime/Data/Bills screens may offer right now."""
+    return await bill_config.get_bills_config(db)
+
+
+@router.get("/admin/config")
+async def admin_get_config(user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    return await bill_config.get_bills_config(db)
+
+
+@router.put("/admin/config")
+async def admin_put_config(body: BillsConfigPatch, user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    try:
+        cfg = await bill_config.save_bills_config(db, body.model_dump(exclude_none=True), user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await db.commit()
+    return cfg
+
+
+@router.post("/validate-phone")
+async def validate_phone(body: ValidatePhoneRequest, user: CustomerOrOfficer, db: AsyncSession = Depends(get_db)):
+    """Real number check: format, network from prefix, a mismatch against the
+    chosen network, and (best effort) Monnify's own MSISDN validation."""
+    phone = bill_config.normalize_phone(body.phone)
+    if not phone:
+        return {"valid": False, "phone": None, "network": None, "verified": False,
+                "message": "That is not a valid Nigerian mobile number."}
+    detected = bill_config.detect_network(phone)
+    chosen = body.network if body.network in bill_config.NETWORKS else None
+    if chosen and detected and chosen != detected:
+        return {"valid": False, "phone": phone, "network": detected, "verified": False,
+                "message": f"This number looks like a {detected} line, not {chosen}."}
+    net = chosen or detected
+    verified = False
+    message = None
+    if net:
+        billers = await bill_payment_service.get_billers(db, category="airtime")
+        biller = next((b for b in billers if bill_config.network_of_biller_name(b.name) == net), None)
+        if biller:
+            try:
+                await get_bills_provider().validate_customer(product_code=biller.product_id, customer_id=phone)
+                verified = True
+            except MonnifyBillsError as e:
+                if not e.retriable:
+                    return {"valid": False, "phone": phone, "network": net, "verified": False, "message": e.message}
+    return {"valid": True, "phone": phone, "network": net, "verified": verified, "message": message}
 
 
 @router.get("/billers", response_model=list[BillerItem])

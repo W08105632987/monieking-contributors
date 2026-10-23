@@ -23,3 +23,10 @@ async def run_now(staff: DirectorOrAdmin, db: AsyncSession = Depends(get_db)):
     the response itself confirms completion."""
     results = await svc.run_all_checks(db)
     return {"results": results}
+
+
+@router.get("/monnify-readiness")
+async def monnify_readiness(staff: DirectorOrAdmin, db: AsyncSession = Depends(get_db)):
+    """Go-live checklist for Monnify credentials, webhook signing and payouts."""
+    from app.services import monnify_readiness as mr
+    return await mr.run_checks(db)

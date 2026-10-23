@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ask } from '@/lib/dialog'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Pencil, Sliders, X } from 'lucide-react'
@@ -319,12 +320,12 @@ function ServiceRow({
           </span>
           <button
             disabled={liveMutation.isPending}
-            onClick={() => {
+            onClick={async () => {
               const next = !template.live
               const msg = next
                 ? `Switch ${service.name} to the new template form? Customers will see the new form straight away. You can switch back here at any time.`
                 : `Switch ${service.name} back to the original form?`
-              if (window.confirm(msg)) liveMutation.mutate(next)
+              if (await ask(msg, { title: next ? 'Switch to the new form?' : 'Switch back to the original form?' })) liveMutation.mutate(next)
             }}
             className="px-3 py-1 rounded-xl border border-green-200 dark:border-night-500 text-green-800 dark:text-night-100 font-bold disabled:opacity-50"
           >

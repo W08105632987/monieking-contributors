@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { ask } from '@/lib/dialog'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -7,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import { celebrateContribution } from '@/store/celebrate.store'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatDate, MONTH_NAMES, cn, idempotencyKey } from '@/lib/utils'
 import { isBiometricAvailable, getStepUpAssertion } from '@/lib/webauthn'
@@ -118,7 +120,7 @@ export default function OfficerCardDetailPage() {
         '/contributions', { card_id: card.id, amount_kobo: amountKobo },
         { headers: { 'Idempotency-Key': contributeIdemKeyRef.current } },
       )
-      toast.success(`${data.days_added} day(s) added to ${customer ? `${customer.full_name}'s` : "the customer's"} card`)
+      celebrateContribution({ daysAdded: data.days_added, ownerName: customer?.full_name, card: data.card })
 
       // Same fix as the customer side (useCards.ts) — patch every cache
       // that holds this card with the authoritative data the response
@@ -230,7 +232,7 @@ export default function OfficerCardDetailPage() {
 
   const handleConvert = async () => {
     if (!card) return
-    if (!window.confirm('Convert this Food Card to a Regular Card? Food eligibility will be permanently lost. This cannot be undone.')) return
+    if (!(await ask('Food eligibility will be permanently lost. This cannot be undone.', { title: 'Convert to a Regular Card?', tone: 'danger', confirmLabel: 'Convert' }))) return
     setConverting(true)
     try {
       await api.post(`/cards/${cardId}/convert`)

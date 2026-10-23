@@ -165,7 +165,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 from app.api.v1.routes import (
     auth, users, wallets, cards, notifications, admin, withdrawals,
     settings as settings_routes, instant_messages, promo_banners, zones,
-    webauthn as webauthn_routes, disputes, identity_services, bill_payments,
+    webauthn as webauthn_routes, disputes, identity_services, bill_payments, seasonal,
     customer_stats, auth_admin, admin_crm, analytics, system_health,
     food_collections,
     food_ledger,
@@ -204,6 +204,7 @@ app.include_router(webauthn_routes.router, prefix=PREFIX)
 app.include_router(disputes.router,       prefix=PREFIX)
 app.include_router(identity_services.router, prefix=PREFIX)
 app.include_router(bill_payments.router,     prefix=PREFIX)
+app.include_router(seasonal.router,          prefix=PREFIX)
 app.include_router(customer_stats.router,    prefix=PREFIX)
 app.include_router(admin_crm.router,         prefix=PREFIX)
 app.include_router(analytics.router,         prefix=PREFIX)
