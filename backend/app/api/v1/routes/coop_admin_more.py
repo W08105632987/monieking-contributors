@@ -196,7 +196,8 @@ async def requests_vote(request_id: uuid.UUID, body: VoteBody, director: Directo
     if body.decision == "approve":
         req = await db.get(CoopRequest, request_id)
         if req and req.kind in ("final_release", "golive", "dividend_run", "sweep"):
-            await safety.require_step_up(db, rules, director, body.auth, "director")
+            # Directors always confirm these approvals with their PIN.
+            await safety.require_step_up(db, rules, director, body.auth, "director", force=True)
     r = await approvals.vote(db, rules, request_id, director, body.decision, body.note)
     return await approvals.view(db, r, director)
 

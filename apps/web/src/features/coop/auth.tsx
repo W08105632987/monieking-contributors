@@ -4,8 +4,11 @@ import { isBiometricAvailable, getStepUpAssertion } from '@/lib/webauthn'
 import { FEATURE_FLAGS } from '@/config/featureFlags'
 import { BigButton, Field, Sheet, inputCls } from './ui'
 import { setStepUpHandler } from './stepup-bus'
+import { useAuthStore } from '@/store/auth.store'
+import { requestPin } from '@/lib/pin'
 
-export type AuthPayload = { auth_method: 'password' | 'biometric'; withdrawal_password?: string; webauthn_assertion?: object }
+export type AuthPayload = { auth_method: 'password' | 'biometric'; withdrawal_password?: string; pin?: string; webauthn_assertion?: object }
+export type Secret = 'pin' | 'password'
 
 /**
  * Extra confirmation for money actions (rule: "Extra confirmation").
@@ -20,9 +23,19 @@ export function useAuthPrompt() {
   const [bio, setBio] = useState(false)
   const [busy, setBusy] = useState(false)
   const resolver = useRef<((v: AuthPayload | null) => void) | null>(null)
+  const role = useAuthStore((st) => st.user?.role)
+  const isStaff = role === 'director' || role === 'admin'
+  const word = isStaff ? 'PIN' : 'withdrawal password'
 
-  const ask = useCallback(async (needed: boolean): Promise<AuthPayload | null | undefined> => {
+  const ask = useCallback(async (needed: boolean, kind?: Secret): Promise<AuthPayload | null | undefined> => {
     if (!needed) return undefined
+    const r = useAuthStore.getState().user?.role
+    const k: Secret = kind ?? (r === 'director' || r === 'admin' ? 'pin' : 'password')
+    if (k === 'pin') {
+      // The 4-digit payment PIN: asked in the app-wide PIN prompt (which also offers "Set up payment pin" if none yet).
+      const pin = await requestPin({ title: 'Confirm with your PIN', message: 'Enter your 4-digit payment PIN to continue.' })
+      return pin ? { auth_method: 'password', pin } : null
+    }
     setPw('')
     setBio(FEATURE_FLAGS.BIOMETRICS_ENABLED ? await isBiometricAvailable() : false)
     setOpen(true)
@@ -38,9 +51,17 @@ export function useAuthPrompt() {
 
   const sheet: ReactNode = (
     <Sheet open={open} onClose={() => finish(null)} title="Confirm it is you">
-      <p className="mb-3 text-sm text-green-700 dark:text-night-200">This moves money, so please confirm with your withdrawal password{bio ? ' or your fingerprint' : ''}.</p>
+      <p className="mb-3 text-sm text-green-700 dark:text-night-200">This moves money, so please confirm with your {word}{bio ? ' or your fingerprint' : ''}.</p>
       {bio && <div className="mb-3"><BigButton tone="ghost" loading={busy} onClick={useBio}><Fingerprint className="h-4 w-4" />Use fingerprint or face</BigButton></div>}
-      <Field label="Withdrawal password"><input type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} className={inputCls} aria-label="Withdrawal password" /></Field>
+      <Field label={isStaff ? 'Your PIN' : 'Withdrawal password'}>
+        <input
+          type="password" autoComplete="current-password" value={pw} aria-label={isStaff ? 'PIN' : 'Withdrawal password'}
+          inputMode={isStaff ? 'numeric' : undefined} maxLength={isStaff ? 6 : undefined} autoFocus
+          onChange={(e) => setPw(isStaff ? e.target.value.replace(/\D/g, '').slice(0, 6) : e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && pw) finish({ auth_method: 'password', withdrawal_password: pw }) }}
+          className={inputCls}
+        />
+      </Field>
       <div className="mt-4"><BigButton disabled={!pw} onClick={() => finish({ auth_method: 'password', withdrawal_password: pw })}><KeyRound className="h-4 w-4" />Confirm</BigButton></div>
     </Sheet>
   )
@@ -51,7 +72,7 @@ export function useAuthPrompt() {
 export function StepUpHost() {
   const { ask, sheet } = useAuthPrompt()
   useEffect(() => {
-    setStepUpHandler(() => ask(true))
+    setStepUpHandler((kind) => ask(true, kind))
     return () => setStepUpHandler(null)
   }, [ask])
   return <>{sheet}</>

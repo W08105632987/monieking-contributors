@@ -12,6 +12,7 @@ import { FeedbackModalHost } from '@/components/ui/FeedbackModalHost'
 import { CelebrationHost } from '@/components/ui/CelebrationHost'
 import { SeasonalLayer } from '@/components/ui/SeasonalLayer'
 import { DialogHost } from '@/components/ui/DialogHost'
+import { PinHost } from '@/components/ui/PinHost'
 import { DownloadHost } from '@/components/ui/DownloadHost'
 import { initSessionLifecycle } from '@/lib/sessionLifecycle'
 
@@ -28,6 +29,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <App />
           <FeedbackModalHost />
           <DialogHost />
+          <PinHost />
           <DownloadHost />
           <CelebrationHost />
           <SeasonalLayer />

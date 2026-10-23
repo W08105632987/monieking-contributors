@@ -36,6 +36,7 @@ class PayBillRequest(BaseModel):
     amount_kobo: int | None = Field(None, gt=0)
     quantity: int = Field(1, ge=1, le=50)   # education PIN bulk purchases
     validation_reference: str | None = None   # required when the biller's requires_validation is true
+    pin: str | None = None   # the payer's 4-digit payment PIN
 
 
 class BillPaymentRequestItem(BaseModel):

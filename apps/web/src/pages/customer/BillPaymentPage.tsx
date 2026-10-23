@@ -6,6 +6,7 @@ import { formatNaira, cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api'
 import { useWallet } from '@/hooks/useWallet'
 import { motion } from 'framer-motion'
+import { isPinCancelled } from '@/lib/pin'
 import { useBillsConfig, DEFAULT_BILLS_CONFIG, useBillers, useValidateBill, usePayBill } from '@/hooks/useBillPayments'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { PaymentReceipt, type ReceiptField } from '@/components/receipts/PaymentReceipt'
@@ -72,7 +73,7 @@ export default function BillPaymentPage() {
       },
       {
         onSuccess: (req) => { setShowConfirm(false); setCompletedRequest(req) },
-        onError: (e) => toast.error(getErrorMessage(e)),
+        onError: (e) => { if (!isPinCancelled(e)) toast.error(getErrorMessage(e)) },
       },
     )
   }

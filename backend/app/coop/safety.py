@@ -19,6 +19,7 @@ class AuthBody(BaseModel):
     """Same shape the wallet withdrawal uses: the withdrawal password or a fingerprint/face assertion."""
     auth_method: str
     withdrawal_password: Optional[str] = None
+    pin: Optional[str] = None
     webauthn_assertion: Optional[dict] = None
 
 
@@ -27,19 +28,29 @@ def step_up_needed(rules: Rules, level: str) -> bool:
     return mode == "all_money" or (mode == "member_money" and level == "member")
 
 
-async def require_step_up(db: AsyncSession, rules: Rules, user: User, auth: Optional[AuthBody], level: str = "member") -> None:
+async def require_step_up(db: AsyncSession, rules: Rules, user: User, auth: Optional[AuthBody], level: str = "member", force: bool = False, secret: str = "password") -> None:
+    """secret: "password" (the withdrawal password: money leaving the cooperative) or "pin" (the payment PIN: everything else). Directors always use the PIN."""
+    if level == "director":
+        secret = "pin"
     """Raise unless the extra confirmation the rules ask for has been given. level: member | director."""
-    if not step_up_needed(rules, level):
+    if not force and not step_up_needed(rules, level):
         return
     if auth is None:
-        raise CoopError("Please confirm with your withdrawal password or fingerprint", 403, "step_up_required")
+        raise CoopError("Please confirm with your PIN" if secret == "pin" else "Please confirm with your withdrawal password or fingerprint", 403, "step_up_required")
     from fastapi import HTTPException
     try:
         if auth.auth_method == "password":
-            if not auth.withdrawal_password:
-                raise CoopError("Enter your withdrawal password", 403, "step_up_required")
-            from app.services.withdrawal_auth_service import check_withdrawal_password
-            await check_withdrawal_password(db, user, auth.withdrawal_password)
+            if secret == "pin":
+                from app.services.pin_service import check_pin
+                typed = auth.pin or auth.withdrawal_password
+                if not typed:
+                    raise CoopError("Enter your PIN", 403, "step_up_required")
+                await check_pin(db, user, typed)
+            else:
+                if not auth.withdrawal_password:
+                    raise CoopError("Enter your withdrawal password", 403, "step_up_required")
+                from app.services.withdrawal_auth_service import check_withdrawal_password
+                await check_withdrawal_password(db, user, auth.withdrawal_password)
         elif auth.auth_method == "biometric":
             if not auth.webauthn_assertion:
                 raise CoopError("Fingerprint confirmation is needed", 403, "step_up_required")
@@ -48,6 +59,8 @@ async def require_step_up(db: AsyncSession, rules: Rules, user: User, auth: Opti
         else:
             raise CoopError("Choose password or fingerprint to confirm", 403, "step_up_required")
     except HTTPException as e:
+        if e.status_code == 428:
+            raise CoopError(str(e.detail), 428, "setup_required")
         raise CoopError(str(e.detail), 403 if e.status_code < 500 else e.status_code, "step_up_failed")
 
 

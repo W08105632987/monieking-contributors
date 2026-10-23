@@ -19,7 +19,8 @@ class UserBase(BaseModel):
 
 class RegisterCustomerRequest(UserBase):
     password:            str
-    withdrawal_password: str
+    # No longer asked at signup: the withdrawal password and the payment PIN are set after login (setup checklist).
+    withdrawal_password: Optional[str] = None
     bank_name:      str
     bank_code:      Optional[str] = None
     account_number: str
@@ -44,7 +45,9 @@ class RegisterCustomerRequest(UserBase):
 
     @field_validator("withdrawal_password")
     @classmethod
-    def withdrawal_password_strength(cls, v: str) -> str:
+    def withdrawal_password_strength(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
         if len(v) < 8:
             raise ValueError("Withdrawal password must be at least 8 characters")
         if v.isdigit():
@@ -95,6 +98,7 @@ class UserResponse(BaseModel):
     location_consent_status: str
     detected_state: Optional[str]
     has_withdrawal_password: bool = False
+    has_payment_pin: bool = False
     bvn_linked: bool = False
     nin_linked: bool = False
     bvn_last4:  Optional[str] = None
@@ -131,15 +135,16 @@ class UpdateBankDetailsRequest(BaseModel):
     # biometric option below is untouched — that request came scoped
     # to bank details only, not biometrics generally, and the frontend
     # already hides biometric UI everywhere via FEATURE_FLAGS regardless.
-    withdrawal_password: str
+    pin: str   # the 4-digit payment PIN (no longer the withdrawal password)
 
 
 class KycSubmitRequest(BaseModel):
     bvn: Optional[str] = None
     nin: Optional[str] = None
     date_of_birth: Optional[str] = None  # required only when bvn is supplied — ISO "YYYY-MM-DD" from a native date input; converted to Monnify's DD-Mon-YYYY server-side
-    auth_method:         str   # "password" | "biometric"
-    withdrawal_password: Optional[str] = None
+    auth_method:         str = "password"   # "password" (= payment PIN) | "biometric"
+    pin:                 Optional[str] = None
+    withdrawal_password: Optional[str] = None   # legacy name, ignored
     webauthn_assertion:  Optional[dict] = None
 
     @field_validator("bvn", "nin")

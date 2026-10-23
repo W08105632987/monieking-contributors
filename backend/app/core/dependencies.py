@@ -38,7 +38,7 @@ _ENUM_COLUMNS: dict[str, type] = {
 # _CACHE_EXCLUDE) — nothing to reconstruct.
 _DATETIME_COLUMNS = {
     "created_at", "updated_at", "kyc_completed_at",
-    "withdrawal_password_locked_until", "login_locked_until",
+    "withdrawal_password_locked_until", "pin_locked_until", "login_locked_until",
     "login_password_reset_otp_expires_at", "last_contacted_at",
     "two_factor_otp_expires_at", "terms_accepted_at",
 }
@@ -63,7 +63,7 @@ _UUID_COLUMNS = {"id", "zone_id", "created_by", "managing_officer_id"}
 # served from cache (see get_current_user below) — any endpoint that
 # mutates current_user directly fetches its own session-attached copy
 # first, so a cached instance never needs to support being written to.
-_CACHE_EXCLUDE = {"login_password_hash", "withdrawal_password_hash", "webauthn_challenge", "webauthn_challenge_expires_at"}
+_CACHE_EXCLUDE = {"login_password_hash", "withdrawal_password_hash", "payment_pin_hash", "webauthn_challenge", "webauthn_challenge_expires_at"}
 _USER_CACHE_TTL_SECONDS = 30   # staleness window: a role/suspension change can take up to this long to take effect app-wide — acceptable for an MVP, not for a "ban this user right now" screen
 
 

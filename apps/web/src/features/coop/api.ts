@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
-import { askStepUp, isStepUpError } from './stepup-bus'
+import { askStepUp, isStepUpError, stepUpKind } from './stepup-bus'
 
 /* ───────── types (kobo everywhere, same as the backend) ───────── */
 export interface PublicRules {
@@ -196,7 +196,7 @@ async function withAuthRetry<T>(send: (extra?: { auth: object }) => Promise<T>):
     return await send()
   } catch (e) {
     if (!isStepUpError(e)) throw e
-    const auth = await askStepUp()
+    const auth = await askStepUp(stepUpKind(e))
     if (!auth) throw new Error('Cancelled')
     return send({ auth })
   }

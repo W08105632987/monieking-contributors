@@ -28,9 +28,6 @@ const schema = z.object({
   next_of_kin_phone:   z.string().min(10, 'Enter next of kin phone number'),
   password:            z.string().min(8, 'Password must be at least 8 characters'),
   confirm_password:    z.string(),
-  withdrawal_password: z.string()
-    .min(8, 'Withdrawal password must be at least 8 characters')
-    .refine(v => !/^\d+$/.test(v), 'Withdrawal password can\'t be all numbers — add a letter or symbol'),
 }).refine(d => d.password === d.confirm_password, {
   message: 'Passwords do not match',
   path: ['confirm_password'],
@@ -64,7 +61,6 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [showPwd, setShowPwd]             = useState(false)
   const [showConfirm, setShowConfirm]     = useState(false)
-  const [showWithdraw, setShowWithdraw]   = useState(false)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null)
 
@@ -75,7 +71,7 @@ export default function RegisterPage() {
     1: ['full_name', 'phone_number'],
     2: ['bank_name', 'account_number', 'account_name'],
     3: ['next_of_kin_name', 'next_of_kin_phone'],
-    4: ['password', 'confirm_password', 'withdrawal_password'],
+    4: ['password', 'confirm_password'],
   }
 
   const handleNext = async () => {
@@ -151,7 +147,6 @@ export default function RegisterPage() {
           next_of_kin_name:    values.next_of_kin_name,
           next_of_kin_phone:   values.next_of_kin_phone.replace(/\s+/g, ''),
           password:            values.password,
-          withdrawal_password: values.withdrawal_password,
           accepted_terms:      true,
         }, { headers: authHeaders })
       } catch (apiErr: any) {
@@ -356,23 +351,9 @@ export default function RegisterPage() {
                 {errors.confirm_password && <p className="input-error">{errors.confirm_password.message}</p>}
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <label className="input-label text-amber-700">Withdrawal Password</label>
-                <p className="text-xs text-amber-600 mb-3">
-                  Required every time you request a withdrawal. Keep this different from your login password and memorise it.
-                </p>
-                <div className="relative">
-                  <input type={showWithdraw ? 'text' : 'password'}
-                    placeholder="At least 6 characters"
-                    className="input pr-10 border-amber-300 focus:ring-amber-400"
-                    {...register('withdrawal_password')} />
-                  <button type="button" onClick={() => setShowWithdraw(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-400">
-                    {showWithdraw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {errors.withdrawal_password && <p className="input-error">{errors.withdrawal_password.message}</p>}
-              </div>
+              <p className="rounded-xl border border-green-100 bg-green-50 p-3 text-xs text-green-700">
+                After you log in, a short checklist helps you verify your identity and set your payment PIN and withdrawal password.
+              </p>
 
               <label className="flex items-start gap-2.5 pt-1">
                 <input

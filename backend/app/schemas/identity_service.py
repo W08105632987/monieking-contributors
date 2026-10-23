@@ -46,6 +46,7 @@ class IdentityServiceRequestCreate(BaseModel):
     # sensitive fields (id numbers, phone, etc.) before this ever touches
     # the DB. Never log this payload as-is.
     payload: dict
+    pin: str | None = None   # the requester's 4-digit payment PIN
 
 
 class IdentityServiceRequestItem(BaseModel):

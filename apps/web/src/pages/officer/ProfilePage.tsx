@@ -13,6 +13,7 @@ import { api } from '@/lib/api'
 import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
 import { KycSection } from '@/components/settings/KycSection'
+import { PaymentPinRow } from '@/components/setup/PaymentPinRow'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
 import { NotificationSoundRow } from '@/components/settings/NotificationSoundRow'
@@ -316,6 +317,7 @@ export default function OfficerProfilePage() {
             iconColor="text-amber-500 dark:text-amber-300"
             onClick={() => setShowWithdrawSheet(true)}
           />
+          <PaymentPinRow />
           <ChangePasswordSection />
           <BiometricSection />
           <div className="pb-2" />

@@ -13,6 +13,7 @@ import { useAuthStore } from '@/store/auth.store'
 import { api, getErrorMessage } from '@/lib/api'
 import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
+import { PaymentPinRow } from '@/components/setup/PaymentPinRow'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
 import { BankDetailsEditor } from '@/components/settings/BankDetailsEditor'
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
@@ -588,6 +589,7 @@ export default function WorkerProfilePage() {
             iconColor="text-amber-500 dark:text-amber-300"
             onClick={() => setShowWithdrawSheet(true)}
           />
+          <PaymentPinRow />
           <ChangePasswordSection />
           <BiometricSection />
           <div className="pb-2" />

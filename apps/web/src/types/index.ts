@@ -41,6 +41,7 @@ export interface User {
   location_consent_status: 'not_asked' | 'granted' | 'declined'
   detected_state: string | null
   has_withdrawal_password?: boolean
+  has_payment_pin?: boolean
   bvn_linked?: boolean
   nin_linked?: boolean
   bvn_last4?: string | null
@@ -194,7 +195,7 @@ export interface RegisterCustomerForm {
   next_of_kin_name: string
   next_of_kin_phone: string
   password: string
-  withdrawal_password: string
+  withdrawal_password?: string
   face_image?: File
 }
 

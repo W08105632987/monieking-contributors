@@ -10,6 +10,7 @@ import { useBillers, usePayBill, useBillsConfig, usePhoneCheck, DEFAULT_BILLS_CO
 import { NETWORK_THEME, NEUTRAL_THEME } from '@/lib/networkTheme'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { PaymentReceipt, type ReceiptField } from '@/components/receipts/PaymentReceipt'
+import { isPinCancelled } from '@/lib/pin'
 import { PaymentConfirmSheet } from '@/components/payments/PaymentConfirmSheet'
 import { NetworkBadge, ALL_NETWORKS, type NetworkName } from '@/components/NetworkBadge'
 import type { BillPaymentRequest } from '@/types'
@@ -171,7 +172,7 @@ export default function AirtimeDataPage() {
       },
       {
         onSuccess: (req) => { setShowConfirm(false); setCompletedRequest(req) },
-        onError: (e) => toast.error(getErrorMessage(e)),
+        onError: (e) => { if (!isPinCancelled(e)) toast.error(getErrorMessage(e)) },
       },
     )
   }

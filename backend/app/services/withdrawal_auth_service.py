@@ -29,6 +29,7 @@ async def check_withdrawal_password(db: AsyncSession, user: User, plain_password
     """
     user = await db.get(User, user.id)
     now = datetime.now(timezone.utc)
+    label = "withdrawal password"
 
     if user.withdrawal_password_locked_until and user.withdrawal_password_locked_until > now:
         minutes_left = max(1, int((user.withdrawal_password_locked_until - now).total_seconds() / 60))
@@ -38,7 +39,7 @@ async def check_withdrawal_password(db: AsyncSession, user: User, plain_password
         )
 
     if not user.withdrawal_password_hash:
-        raise HTTPException(status_code=400, detail="No withdrawal password set")
+        raise HTTPException(status_code=428, detail="Set up withdrawal password")
 
     if verify_withdrawal_password(plain_password, user.withdrawal_password_hash):
         # Success — clear any prior failed attempts
@@ -64,4 +65,4 @@ async def check_withdrawal_password(db: AsyncSession, user: User, plain_password
     # actually reach MAX_LOGIN_ATTEMPTS (same bug as the login lockout
     # had — see login_service.py for the full explanation).
     await db.commit()
-    raise HTTPException(status_code=401, detail="Incorrect withdrawal password")
+    raise HTTPException(status_code=401, detail=f"Incorrect {label}")

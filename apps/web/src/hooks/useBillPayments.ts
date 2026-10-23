@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { withPin } from '@/lib/pin'
 import { api } from '@/lib/api'
 import type { Biller, BillerCategory, BillValidationResult, BillPaymentRequest } from '@/types'
 
@@ -28,10 +29,13 @@ export function usePayBill(customerId?: string) {
       biller_id: string; customer_reference: string
       amount_kobo?: number | null; quantity?: number; validation_reference?: string | null
     }) => {
-      const { data } = await api.post<BillPaymentRequest>(
-        '/bill-payments/pay', body, { params: customerId ? { customer_id: customerId } : {} },
-      )
-      return data
+      // The person tapping Pay confirms with their own 4-digit PIN (an officer paying for a customer uses the officer's PIN).
+      return withPin(async (pin) => {
+        const { data } = await api.post<BillPaymentRequest>(
+          '/bill-payments/pay', { ...body, pin }, { params: customerId ? { customer_id: customerId } : {} },
+        )
+        return data
+      }, { title: 'Confirm with your PIN', message: 'Enter your 4-digit payment PIN to complete this payment.' })
     },
     onSuccess: () => {
       // Wallet balance changed — same invalidation pattern used by

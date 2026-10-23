@@ -68,7 +68,7 @@ async def _run():
             ("chika", UserRole.CUSTOMER, "Chika Eze", "08033333333", True), ("dayo", UserRole.CUSTOMER, "Dayo Bello", "08044444444", False),
             ("eze", UserRole.CUSTOMER, "Eze Nwa", "08055555555", True),
             ("dir1", UserRole.DIRECTOR, "Director One", "08066666661", True), ("dir2", UserRole.DIRECTOR, "Director Two", "08066666662", True)]:
-            u = User(role=role, full_name=name, phone_number=phone, nin_linked=nin, bank_code="058", bank_name="GTBank",
+            u = User(payment_pin_hash=__import__('app.core.security', fromlist=['x']).hash_withdrawal_password('7391'), role=role, full_name=name, phone_number=phone, nin_linked=nin, bank_code="058", bank_name="GTBank",
                      account_number="0123456789" if key == "ada" else None, account_name="OBI ADA" if key == "ada" else None)
             db.add(u)
             await db.flush()
@@ -86,6 +86,10 @@ async def _run():
     transport = httpx.ASGITransport(app=main_mod.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
         async def call(who, method, path, expect=200, **kw):
+            if path.endswith("/vote") and "/coop/admin/requests/" in path and kw.get("json", {}).get("decision") == "approve":
+                kw["json"] = {**kw["json"], "auth": {"auth_method": "password", "pin": "7391"}}
+            if path == "/pay" and kw.get("json") is not None:
+                kw["json"] = {**kw["json"], "pin": "7391"}
             r = await c.request(method, "/api/v1" + path, headers={"x-test-user": who}, **kw)
             assert r.status_code == expect, f"{who} {method} {path} -> {r.status_code} (wanted {expect}): {r.text[:300]}"
             return r.json()

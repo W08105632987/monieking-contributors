@@ -16,6 +16,7 @@ import { formatNaira, timeAgo } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { Withdrawal, SystemAnalytics } from '@/types'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { SetPinPrompt } from '@/components/director/SetPinPrompt'
 
 function currentMonthValue() {
   const now = new Date()
@@ -186,6 +187,7 @@ export default function DirectorDashboardPage() {
       </header>
 
       <div className="flex-1 overflow-y-auto pb-safe-nav px-4">
+        <SetPinPrompt />
 
         {/* Greeting */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2 mb-4">

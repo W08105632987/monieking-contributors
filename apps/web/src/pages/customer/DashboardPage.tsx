@@ -16,6 +16,7 @@ import { PromoBannerCarousel } from '@/components/dashboard/PromoBannerCarousel'
 import { Badge } from '@/components/ui/Badge'
 import { SkeletonCard, Skeleton } from '@/components/ui/Skeleton'
 import { formatNaira, formatDate, copyToClipboard } from '@/lib/utils'
+import { SetupChecklist } from '@/components/setup/SetupChecklist'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 import { CoopDashboardCard } from '@/features/coop/DashboardCard'
 
@@ -88,6 +89,8 @@ export default function DashboardPage() {
             {user?.full_name.split(' ').slice(0, 2).join(' ')}
           </h1>
         </motion.div>
+
+        <SetupChecklist />
 
         {/* ── Wallet balance card ── */}
         <motion.div

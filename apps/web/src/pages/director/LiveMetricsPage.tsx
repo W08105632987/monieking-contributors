@@ -17,6 +17,7 @@ interface AnalyticsOverview {
 }
 
 const RANGE_OPTIONS = [
+  { value: 'today', label: 'Today' },
   { value: '7d', label: 'Last 7 days' },
   { value: '30d', label: 'Last 30 days' },
   { value: 'all', label: 'All time' },
@@ -36,10 +37,10 @@ function StatCard({ icon: Icon, label, value }: { icon: any; label: string; valu
 
 export default function LiveMetricsPage() {
   const navigate = useNavigate()
-  const [range, setRange] = useState<'7d' | '30d' | 'all'>('7d')
+  const [range, setRange] = useState<'today' | '7d' | '30d' | 'all'>('7d')
 
   const { start_date, end_date } = (() => {
-    if (range === 'all') return { start_date: undefined, end_date: undefined }
+    if (range === 'all' || range === 'today') return { start_date: undefined, end_date: undefined }
     const end = new Date()
     const start = new Date()
     start.setDate(start.getDate() - (range === '7d' ? 6 : 29))
@@ -52,7 +53,18 @@ export default function LiveMetricsPage() {
       const params = new URLSearchParams()
       if (start_date) params.set('start_date', start_date)
       if (end_date) params.set('end_date', end_date)
+      if (range === 'today') params.set('today', 'true')
       return (await api.get<AnalyticsOverview>(`/analytics/overview?${params}`)).data
+    },
+  })
+
+  const { data: visitors } = useQuery({
+    queryKey: ['director-visitors', range],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (range === 'today') params.set('today', 'true')
+      else { if (start_date) params.set('start_date', start_date); if (end_date) params.set('end_date', end_date) }
+      return (await api.get<{ visitors: any[]; registered: number; anonymous: number }>(`/analytics/visitors?${params}`)).data
     },
   })
 
@@ -141,6 +153,26 @@ export default function LiveMetricsPage() {
                   </div>
                 ))}
               </div>
+            </div>
+            <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-600 shadow-card p-4 mt-4">
+              <p className="text-green-900 dark:text-white font-bold text-sm">Who visited</p>
+              <p className="text-[11px] text-green-600 dark:text-night-300 mb-3">
+                {visitors ? `${visitors.registered} signed in · ${visitors.anonymous} not registered` : 'Loading…'}
+              </p>
+              <ul className="divide-y divide-green-100 dark:divide-night-600">
+                {(visitors?.visitors ?? []).map((v) => (
+                  <li key={v.session_id + v.last_seen} className="py-2 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className={cn('text-sm font-semibold truncate', v.registered ? 'text-green-900 dark:text-white' : 'text-green-500 dark:text-night-300')}>{v.name}</p>
+                      <p className="text-[11px] text-green-600 dark:text-night-300 truncate">
+                        {v.registered ? `${v.phone_number ?? ''} · ${String(v.role).replace('_', ' ')}` : 'Visitor'} · {v.events} actions
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-green-600 dark:text-night-300 flex-shrink-0">{new Date(v.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </li>
+                ))}
+                {visitors && visitors.visitors.length === 0 && <li className="py-3 text-sm text-green-600 dark:text-night-300">No visitors in this period.</li>}
+              </ul>
             </div>
           </>
         )}

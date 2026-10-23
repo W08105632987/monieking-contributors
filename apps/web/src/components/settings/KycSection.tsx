@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
-import { ShieldCheck, Eye, EyeOff, Fingerprint, CreditCard, X, Calendar } from 'lucide-react'
+import { useState } from 'react'
+import { ShieldCheck, CreditCard, X, Calendar } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
-import { isBiometricAvailable, getStepUpAssertion } from '@/lib/webauthn'
-import { FEATURE_FLAGS } from '@/config/featureFlags'
+import { withPin, isPinCancelled } from '@/lib/pin'
 
 interface KycSectionProps {
   bvnLinked: boolean
@@ -16,7 +15,7 @@ interface KycSectionProps {
 }
 
 export function KycSection({ bvnLinked, ninLinked, bvnLast4, ninLast4, hasVirtualAccount, onVerified, isLast = false }: KycSectionProps & { isLast?: boolean }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('kyc') === '1')
   const tier = bvnLinked && ninLinked ? 'Full' : (bvnLinked || ninLinked) ? 'Basic' : 'Not verified'
   const tierColor = tier === 'Full'
     ? 'text-green-600 dark:text-green-300 bg-green-50 dark:bg-green-500/10'
@@ -69,14 +68,8 @@ function KycSheet({ bvnLinked, ninLinked, bvnLast4, ninLast4, hasVirtualAccount,
   const [bvn, setBvn]             = useState('')
   const [nin, setNin]             = useState('')
   const [dob, setDob]             = useState('')
-  const [password, setPassword]   = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [bioAvailable, setBioAvailable] = useState(false)
-  const [bioLoading, setBioLoading]     = useState(false)
   const [saving, setSaving]             = useState(false)
-  const autoPromptedRef = useRef(false)
 
-  useEffect(() => { if (FEATURE_FLAGS.BIOMETRICS_ENABLED) isBiometricAvailable().then(setBioAvailable) }, [])
 
   const bvnReady = bvn.length === 11 && !bvnLinked
   const ninReady = nin.length === 11 && !ninLinked
@@ -85,43 +78,23 @@ function KycSheet({ bvnLinked, ninLinked, bvnLast4, ninLast4, hasVirtualAccount,
 
   const submitWithPassword = async () => {
     if (!canSubmit) return toast.error(!dobReady ? 'Enter your date of birth' : 'Enter your 11-digit BVN and/or NIN')
-    if (!password) return toast.error('Enter your withdrawal password')
-    await submit({ withdrawal_password: password, auth_method: 'password' })
-  }
-
-  const submitWithBiometric = async (silent = false) => {
-    if (!canSubmit) return
-    setBioLoading(true)
-    try {
-      const assertion = await getStepUpAssertion()
-      await submit({ webauthn_assertion: assertion, auth_method: 'biometric' })
-    } catch (err) {
-      // Silent = auto-triggered the moment the password field was
-      // focused — a dismissed/failed prompt there just falls back to
-      // typing the password, no error toast. Only the explicit
-      // fingerprint-icon tap shows one.
-      if (!silent) toast.error(getErrorMessage(err))
-    } finally {
-      setBioLoading(false)
-    }
-  }
-
-  const handlePasswordFocus = () => {
-    if (autoPromptedRef.current) return
-    if (!bioAvailable || !canSubmit) return
-    autoPromptedRef.current = true
-    submitWithBiometric(true)
+    await submit({ auth_method: 'password' })
   }
 
   const submit = async (authPayload: Record<string, any>) => {
     setSaving(true)
     try {
-      await api.post('/wallets/me/submit-kyc', {
+      const body = {
         bvn: bvnReady ? bvn : undefined,
         nin: ninReady ? nin : undefined,
         date_of_birth: bvnReady ? dob : undefined,
         ...authPayload,
-      })
+      }
+      if (authPayload.auth_method === 'password') {
+        await withPin((pin) => api.post('/wallets/me/submit-kyc', { ...body, pin }), { title: 'Confirm with your PIN', message: 'Enter your 4-digit payment PIN to verify your identity.' })
+      } else {
+        await api.post('/wallets/me/submit-kyc', body)
+      }
       toast.success(hasVirtualAccount ? 'Identity verification updated' : 'Verified — your account number is ready ✓')
       onVerified({
         bvnLinked: bvnLinked || bvnReady,
@@ -131,7 +104,7 @@ function KycSheet({ bvnLinked, ninLinked, bvnLast4, ninLast4, hasVirtualAccount,
       })
       onClose()
     } catch (e) {
-      toast.error(getErrorMessage(e))
+      if (!isPinCancelled(e)) toast.error(getErrorMessage(e))
     } finally {
       setSaving(false)
     }
@@ -209,40 +182,15 @@ function KycSheet({ bvnLinked, ninLinked, bvnLast4, ninLast4, hasVirtualAccount,
           <>
             <div className="flex items-center gap-2 bg-green-50 dark:bg-night-600 rounded-xl px-3 py-2.5 mb-4">
               <ShieldCheck className="w-4 h-4 text-green-600 dark:text-green-300 flex-shrink-0" />
-              <p className="text-green-900 dark:text-white text-xs">Confirm with your withdrawal password or fingerprint to continue</p>
-            </div>
-
-            <div className="relative mb-4">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                onFocus={handlePasswordFocus}
-                placeholder="Withdrawal password"
-                className="w-full border border-green-200 dark:border-night-500 bg-white dark:bg-night-800 rounded-xl pl-4 pr-16 py-2.5 text-sm text-green-900 dark:text-white"
-              />
-              {bioAvailable && (
-                <button
-                  type="button"
-                  onClick={() => submitWithBiometric(false)}
-                  disabled={bioLoading}
-                  aria-label="Confirm with fingerprint"
-                  className="absolute right-9 top-1/2 -translate-y-1/2 text-green-600 dark:text-night-200 disabled:opacity-40"
-                >
-                  <Fingerprint className={`w-4 h-4 ${bioLoading ? 'animate-pulse' : ''}`} />
-                </button>
-              )}
-              <button onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-green-400 dark:text-night-300">
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+              <p className="text-green-900 dark:text-white text-xs">You will confirm with your 4-digit payment PIN</p>
             </div>
 
             <button
               onClick={submitWithPassword}
-              disabled={saving || bioLoading || !canSubmit}
+              disabled={saving || !canSubmit}
               className="w-full bg-green-900 dark:bg-copper-400 text-white dark:text-green-950 font-bold text-sm rounded-full py-3.5 disabled:opacity-40"
             >
-              {saving ? 'Verifying…' : bioLoading ? 'Confirm with fingerprint…' : 'Verify & activate'}
+              {saving ? 'Verifying…' : 'Verify & activate'}
             </button>
           </>
         )}

@@ -322,7 +322,7 @@ async def invite(loan_id: uuid.UUID, body: InviteBody, user: CurrentUser, rules:
 async def repay(loan_id: uuid.UUID, body: RepayBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db),
                 idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     async def run():
-        await safety.require_step_up(db, rules, user, body.auth, "member")
+        await safety.require_step_up(db, rules, user, body.auth, "member", secret="pin")
         res = await service.repay(db, rules, loan_id, user, body.amount_kobo, body.source)
         loan = await db.get(CoopLoan, loan_id)
         return {**res, "loan": await _loan_detail(db, rules, loan)}
@@ -333,7 +333,7 @@ async def repay(loan_id: uuid.UUID, body: RepayBody, user: CurrentUser, rules: R
 async def accept_offer(loan_id: uuid.UUID, body: AuthOnly, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db),
                        idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")):
     async def run():
-        await safety.require_step_up(db, rules, user, body.auth, "member")
+        await safety.require_step_up(db, rules, user, body.auth, "member", secret="pin")
         loan = await service.accept_offer(db, rules, loan_id, user)
         return await _loan_detail(db, rules, loan)
     return await safety.idempotent(db, user, idempotency_key, "accept", run)

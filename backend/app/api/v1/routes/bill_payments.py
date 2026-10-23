@@ -123,6 +123,9 @@ async def pay(
     if is_officer and not customer_id:
         raise HTTPException(status_code=400, detail="customer_id is required when an officer submits on a customer's behalf")
 
+    from app.services.pin_service import check_pin
+    await check_pin(db, user, body.pin)   # the person tapping Pay confirms with their own PIN
+
     try:
         request = await bill_payment_service.pay_bill(
             db,

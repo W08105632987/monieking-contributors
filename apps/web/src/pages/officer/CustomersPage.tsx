@@ -372,7 +372,6 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
       await api.post('/users/customers', {
         ...form,
         password:            form.phone_number,
-        withdrawal_password: `${form.phone_number}MK`,
         // The backend requires this on every registration (self-signup
         // included) — it was never being sent here at all, which is
         // exactly the "field required" 422 you were hitting. An
@@ -444,7 +443,7 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
         <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-3 mb-5">
           <p className="text-amber-700 dark:text-amber-300 text-xs font-semibold">ℹ️ Note</p>
           <p className="text-amber-600 dark:text-amber-300 text-xs mt-0.5 leading-relaxed">
-            The customer's default login password will be their phone number. default withdrawal pin will be the same phone number but with MK appended.
+            The customer's default login password will be their phone number. They set their own payment PIN and withdrawal password after they first log in.
             They can change it after their first login.
           </p>
         </div>

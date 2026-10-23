@@ -111,6 +111,9 @@ const DisputeDetailPage  = lazy(() => import('@/pages/disputes/DisputeDetailPage
 const VerifyLookupPage          = lazy(() => import('@/pages/customer/VerifyLookupPage'))
 const DirectorVerificationSettings = lazy(() => import('@/pages/director/VerificationSettingsPage'))
 const DirectorProviderServices = lazy(() => import('@/pages/director/ProviderServicesPage'))
+const DirectorCleanup = lazy(() => import('@/pages/director/CleanupCentrePage'))
+const DirectorZonal = lazy(() => import('@/pages/director/ZonalCustomersPage'))
+const DirectorSetPin = lazy(() => import('@/pages/director/SetPinPage'))
 const DirectorSeasonal = lazy(() => import('@/pages/director/SeasonalThemesPage'))
 const DirectorBillsControl = lazy(() => import('@/pages/director/BillsControlPage'))
 const ServiceHistoryPage        = lazy(() => import('@/pages/customer/ServiceHistoryPage'))
@@ -365,6 +368,9 @@ export default function App() {
             <Route path="/director/customers/:customerId" element={<AuthGuard allowedRoles={['director']}><DirectorCustomerDetail /></AuthGuard>} />
             <Route path="/director/settings"        element={<AuthGuard allowedRoles={['director']}><DirectorSettings /></AuthGuard>} />
             <Route path="/director/verification" element={<AuthGuard allowedRoles={['director']}><DirectorVerificationSettings /></AuthGuard>} />
+            <Route path="/director/cleanup" element={<AuthGuard allowedRoles={['director']}><DirectorCleanup /></AuthGuard>} />
+            <Route path="/director/zonal-customers" element={<AuthGuard allowedRoles={['director']}><DirectorZonal /></AuthGuard>} />
+            <Route path="/director/set-pin" element={<AuthGuard allowedRoles={['director']}><DirectorSetPin /></AuthGuard>} />
             <Route path="/director/seasonal" element={<AuthGuard allowedRoles={['director']}><DirectorSeasonal /></AuthGuard>} />
             <Route path="/director/bills-control" element={<AuthGuard allowedRoles={['director']}><DirectorBillsControl /></AuthGuard>} />
             <Route path="/director/provider-services" element={<AuthGuard allowedRoles={['director']}><DirectorProviderServices /></AuthGuard>} />
