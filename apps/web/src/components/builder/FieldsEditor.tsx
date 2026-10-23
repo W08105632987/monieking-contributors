@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ask } from '@/lib/dialog'
 import { ArrowUp, ArrowDown, Trash2, ChevronDown, ChevronUp, Lock, Plus } from 'lucide-react'
 import type { TemplateField, TemplateSchema, VisibilityRule } from '@/lib/templateRules'
 import {
@@ -190,12 +191,12 @@ export function FieldsEditor({
   const [newLabel, setNewLabel] = useState('')
   const [newType, setNewType] = useState<TemplateField['type']>('text')
 
-  const remove = (key: string) => {
+  const remove = async (key: string) => {
     const deps = dependents(schema, key)
     const f = schema.fields.find((x) => x.key === key)
     const msg = `Remove "${f?.label}"? New orders won't ask for it; older orders keep their answers.` +
       (deps.length ? `\n\n${deps.join(', ')} only show when this field has a value, so they will always be visible afterwards.` : '')
-    if (window.confirm(msg)) onChange(removeField(schema, key))
+    if (await ask(msg, { title: 'Remove this field?', tone: 'danger', confirmLabel: 'Remove' })) onChange(removeField(schema, key))
   }
 
   // group consecutive fields by section for display

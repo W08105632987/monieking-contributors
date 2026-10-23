@@ -12,6 +12,7 @@ from app.services.wallet_service import get_or_create_wallet, debit_wallet
 from app.integrations.monnify_bills import get_bills_provider, MonnifyBillsError
 from app.core.security import generate_reference
 from app.utils.audit import log_action
+from app.services import bill_config
 
 
 def _mask(value: str) -> str:
@@ -172,6 +173,39 @@ async def validate_bill(
     }
 
 
+async def _enforce_director_rules(db: AsyncSession, biller: Biller, customer_reference: str, amount_kobo: int | None) -> None:
+    """Server-side enforcement of the director's switches — the app hides
+    things too, but only this check is authoritative."""
+    cfg = await bill_config.get_bills_config(db)
+    cat = biller.category
+    if cat == BillerCategory.AIRTIME and not cfg["airtime_enabled"]:
+        raise ValueError("Airtime purchases are temporarily unavailable.")
+    if cat == BillerCategory.DATA:
+        if not cfg["data_enabled"]:
+            raise ValueError("Data purchases are temporarily unavailable.")
+        vtu = bill_config.is_vtu_plan(biller.product_name, biller.name)
+        if vtu and not cfg["data_vtu_enabled"]:
+            raise ValueError("VTU data is temporarily unavailable.")
+        if not vtu and not cfg["data_standard_enabled"]:
+            raise ValueError("Standard data is temporarily unavailable.")
+    if cat in (BillerCategory.ELECTRICITY, BillerCategory.CABLE_TV) and not cfg["bills_enabled"]:
+        raise ValueError("Bill payments are temporarily unavailable.")
+    if cat in (BillerCategory.AIRTIME, BillerCategory.DATA):
+        net = bill_config.network_of_biller_name(biller.name)
+        if net and not cfg["networks"].get(net, True):
+            raise ValueError(f"{net} purchases are temporarily unavailable.")
+        phone = bill_config.normalize_phone(customer_reference)
+        if not phone:
+            raise ValueError("Enter a valid Nigerian phone number.")
+        detected = bill_config.detect_network(phone)
+        if net and detected and detected != net:
+            raise ValueError(f"This number looks like a {detected} line, not {net}. Check the network.")
+    if cat == BillerCategory.AIRTIME and amount_kobo:
+        naira = amount_kobo / 100
+        if naira < cfg["min_airtime_naira"] or naira > cfg["max_airtime_naira"]:
+            raise ValueError(f"Airtime must be between ₦{cfg['min_airtime_naira']:,} and ₦{cfg['max_airtime_naira']:,}.")
+
+
 async def pay_bill(
     db: AsyncSession, *,
     customer_id: uuid.UUID,
@@ -186,6 +220,8 @@ async def pay_bill(
     biller = await db.get(Biller, biller_id)
     if not biller or not biller.is_active:
         raise ValueError("Biller not found or unavailable")
+
+    await _enforce_director_rules(db, biller, customer_reference, amount_kobo)
 
     if biller.requires_validation and not validation_reference:
         raise ValueError("This biller requires validation before payment — call /bill-payments/validate first.")

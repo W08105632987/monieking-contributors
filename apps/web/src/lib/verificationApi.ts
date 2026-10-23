@@ -1,4 +1,5 @@
 import { api } from '@/lib/api'
+import { downloadFromApi, personFileName } from '@/lib/download'
 import type { Lookup, SlipTier, VerifyKind, VerifyMethod, VerifyStatus } from '@/lib/verification'
 
 // A paid provider call can take longer than the app's default 20s timeout.
@@ -17,22 +18,10 @@ export const getLookup = async (id: string) => (await api.get<Lookup>(`/verifica
 export const buySlip = async (id: string, tier: SlipTier) =>
   (await api.post<{ tier: SlipTier; already_owned: boolean; price_kobo: number }>(`/verifications/lookups/${id}/slips`, { tier }, LONG)).data
 
-async function saveBlob(path: string, filename: string, params?: Record<string, unknown>) {
-  const res = await api.get<Blob>(path, { responseType: 'blob', params, ...LONG })
-  const url = URL.createObjectURL(res.data)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 10_000)
-}
-
-export const downloadSheet = (id: string, reveal: boolean) =>
-  saveBlob(`/verifications/lookups/${id}/sheet.pdf`, 'monieking-verification-sheet.pdf', { reveal })
-export const downloadSlip = (id: string, tier: SlipTier) =>
-  saveBlob(`/verifications/lookups/${id}/slips/${tier}/pdf`, `monieking-${tier}-slip.pdf`)
+export const downloadSheet = (id: string, reveal: boolean, kind: VerifyKind, person?: string | null) =>
+  downloadFromApi(`/verifications/lookups/${id}/sheet.pdf`, personFileName(`${kind.toUpperCase()} Slip`, person), { params: { reveal }, label: 'Preparing your slip' })
+export const downloadSlip = (id: string, tier: SlipTier, kind: VerifyKind, person?: string | null) =>
+  downloadFromApi(`/verifications/lookups/${id}/slips/${tier}/pdf`, personFileName(`${kind.toUpperCase()} ${tier[0].toUpperCase()}${tier.slice(1)} Slip`, person), { label: 'Preparing your slip' })
 
 export const adminGetSettings = async () => (await api.get('/verifications/admin/settings')).data
 export const adminPutSettings = async (patch: Record<string, unknown>) => (await api.put('/verifications/admin/settings', patch)).data

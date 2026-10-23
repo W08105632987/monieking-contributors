@@ -42,7 +42,7 @@ export function AboutMonieKingModal({ open, onClose }: AboutMonieKingModalProps)
           >
             <X className="w-4 h-4 text-green-900 dark:text-white" />
           </button>
-          <OnboardingScreen />
+          <OnboardingScreen onFinish={onClose} />
         </motion.div>
       )}
     </AnimatePresence>

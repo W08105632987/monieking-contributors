@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ask } from '@/lib/dialog'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -139,8 +140,8 @@ export default function FoodOversightPage() {
 
         {stats && stats.total_not_collected > 0 && (
           <button
-            onClick={() => {
-              if (window.confirm(`Send the pickup reminder to all ${stats.total_not_collected} qualified customers who have not collected yet?`)) pingAllMutation.mutate()
+            onClick={async () => {
+              if (await ask(`Send the pickup reminder to all ${stats.total_not_collected} qualified customers who have not collected yet?`, { title: 'Ping everyone?', confirmLabel: 'Send reminders' })) pingAllMutation.mutate()
             }}
             disabled={pingAllMutation.isPending}
             className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm py-3 rounded-xl active:scale-95 transition-all disabled:opacity-60"
@@ -208,7 +209,7 @@ export default function FoodOversightPage() {
                     <span className="text-green-900 dark:text-white font-semibold">{item.name}</span>
                   </span>
                   <button
-                    onClick={() => toggleItemMutation.mutate({ id: item.id, is_active: !item.is_active })}
+                    disabled={toggleItemMutation.isPending} onClick={() => toggleItemMutation.mutate({ id: item.id, is_active: !item.is_active })}
                     className="text-green-500 dark:text-night-200 text-xs font-bold shrink-0"
                   >
                     {item.is_active ? 'Deactivate' : 'Activate'}

@@ -1,4 +1,5 @@
 import { ArrowDownToLine } from 'lucide-react'
+import { ask } from '@/lib/dialog'
 import { formatNaira } from '@/lib/utils'
 import { post, useCoopAction, useCoopQ, type WithdrawalRow } from '../api'
 import { Card, CoopPage, Empty, Pill, Skel, dShort } from '../ui'
@@ -24,7 +25,7 @@ export default function WithdrawalsPage() {
             {w.account && <p className="text-xs text-green-600 dark:text-night-300">To {w.account.account_name} · {w.account.bank_name} {w.account.account_number}</p>}
             {w.status === 'pending' && (<>
               <p className="mt-2 rounded-xl bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">Waiting for a director to send the money. It stays set aside for you.</p>
-              <button onClick={() => { if (window.confirm('Cancel this request? The money returns to your contribution.')) cancel.mutate(w.id) }} className="mt-2 text-xs font-bold text-red-600 underline">Cancel request</button></>)}
+              <button onClick={async () => { if (await ask('The money returns to your contribution.', { title: 'Cancel this request?', tone: 'danger', confirmLabel: 'Yes, cancel it', cancelLabel: 'Keep it' })) cancel.mutate(w.id) }} className="mt-2 text-xs font-bold text-red-600 underline">Cancel request</button></>)}
             {w.status === 'paid' && <p className="mt-2 text-xs font-semibold text-green-700 dark:text-green-300">Paid {w.decided_at ? dShort(w.decided_at) : ''}{w.reference ? ` · ref ${w.reference}` : ''}</p>}
             {w.status === 'rejected' && <p className="mt-2 rounded-xl bg-red-50 p-2 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-300">Not paid: {w.reason}. The money is back in your contribution.</p>}
           </Card>) }} />

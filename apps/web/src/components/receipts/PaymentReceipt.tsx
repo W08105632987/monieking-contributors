@@ -43,7 +43,7 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
 
   const meta = statusMeta[status]
   const StatusIcon = meta.icon
-  const filenameSafe = `MonieKing-Receipt-${reference}`
+  const filenameSafe = `MonieKing Receipt ${reference}`
 
   async function handleShare() {
     if (!receiptRef.current || busy) return
@@ -65,7 +65,6 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
     try {
       if (format === 'png') await exportReceiptAsPng(receiptRef.current, filenameSafe)
       else await exportReceiptAsPdf(receiptRef.current, filenameSafe)
-      toast.success(`Receipt saved as ${format.toUpperCase()}`)
     } catch {
       toast.error('Could not export receipt. Please try again.')
     } finally {

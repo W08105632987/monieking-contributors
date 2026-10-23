@@ -358,7 +358,11 @@ class MonnifyProvider(BasePaymentProvider):
         if not signature:
             return False
 
-        secret = settings.MONNIFY_WEBHOOK_SECRET
+        # Monnify signs notifications with your Client SECRET KEY — there is no
+        # separate "webhook secret" in their dashboard. If MONNIFY_WEBHOOK_SECRET
+        # was left blank, fall back to the secret key instead of verifying
+        # against an empty key (which would reject every live payment).
+        secret = settings.MONNIFY_WEBHOOK_SECRET or settings.MONNIFY_SECRET_KEY
 
         hmac_sig = hmac.new(secret.encode(), payload, hashlib.sha512).hexdigest()
         if hmac.compare_digest(hmac_sig.lower(), signature.lower()):

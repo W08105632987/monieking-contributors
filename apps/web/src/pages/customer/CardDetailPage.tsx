@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ask } from '@/lib/dialog'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Plus, ArrowUpRight, RotateCcw, Lock, Calendar, TrendingUp, Clock, XCircle, Eye, EyeOff } from 'lucide-react'
@@ -65,7 +66,7 @@ export default function CardDetailPage() {
   })
 
   const handleConvert = async () => {
-    if (!window.confirm('Convert this Food Card to a Regular Card? You will permanently lose food eligibility. This cannot be undone.')) return
+    if (!(await ask('You will permanently lose food eligibility. This cannot be undone.', { title: 'Convert to a Regular Card?', tone: 'danger', confirmLabel: 'Convert' }))) return
     setConverting(true)
     try {
       await api.post(`/cards/${cardId}/convert`)

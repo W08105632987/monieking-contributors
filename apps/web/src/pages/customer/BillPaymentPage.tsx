@@ -5,7 +5,8 @@ import { ArrowLeft, Zap, Tv, CheckCircle2 } from 'lucide-react'
 import { formatNaira, cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api'
 import { useWallet } from '@/hooks/useWallet'
-import { useBillers, useValidateBill, usePayBill } from '@/hooks/useBillPayments'
+import { motion } from 'framer-motion'
+import { useBillsConfig, DEFAULT_BILLS_CONFIG, useBillers, useValidateBill, usePayBill } from '@/hooks/useBillPayments'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { PaymentReceipt, type ReceiptField } from '@/components/receipts/PaymentReceipt'
 import { PaymentConfirmSheet } from '@/components/payments/PaymentConfirmSheet'
@@ -26,6 +27,8 @@ export default function BillPaymentPage() {
   const [completedRequest, setCompletedRequest] = useState<BillPaymentRequest | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
 
+  const { data: cfgData } = useBillsConfig()
+  const cfg = cfgData ?? DEFAULT_BILLS_CONFIG
   const { data: billers = [], isLoading, isError, refetch, isFetching } = useBillers(subCategory)
   const selectedBiller: Biller | undefined = billers.find(b => b.id === billerId)
 
@@ -48,7 +51,7 @@ export default function BillPaymentPage() {
   }
 
   const validated = validateMutation.data
-  const canPay = selectedBiller && customerReference.length >= 5 && validated?.validated_account_name &&
+  const canPay = cfg.bills_enabled && selectedBiller && customerReference.length >= 5 && validated?.validated_account_name &&
     (subCategory === 'cable_tv' || (typeof amountNaira === 'number' && amountNaira >= 500))
 
   function handlePay() {
@@ -103,6 +106,13 @@ export default function BillPaymentPage() {
           </div>
         )}
 
+        {cfg.notice && (
+          <p className="mt-2 mb-3 rounded-2xl bg-white dark:bg-night-700 border border-amber-300/60 px-4 py-3 text-xs font-semibold text-amber-800 dark:text-amber-200">{cfg.notice}</p>
+        )}
+        {!cfg.bills_enabled && (
+          <p className="mt-2 mb-3 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 dark:text-red-200">Bill payments are paused right now. Please check back soon.</p>
+        )}
+
         {/* Electricity / Cable TV toggle */}
         <div className="flex bg-white dark:bg-night-700 rounded-2xl p-1 mt-2 mb-5 border border-green-100 dark:border-night-500">
           {([
@@ -113,11 +123,12 @@ export default function BillPaymentPage() {
               key={key}
               onClick={() => { setSubCategory(key); setBillerId(null); setCustomerReference(''); resetValidation() }}
               className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold transition-colors',
-                subCategory === key ? 'bg-green-900 text-white' : 'text-green-600 dark:text-night-300',
+                'relative flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold transition-colors',
+                subCategory === key ? 'text-white' : 'text-green-700 dark:text-night-300',
               )}
             >
-              <Icon className="w-4 h-4" /> {label}
+              {subCategory === key && <motion.span layoutId="bill-tab" className="absolute inset-0 rounded-xl bg-green-900" transition={{ type: 'spring', stiffness: 380, damping: 32 }} />}
+              <span className="relative flex items-center gap-1.5"><Icon className="w-4 h-4" /> {label}</span>
             </button>
           ))}
         </div>

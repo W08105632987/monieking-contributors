@@ -82,7 +82,7 @@ export default function SettingsTab() {
                         <div className="mt-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
                           <p className="font-bold">Proposed: {showValue({ ...s, value: s.pending.new_value })} · {s.pending.approvals} of {s.pending.needed} approvals</p>
                           {s.pending.reason && <p>"{s.pending.reason}"</p>}
-                          {!s.pending.you_voted && <div className="mt-2 flex gap-2"><button onClick={() => vote.mutate({ id: s.pending!.id, decision: 'approve' })} className="rounded-lg bg-green-700 px-3 py-1.5 font-bold text-white">Approve</button><button onClick={() => vote.mutate({ id: s.pending!.id, decision: 'reject' })} className="rounded-lg border border-amber-400 px-3 py-1.5 font-bold">Reject</button></div>}</div>)}
+                          {!s.pending.you_voted && <div className="mt-2 flex gap-2"><button disabled={vote.isPending} onClick={() => vote.mutate({ id: s.pending!.id, decision: 'approve' })} className="rounded-lg bg-green-700 px-3 py-1.5 font-bold text-white">Approve</button><button disabled={vote.isPending} onClick={() => vote.mutate({ id: s.pending!.id, decision: 'reject' })} className="rounded-lg border border-amber-400 px-3 py-1.5 font-bold">Reject</button></div>}</div>)}
                       {s.scheduled && <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-blue-50 p-2 text-xs font-bold text-blue-800 dark:bg-blue-500/10 dark:text-blue-200"><CalendarClock className="h-3.5 w-3.5" />Becomes {showValue({ ...s, value: s.scheduled.new_value })} on {s.scheduled.effective_on ? dShort(s.scheduled.effective_on) : 'the next year'}</p>}
                       {s.key === 'approvals_dividend' && dirs && (
                         <div className="mt-3">
@@ -93,7 +93,7 @@ export default function SettingsTab() {
                               <p className="font-bold">Proposed accountant: {acc.new_name} · {acc.approvals} of {acc.needed} approvals</p>
                               {acc.you_voted
                                 ? <p className="mt-1">You have voted. Another director must approve before this takes effect.</p>
-                                : <div className="mt-2 flex gap-2"><button onClick={() => vote.mutate({ id: acc.id, decision: 'approve' })} className="rounded-lg bg-green-700 px-3 py-1.5 font-bold text-white">Approve</button><button onClick={() => vote.mutate({ id: acc.id, decision: 'reject' })} className="rounded-lg border border-amber-400 px-3 py-1.5 font-bold">Reject</button></div>}
+                                : <div className="mt-2 flex gap-2"><button disabled={vote.isPending} onClick={() => vote.mutate({ id: acc.id, decision: 'approve' })} className="rounded-lg bg-green-700 px-3 py-1.5 font-bold text-white">Approve</button><button disabled={vote.isPending} onClick={() => vote.mutate({ id: acc.id, decision: 'reject' })} className="rounded-lg border border-amber-400 px-3 py-1.5 font-bold">Reject</button></div>}
                             </div>)}
                         </div>)}
                     </div>))}

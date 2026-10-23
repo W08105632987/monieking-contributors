@@ -45,3 +45,47 @@ export function usePayBill(customerId?: string) {
     },
   })
 }
+
+export interface BillsConfig {
+  airtime_enabled: boolean
+  data_enabled: boolean
+  bills_enabled: boolean
+  data_vtu_enabled: boolean
+  data_standard_enabled: boolean
+  networks: Record<string, boolean>
+  min_airtime_naira: number
+  max_airtime_naira: number
+  notice: string
+}
+
+export const DEFAULT_BILLS_CONFIG: BillsConfig = {
+  airtime_enabled: true, data_enabled: true, bills_enabled: true,
+  data_vtu_enabled: true, data_standard_enabled: true,
+  networks: { MTN: true, Airtel: true, Glo: true, '9mobile': true },
+  min_airtime_naira: 50, max_airtime_naira: 50000, notice: '',
+}
+
+export function useBillsConfig() {
+  return useQuery({
+    queryKey: ['bills-config'],
+    staleTime: 60_000,
+    queryFn: async () => (await api.get<BillsConfig>('/bill-payments/config')).data,
+  })
+}
+
+export function useUpdateBillsConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (patch: Partial<BillsConfig>) => (await api.put<BillsConfig>('/bill-payments/admin/config', patch)).data,
+    onSuccess: (data) => { qc.setQueryData(['bills-config'], data) },
+  })
+}
+
+export interface PhoneCheck { valid: boolean; phone: string | null; network: string | null; verified: boolean; message: string | null }
+
+export function usePhoneCheck() {
+  return useMutation({
+    mutationFn: async (body: { phone: string; network?: string | null }) =>
+      (await api.post<PhoneCheck>('/bill-payments/validate-phone', body)).data,
+  })
+}

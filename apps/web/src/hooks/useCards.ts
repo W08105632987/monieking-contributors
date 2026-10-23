@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { getErrorMessage } from '@/lib/api'
+import { celebrateContribution } from '@/store/celebrate.store'
 import { showFeedback } from '@/store/feedback.store'
 import type { ContributionCard, CreateCardForm, ContributeForm, CardGrid, Wallet } from '@/types'
 
@@ -41,7 +42,7 @@ export function useCards() {
   const contribute = useMutation({
     mutationFn: (form: ContributeForm) => api.post<ContributeResponse>('/contributions', form),
     onSuccess: async ({ data }, form) => {
-      showFeedback.success('Contribution recorded!')
+      celebrateContribution({ daysAdded: data.days_added, card: data.card })
 
       // The backend now returns the authoritative updated card and
       // wallet balance directly in this response — patch the caches

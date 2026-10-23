@@ -1,5 +1,6 @@
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
+import { runDownload } from '@/lib/download'
 
 /**
  * Renders a DOM node (the receipt card) to a PNG and PDF. Both live here
@@ -19,30 +20,33 @@ async function captureNode(node: HTMLElement): Promise<HTMLCanvasElement> {
 }
 
 export async function exportReceiptAsPng(node: HTMLElement, filename: string): Promise<void> {
-  const canvas = await captureNode(node)
-  const link = document.createElement('a')
-  link.download = `${filename}.png`
-  link.href = canvas.toDataURL('image/png', 1.0)
-  link.click()
+  await runDownload(`${filename}.png`, async (report) => {
+    report(15)
+    const canvas = await captureNode(node)
+    report(75)
+    const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 1.0))
+    if (!blob) throw new Error('Could not generate the receipt image')
+    return blob
+  }, 'Preparing your receipt')
 }
 
 export async function exportReceiptAsPdf(node: HTMLElement, filename: string): Promise<void> {
-  const canvas = await captureNode(node)
-  const imgData = canvas.toDataURL('image/png', 1.0)
+  await runDownload(`${filename}.pdf`, async (report) => {
+    report(15)
+    const canvas = await captureNode(node)
+    report(60)
+    const imgData = canvas.toDataURL('image/png', 1.0)
 
-  // Size the PDF page to the receipt's own aspect ratio (tall, receipt-like)
-  // rather than forcing it onto a fixed A4 — a wide gutter of white space
-  // around a narrow receipt looks like an export bug, not a real document.
-  const widthMm = 100
-  const heightMm = (canvas.height / canvas.width) * widthMm
-
-  const pdf = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: [widthMm, heightMm],
-  })
-  pdf.addImage(imgData, 'PNG', 0, 0, widthMm, heightMm)
-  pdf.save(`${filename}.pdf`)
+    // Size the PDF page to the receipt's own aspect ratio (tall, receipt-like)
+    // rather than forcing it onto a fixed A4 — a wide gutter of white space
+    // around a narrow receipt looks like an export bug, not a real document.
+    const widthMm = 100
+    const heightMm = (canvas.height / canvas.width) * widthMm
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [widthMm, heightMm] })
+    pdf.addImage(imgData, 'PNG', 0, 0, widthMm, heightMm)
+    report(90)
+    return pdf.output('blob')
+  }, 'Preparing your receipt')
 }
 
 /**

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ask } from '@/lib/dialog'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, MessageSquare, Send, Users } from 'lucide-react'
@@ -122,7 +123,7 @@ export default function SmsCenterPage() {
 
           <button
             disabled={send.isPending || !preview || preview.recipients === 0 || preview.too_many}
-            onClick={() => { if (window.confirm(`Send this SMS to ${preview?.recipients} people (≈ ${formatNaira(preview?.provider_cost_kobo ?? 0)})?`)) send.mutate() }}
+            onClick={async () => { if (await ask(`It goes to ${preview?.recipients} people and costs about ${formatNaira(preview?.provider_cost_kobo ?? 0)}.`, { title: 'Send this SMS?', confirmLabel: 'Send now' })) send.mutate() }}
             className="w-full flex items-center justify-center gap-2 bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm py-3 rounded-xl disabled:opacity-50"
           >
             <Send className="w-4 h-4" /> {send.isPending ? 'Sending…' : 'Send SMS'}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ask } from '@/lib/dialog'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, AlertTriangle } from 'lucide-react'
@@ -154,13 +155,13 @@ function AttentionRow({ a }: { a: Attention }) {
           <input value={ref} onChange={e => setRef(e.target.value)} placeholder="Techhub reference, if it went through" className={input} />
           <div className="flex flex-wrap gap-2 mt-2">
             <button type="button" className={btn} disabled={act.isPending || !ref.trim()} onClick={() => act.mutate('entered_reference')}>It went through</button>
-            <button type="button" className={btn} disabled={act.isPending} onClick={() => { if (window.confirm('Only choose this if Techhub did NOT receive it. The worker will be able to send it again.')) act.mutate('not_sent') }}>It did not go through</button>
+            <button type="button" className={btn} disabled={act.isPending} onClick={async () => { if (await ask('Only choose this if Techhub did NOT receive it. The worker will be able to send it again.', { title: 'It did not go through?' })) act.mutate('not_sent') }}>It did not go through</button>
           </div>
         </div>
       )}
       <div className="flex flex-wrap gap-2 mt-2">
-        <button type="button" className={btn} disabled={act.isPending} onClick={() => { if (window.confirm('Mark this as done? The worker is paid their commission.')) act.mutate('close_success') }}>Close as successful</button>
-        <button type="button" className={btn} disabled={act.isPending} onClick={() => { if (window.confirm('Mark this as failed? The customer is refunded if this service’s refund switch is on.')) act.mutate('close_failed') }}>Close as failed</button>
+        <button type="button" className={btn} disabled={act.isPending} onClick={async () => { if (await ask('The worker is paid their commission.', { title: 'Mark this as done?', tone: 'success', confirmLabel: 'Mark as done' })) act.mutate('close_success') }}>Close as successful</button>
+        <button type="button" className={btn} disabled={act.isPending} onClick={async () => { if (await ask('The customer is refunded if this service’s refund switch is on.', { title: 'Mark this as failed?', tone: 'danger', confirmLabel: 'Mark as failed' })) act.mutate('close_failed') }}>Close as failed</button>
       </div>
     </div>
   )

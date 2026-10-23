@@ -110,7 +110,7 @@ export default function VerifyLookupPage() {
   const doSheet = async (reveal: boolean) => {
     if (!shown) return
     setBusyDl(true)
-    try { await downloadSheet(shown.id, reveal) } catch (e) { toast.error(getErrorMessage(e)) } finally { setBusyDl(false) }
+    try { await downloadSheet(shown.id, reveal, shown.kind, shown.result?.full_name ?? shown.summary?.name) } catch (e) { toast.error(getErrorMessage(e)) } finally { setBusyDl(false) }
   }
 
   const pickSlip = async (o: SlipOption) => {
@@ -118,7 +118,7 @@ export default function VerifyLookupPage() {
     setBusyTier(o.tier)
     try {
       await buySlip(shown.id, o.tier)
-      await downloadSlip(shown.id, o.tier)
+      await downloadSlip(shown.id, o.tier, shown.kind, shown.result?.full_name ?? shown.summary?.name)
       setSlipOpen(false)
       qc.invalidateQueries({ queryKey: ['wallet'] })
       qc.invalidateQueries({ queryKey: ['service-history'] })

@@ -101,7 +101,7 @@ async def verify_supabase_jwt(token: str) -> dict:
 # ── Monnify webhook HMAC verification ────────────────────────────
 def verify_monnify_signature(payload: bytes, signature: str) -> bool:
     expected = hmac.new(
-        settings.MONNIFY_WEBHOOK_SECRET.encode(),
+        (settings.MONNIFY_WEBHOOK_SECRET or settings.MONNIFY_SECRET_KEY).encode(),
         payload,
         hashlib.sha512,
     ).hexdigest()

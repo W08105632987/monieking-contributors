@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react'
+import { downloadFromApi } from '@/lib/download'
 import { AlertTriangle, Check, CheckCircle2, Download, Landmark, Play, RefreshCw, ShieldCheck, X, XCircle } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
-import { api, getErrorMessage } from '@/lib/api'
+import { getErrorMessage } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { post, postIdem, useCoopAction } from '../api'
 import { newKey, useAuthPrompt } from '../auth'
@@ -358,7 +359,7 @@ function Report() {
   const [busy, setBusy] = useState(false)
   const dl = async () => {
     setBusy(true)
-    try { const x = await api.get('/coop/admin/reports/monthly.pdf', { params: { year: y, month: m }, responseType: 'blob' }); const u = URL.createObjectURL(x.data); const a = document.createElement('a'); a.href = u; a.download = `coop-report-${y}-${m}.pdf`; a.click(); URL.revokeObjectURL(u) }
+    try { await downloadFromApi('/coop/admin/reports/monthly.pdf', `Cooperative Report ${y}-${String(m).padStart(2, '0')}.pdf`, { params: { year: y, month: m }, label: 'Preparing the report' }) }
     catch (e) { toast.error(getErrorMessage(e)) } finally { setBusy(false) }
   }
   const rows: [string, number][] = r ? [['Contributions in', r.contributions_in_kobo], ['Withdrawals', r.withdrawals_kobo], ['Closures paid', r.closures_kobo], ['Loans paid out', r.loans_paid_out_kobo], ['Transfer fees', r.transfer_fees_kobo], ['Principal repaid', r.principal_repaid_kobo], ['Interest received', r.interest_received_kobo], ['Overdue charges received', r.overdue_charges_received_kobo], ['Running cost received', r.running_cost_in_kobo], ['Expenses', r.expenses_kobo], ['Withdrawal charges', r.withdrawal_charges_kobo], ['Dividends paid', r.dividends_paid_kobo], ['Loans written off', r.loans_written_off_kobo]] : []
@@ -435,7 +436,7 @@ export function RolesTab() {
           <div className="flex items-start justify-between gap-2"><div><p className="font-extrabold text-green-900 dark:text-white">{r.label}</p><p className="text-xs text-green-600 dark:text-night-300">{r.help}</p></div><button className="text-sm font-bold text-green-700 dark:text-green-300" onClick={() => { setEdit(r); setPick(r.current); setWhy('') }}>Change</button></div>
           <p className="mt-2 text-sm text-green-800 dark:text-night-100">{r.current.length ? r.current.map(name).join(', ') : r.key === 'final_release_directors' ? 'Any director' : 'Nobody yet'}</p>
           {r.pending && <div className="mt-2 rounded-xl bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">Proposed: {r.pending.new_value ? r.pending.new_value.split(',').map(name).join(', ') : 'nobody'} · {r.pending.approvals} of {r.pending.needed} approvals
-            {!r.pending.you_voted && <div className="mt-2 flex gap-2"><button className="font-bold underline" onClick={() => approve.mutate({ id: r.pending.id, decision: 'approve' })}>Approve</button><button className="font-bold underline" onClick={() => approve.mutate({ id: r.pending.id, decision: 'reject' })}>Reject</button></div>}</div>}
+            {!r.pending.you_voted && <div className="mt-2 flex gap-2"><button className="font-bold underline" disabled={approve.isPending} onClick={() => approve.mutate({ id: r.pending.id, decision: 'approve' })}>Approve</button><button className="font-bold underline" disabled={approve.isPending} onClick={() => approve.mutate({ id: r.pending.id, decision: 'reject' })}>Reject</button></div>}</div>}
         </Card>))}</div>
       <SectionTitle>Who can do what</SectionTitle>
       <Card className="space-y-1.5">{data.permissions.map((p: any) => <p key={p.action} className="flex justify-between gap-3 text-sm text-green-800 dark:text-night-100"><span>{p.action}</span><b className="text-right">{p.who}</b></p>)}</Card>

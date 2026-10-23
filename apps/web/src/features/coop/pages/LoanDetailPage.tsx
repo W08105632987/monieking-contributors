@@ -1,4 +1,5 @@
 import { Avatar } from '@/components/ui/Avatar'
+import { ask as askConfirm, tell } from '@/lib/dialog'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, Banknote, CheckCircle2, Circle, Clock, Landmark, Lock, MessageCircle, UserPlus } from 'lucide-react'
@@ -74,7 +75,7 @@ export default function LoanDetailPage() {
       {l.status === 'repaying' && <Repaying l={l} onRepay={() => setRepay(true)} />}
       {l.status === 'repaid' && <Card className="mt-3 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-green-500" /><p className="mt-1 font-extrabold text-green-900 dark:text-white">Fully repaid</p><p className="text-sm text-green-700 dark:text-night-200">Your guarantors' money has been released. Well done.</p></Card>}
 
-      {open && <div className="mt-6"><BigButton tone="ghost" loading={cancel.isPending} onClick={() => { if (window.confirm('Cancel this request? Any guarantee money already locked is released.')) cancel.mutate(undefined) }}>Cancel this request</BigButton></div>}
+      {open && <div className="mt-6"><BigButton tone="ghost" loading={cancel.isPending} onClick={async () => { if (await askConfirm('Any guarantee money already locked is released.', { title: 'Cancel this request?', tone: 'danger', confirmLabel: 'Yes, cancel it', cancelLabel: 'Keep it' })) cancel.mutate(undefined) }}>Cancel this request</BigButton></div>}
 
       <GuarantorPicker open={picker} onClose={() => setPicker(false)} loan={l} />
       <RepaySheet open={repay} onClose={() => setRepay(false)} loan={l} />
@@ -126,7 +127,7 @@ function RepaySheet({ open, onClose, loan }: { open: boolean; onClose: () => voi
     if (auth === null) throw new Error('Cancelled')
     return postIdem(`/coop/loans/${loan.id}/repay`, { amount_kobo: k, source: src, ...(auth ? { auth } : {}) }, newKey())
   }, {
-    onSuccess: (r) => { setV(''); onClose(); if (r.repaid) window.setTimeout(() => window.alert('Loan fully repaid!'), 50) }, success: st?.test_mode === false ? 'Repayment recorded' : 'Repayment recorded (test money)',
+    onSuccess: (r) => { setV(''); onClose(); if (r.repaid) window.setTimeout(() => { void tell('This loan is now fully repaid. Well done!', { title: 'Loan fully repaid', tone: 'success' }) }, 50) }, success: st?.test_mode === false ? 'Repayment recorded' : 'Repayment recorded (test money)',
   })
   const k = toKobo(v)
   const next = loan.next_instalment ? loan.next_instalment.amount_kobo - loan.next_instalment.paid_kobo : 0
@@ -170,7 +171,7 @@ function OfferCard({ l }: { l: LoanDetail }) {
       </div>
       <p className="mt-2 text-[11px] text-green-700 dark:text-night-200">The fee covers the cost of sending the money. You repay the full loan amount plus interest, not only what you receive.</p>
       <div className="mt-3 grid grid-cols-2 gap-2"><BigButton loading={accept.isPending} onClick={() => accept.mutate(undefined)}>Accept</BigButton>
-        <BigButton tone="ghost" loading={decline.isPending} onClick={() => { if (window.confirm('Decline this loan? Your guarantors are released.')) decline.mutate(undefined) }}>Decline</BigButton></div>
+        <BigButton tone="ghost" loading={decline.isPending} onClick={async () => { if (await askConfirm('Your guarantors are released.', { title: 'Decline this loan?', tone: 'danger', confirmLabel: 'Decline' })) decline.mutate(undefined) }}>Decline</BigButton></div>
     </Card>
   )
 }

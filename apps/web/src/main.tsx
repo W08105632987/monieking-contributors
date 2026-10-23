@@ -9,6 +9,10 @@ import './index.css'
 import { queryClient } from '@/lib/queryClient'
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary'
 import { FeedbackModalHost } from '@/components/ui/FeedbackModalHost'
+import { CelebrationHost } from '@/components/ui/CelebrationHost'
+import { SeasonalLayer } from '@/components/ui/SeasonalLayer'
+import { DialogHost } from '@/components/ui/DialogHost'
+import { DownloadHost } from '@/components/ui/DownloadHost'
 import { initSessionLifecycle } from '@/lib/sessionLifecycle'
 
 // Before React renders anything: the resume handler, privacy shield and
@@ -23,6 +27,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <BrowserRouter>
           <App />
           <FeedbackModalHost />
+          <DialogHost />
+          <DownloadHost />
+          <CelebrationHost />
+          <SeasonalLayer />
           <Toaster
             position="top-center"
             containerStyle={{
