@@ -25,6 +25,7 @@ from app.models.manual_service_request import ManualServiceRequest, ManualServic
 from app.models.service_worker_withdrawal import ServiceWorkerWithdrawal, SWWithdrawalStatus
 from app.models.job_pool_event import JobPoolEvent
 from app.models.service_template import ServiceTemplate, ServiceTemplateVersion
+from app.models.offline_import import OfflineImportBatch, PendingOfflineCustomer
 
 
 __all__ = [

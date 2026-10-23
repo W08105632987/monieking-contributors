@@ -45,7 +45,7 @@ async def _run(monkeypatch):
     users = {}
     async with maker() as db:
         for key, role, phone in [("ada", UserRole.CUSTOMER, "08011111111"), ("dir", UserRole.DIRECTOR, "08044444444")]:
-            u = User(role=role, full_name=key, phone_number=phone, bank_code="058", bank_name="GTBank", account_number="0123456789",
+            u = User(payment_pin_hash=__import__('app.core.security', fromlist=['x']).hash_withdrawal_password('7391'), role=role, full_name=key, phone_number=phone, bank_code="058", bank_name="GTBank", account_number="0123456789",
                      account_name=key.upper(), status=UserStatus.ACTIVE)
             db.add(u)
             await db.flush()
@@ -73,6 +73,10 @@ async def _run(monkeypatch):
     transport = httpx.ASGITransport(app=main_mod.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
         async def call(who, method, path, expect=200, **kw):
+            if path.endswith("/vote") and "/coop/admin/requests/" in path and kw.get("json", {}).get("decision") == "approve":
+                kw["json"] = {**kw["json"], "auth": {"auth_method": "password", "pin": "7391"}}
+            if path == "/pay" and kw.get("json") is not None:
+                kw["json"] = {**kw["json"], "pin": "7391"}
             r = await c.request(method, "/api/v1/bill-payments" + path, headers={"x-test-user": who}, **kw)
             assert r.status_code == expect, f"{who} {method} {path} -> {r.status_code}: {r.text[:300]}"
             return r.json()

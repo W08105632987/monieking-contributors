@@ -62,5 +62,17 @@ async def overview(
     start_date: date | None = None,
     end_date: date | None = None,
     all_time: bool = False,
+    today: bool = False,
 ):
-    return await svc.get_overview(db, start_date=start_date, end_date=end_date, all_time=all_time)
+    return await svc.get_overview(db, start_date=start_date, end_date=end_date, all_time=all_time, today=today)
+
+
+@router.get("/visitors")
+async def visitors(
+    staff: DirectorOrAdmin,
+    db: AsyncSession = Depends(get_db),
+    today: bool = False,
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
+    return await svc.get_visitors(db, today=today, start_date=start_date, end_date=end_date)

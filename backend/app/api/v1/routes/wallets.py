@@ -72,9 +72,8 @@ async def submit_kyc(
         raise HTTPException(status_code=400, detail="Date of birth is required to verify a BVN")
 
     if body.auth_method == "password":
-        if not body.withdrawal_password:
-            raise HTTPException(status_code=400, detail="Withdrawal password required")
-        await check_withdrawal_password(db, current_user, body.withdrawal_password)
+        from app.services.pin_service import check_pin
+        await check_pin(db, current_user, body.pin)
     elif body.auth_method == "biometric":
         if not body.webauthn_assertion:
             raise HTTPException(status_code=400, detail="WebAuthn assertion required")

@@ -112,7 +112,7 @@ async def register_customer(
         next_of_kin_phone= body.next_of_kin_phone,
         status=        UserStatus.ACTIVE,
         login_password_hash=      hash_password(body.password),
-        withdrawal_password_hash= hash_withdrawal_password(body.withdrawal_password),
+        withdrawal_password_hash= hash_withdrawal_password(body.withdrawal_password) if body.withdrawal_password else None,
         terms_accepted_at=      datetime.now(timezone.utc),
         terms_accepted_version= LEGAL_DOCUMENT_VERSION,
     )
@@ -155,6 +155,14 @@ async def register_customer(
         except Exception as e:
             print(f"Monnify VA creation failed (non-fatal): {e}")
 
+    # Link any offline record that was waiting for this phone number.
+    try:
+        from app.services.offline_import import claim_for_user
+        async with db.begin_nested():
+            await claim_for_user(db, user)
+    except Exception as e:
+        print(f"[offline-claim] failed (non-fatal, can be retried): {e}")
+
     try:
         await log_action(
             db, actor_id=user.id, action="customer.registered",
@@ -166,6 +174,66 @@ async def register_customer(
         print(f"Audit log failed (non-fatal): {e}")
 
     return await build_user_response(db, user)
+
+
+@router.post("/set-pin", status_code=200)
+@limiter.limit("10/minute")
+async def set_payment_pin(
+    request: Request,
+    body: dict,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Everyone has one 4-digit payment PIN. It authorises airtime, bills, identity services, bank-detail changes
+    and director actions. Withdrawals use the separate withdrawal password. First time: no current PIN needed.
+    Changing it needs the current PIN."""
+    from app.services import pin_service
+    pin = str(body.get("pin", ""))
+    pin_service.validate_new_pin(pin)
+    user = await db.get(User, current_user.id)
+    is_change = user.payment_pin_hash is not None
+    if is_change:
+        await pin_service.check_pin(db, user, str(body.get("current_pin", "")))
+    await pin_service.set_pin(db, user.id, pin)
+    if is_change:
+        from app.services.notification_service import send_notification
+        from app.models.notification import NotificationType
+        await send_notification(db, user_id=user.id, title="Payment PIN changed",
+                                body="Your payment PIN was just changed. If this wasn't you, contact your officer or a director immediately.",
+                                type=NotificationType.INFO)
+    return {"message": "PIN saved", "has_pin": True}
+
+
+@router.post("/verify-pin", status_code=200)
+@limiter.limit("10/minute")
+async def verify_payment_pin(request: Request, body: dict, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    from app.services import pin_service
+    await pin_service.check_pin(db, current_user, str(body.get("pin", "")))
+    return {"verified": True}
+
+
+@router.post("/reset-pin", status_code=200)
+@limiter.limit("5/minute")
+async def reset_payment_pin(request: Request, body: dict, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Forgot the PIN: prove it is you with the login password, then choose a new PIN."""
+    import httpx
+    from app.services import pin_service
+    pin = str(body.get("pin", ""))
+    pin_service.validate_new_pin(pin)
+    from app.utils.supabase_admin_client import SUPABASE_TIMEOUT
+    try:
+        async with httpx.AsyncClient(timeout=SUPABASE_TIMEOUT) as client:
+            resp = await client.post(
+                f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password",
+                headers={"apikey": settings.SUPABASE_SERVICE_ROLE_KEY, "Content-Type": "application/json"},
+                json={"email": f"{current_user.phone_number}@monieking.app", "password": str(body.get("login_password", ""))},
+            )
+    except (httpx.TimeoutException, httpx.ConnectError):
+        raise HTTPException(status_code=503, detail="Could not reach the login service. Please try again.")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Your login password is incorrect")
+    await pin_service.set_pin(db, current_user.id, pin)
+    return {"message": "PIN reset", "has_pin": True}
 
 
 @router.post("/set-withdrawal-password", status_code=200)

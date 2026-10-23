@@ -64,3 +64,6 @@ Pillow==10.4.0
 # belongs to (transparently, per-browser).
 py-vapid==1.9.1
 pywebpush==2.0.1
+
+# Excel import/export (Module D1)
+openpyxl==3.1.5

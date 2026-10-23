@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { withPin, isPinCancelled } from '@/lib/pin'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
 import type { IdentityService, IdentityServiceRequest } from '@/types'
@@ -87,12 +88,14 @@ export default function ServiceRequestFormPage() {
         ...values,
         ...(referralCode ? { referral_code: referralCode, referred_worker: referralWorker } : {}),
       }
-      const { data } = await api.post<IdentityServiceRequest>(
-        '/identity-services/requests',
-        { service_id: serviceId, payload: payloadData },
-        { params: customerId ? { customer_id: customerId } : {} }
-      )
-      return data
+      return withPin(async (pin) => {
+        const { data } = await api.post<IdentityServiceRequest>(
+          '/identity-services/requests',
+          { service_id: serviceId, payload: payloadData, pin },
+          { params: customerId ? { customer_id: customerId } : {} }
+        )
+        return data
+      }, { title: 'Confirm with your PIN', message: 'Enter your 4-digit payment PIN to submit this request.' })
     },
     onSuccess: (req) => {
       // The backend always returns 201 here, even when Youverify itself
@@ -102,7 +105,7 @@ export default function ServiceRequestFormPage() {
       toast.success(req.status === 'failed' ? 'Submitted — see what happened' : 'Request submitted')
       navigate(`/services/requests/${req.id}`, { replace: true })
     },
-    onError: (e) => toast.error(getErrorMessage(e)),   // genuine failures on our own side: insufficient balance, validation, network down to us at all
+    onError: (e) => { if (!isPinCancelled(e)) toast.error(getErrorMessage(e)) },   // genuine failures on our own side: insufficient balance, validation, network down to us at all
   })
 
   const missingRequired = service?.required_fields.some(f => f.required && !values[f.key])

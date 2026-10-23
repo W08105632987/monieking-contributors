@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Landmark, ShieldCheck, Eye, EyeOff, ChevronRight, X } from 'lucide-react'
+import { Landmark, ShieldCheck, ChevronRight, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
+import { withPin, isPinCancelled } from '@/lib/pin'
 import { BankPickerModal, type Bank } from './BankPickerModal'
 
 interface BankDetailsEditorProps {
@@ -62,8 +63,6 @@ function BankDetailsSheet({ currentBankName, currentAccountNumber, currentAccoun
   const [accountNumber, setAccountNumber] = useState('')
   const [resolvedName, setResolvedName] = useState('')
   const [resolving, setResolving] = useState(false)
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const [lookupError, setLookupError] = useState('')
@@ -82,23 +81,22 @@ function BankDetailsSheet({ currentBankName, currentAccountNumber, currentAccoun
 
   const submitWithPassword = async () => {
     if (!resolvedName || !selectedBank) return toast.error('Verify the account first')
-    if (!password) return toast.error('Enter your withdrawal password')
-    await submit({ withdrawal_password: password })
+    await submit({})
   }
 
   const submit = async (authPayload: Record<string, any>) => {
     if (!selectedBank) return
     setSaving(true)
     try {
-      await api.patch('/users/me/bank-details', {
+      await withPin((pin) => api.patch('/users/me/bank-details', {
         bank_name: selectedBank.name, bank_code: selectedBank.code, account_number: accountNumber,
-        ...authPayload,
-      })
+        ...authPayload, pin,
+      }), { title: 'Confirm with your PIN', message: 'Enter your 4-digit payment PIN to change your bank account.' })
       toast.success('Bank details updated')
       onUpdated({ bank_name: selectedBank.name, account_number: accountNumber, account_name: resolvedName })
       onClose()
     } catch (e) {
-      toast.error(getErrorMessage(e))
+      if (!isPinCancelled(e)) toast.error(getErrorMessage(e))
     } finally {
       setSaving(false)
     }
@@ -174,19 +172,6 @@ function BankDetailsSheet({ currentBankName, currentAccountNumber, currentAccoun
 
             {resolvedName && (
               <>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="Withdrawal password"
-                    className="w-full border border-green-200 dark:border-night-500 bg-white dark:bg-night-800 rounded-xl pl-4 pr-10 py-2.5 text-sm text-green-900 dark:text-white"
-                  />
-                  <button onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-green-400 dark:text-night-300">
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-
                 <button
                   onClick={submitWithPassword}
                   disabled={saving}

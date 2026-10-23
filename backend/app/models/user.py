@@ -123,6 +123,10 @@ class User(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Marked by a director as a test account (removed by the cleanup tool before launch)
+    is_test:    Mapped[bool]            = mapped_column(Boolean, default=False, server_default="false")
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Manual customer (cash-paying, managed by officer)
     is_manual_customer:   Mapped[bool]            = mapped_column(Boolean, default=False)
     managing_officer_id:  Mapped[uuid.UUID | None] = mapped_column(
@@ -132,6 +136,9 @@ class User(Base):
     # Hashed passwords
     login_password_hash:      Mapped[str | None] = mapped_column(Text)
     withdrawal_password_hash: Mapped[str | None] = mapped_column(Text)
+    payment_pin_hash:         Mapped[str | None] = mapped_column(Text)
+    pin_failed_attempts:      Mapped[int]        = mapped_column(default=0, server_default="0")
+    pin_locked_until:         Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Set when an officer taps "mark as contacted" on this customer from
     # the inactive-customers list (see customer_stats_service.py). NULL =
@@ -168,6 +175,10 @@ class User(Base):
         """Lets the frontend tell first-time setup (no current password to
         verify) apart from an actual change — without exposing the hash."""
         return self.withdrawal_password_hash is not None
+
+    @property
+    def has_payment_pin(self) -> bool:
+        return self.payment_pin_hash is not None
 
     status: Mapped[UserStatus] = mapped_column(
         Enum(UserStatus, name="user_status", values_callable=lambda x: [e.value for e in x]), default=UserStatus.PENDING_VERIFICATION

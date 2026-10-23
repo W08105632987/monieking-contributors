@@ -277,7 +277,7 @@ async def create_customer(
         zone_id=                  current_user.zone_id if user_role == "officer" else None,
         created_by=               current_user.id,
         login_password_hash=      hash_password(body.password),
-        withdrawal_password_hash= hash_withdrawal_password(body.withdrawal_password),
+        withdrawal_password_hash= hash_withdrawal_password(body.withdrawal_password) if body.withdrawal_password else None,
     )
     db.add(customer)
     await db.flush()
@@ -300,6 +300,13 @@ async def create_customer(
         await db.flush()
     except Exception as e:
         print(f"Monnify VA creation failed (non-fatal): {e}")
+
+    try:
+        from app.services.offline_import import claim_for_user
+        async with db.begin_nested():
+            await claim_for_user(db, customer)
+    except Exception as e:
+        print(f"[offline-claim] failed (non-fatal): {e}")
 
     await log_action(
         db, actor_id=current_user.id, action="customer.registered_by_officer",
@@ -719,8 +726,8 @@ async def update_bank_details(
     full pass on live deployment. KYC's own biometric option is
     unaffected — see UpdateBankDetailsRequest's docstring.)
     """
-    from app.services.withdrawal_auth_service import check_withdrawal_password
-    await check_withdrawal_password(db, current_user, body.withdrawal_password)
+    from app.services.pin_service import check_pin
+    await check_pin(db, current_user, body.pin)
 
     from app.integrations.monnify import get_payment_provider
     provider = get_payment_provider()

@@ -172,6 +172,9 @@ async def create_request(
     if user.role == "officer" and not customer_id:
         raise HTTPException(status_code=400, detail="customer_id is required when an officer submits this on a customer's behalf.")
 
+    from app.services.pin_service import check_pin
+    await check_pin(db, user, body.pin)
+
     missing = [f["key"] for f in service.required_fields if f["required"] and not body.payload.get(f["key"])]
     if missing:
         raise HTTPException(status_code=422, detail=f"Missing required field(s): {', '.join(missing)}")

@@ -123,7 +123,7 @@ function RepaySheet({ open, onClose, loan }: { open: boolean; onClose: () => voi
   const stepUp = !!st?.rules?.step_up_required && st.rules.step_up_required !== 'off'
   const { ask, sheet } = useAuthPrompt()
   const m = useCoopAction(async (k: number) => {
-    const auth = await ask(stepUp)
+    const auth = await ask(stepUp, "pin")
     if (auth === null) throw new Error('Cancelled')
     return postIdem(`/coop/loans/${loan.id}/repay`, { amount_kobo: k, source: src, ...(auth ? { auth } : {}) }, newKey())
   }, {
@@ -153,7 +153,7 @@ function OfferCard({ l }: { l: LoanDetail }) {
   const stepUp = !!st?.rules?.step_up_required && st.rules.step_up_required !== 'off'
   const { ask, sheet } = useAuthPrompt()
   const accept = useCoopAction(async () => {
-    const auth = await ask(stepUp)
+    const auth = await ask(stepUp, "pin")
     if (auth === null) throw new Error('Cancelled')
     return postIdem(`/coop/loans/${l.id}/accept`, { ...(auth ? { auth } : {}) }, newKey())
   }, { success: 'Offer accepted' })

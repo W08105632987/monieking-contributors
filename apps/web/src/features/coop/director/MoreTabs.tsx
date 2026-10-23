@@ -19,10 +19,10 @@ const Area = ({ value, onChange, rows = 3, ...r }: { value: string; onChange: (v
 const k = (v: string) => v.replace(/_/g, ' ')
 
 /** Sends a director action; asks for the extra confirmation first when the rule is on. */
-function useDirAct<V>(fn: (v: V, auth?: any) => Promise<any>, stepUp: boolean, success: string, onSuccess?: (r: any) => void) {
+function useDirAct<V>(fn: (v: V, auth?: any) => Promise<any>, stepUp: boolean | ((v: V) => boolean), success: string, onSuccess?: (r: any) => void) {
   const { ask, sheet } = useAuthPrompt()
   const m = useCoopAction(async (v: V) => {
-    const auth = await ask(stepUp)
+    const auth = await ask(typeof stepUp === 'function' ? stepUp(v) : stepUp)
     if (auth === null) throw new Error('Cancelled')
     return fn(v, auth)
   }, { success, onSuccess })
@@ -92,7 +92,7 @@ export function RequestsTab({ stepUp }: { stepUp: boolean }) {
   const [st, setSt] = useState('pending')
   const { data } = useAdmin<any[]>('requests', '/coop/admin/requests', { status: st || undefined })
   const [open, setOpen] = useState(false)
-  const vote = useDirAct((v: { id: string; decision: string }, auth) => post(`/coop/admin/requests/${v.id}/vote`, { decision: v.decision, ...(auth ? { auth } : {}) }), stepUp, 'Vote recorded')
+  const vote = useDirAct((v: { id: string; decision: string }, auth) => post(`/coop/admin/requests/${v.id}/vote`, { decision: v.decision, ...(auth ? { auth } : {}) }), (v) => v.decision === 'approve' || stepUp, 'Vote recorded')
   const cancel = useCoopAction((id: string) => post(`/coop/admin/requests/${id}/cancel`), { success: 'Request cancelled' })
   return (
     <>
@@ -281,7 +281,7 @@ function RunSheet({ id, stepUp, onClose }: { id: string; stepUp: boolean; onClos
   const { data: r } = useAdmin<any>(`run-${id}`, `/coop/admin/dividend-runs/${id}`)
   const [checks, setChecks] = useState<any[] | null>(null)
   const rec = useCoopAction(() => post(`/coop/admin/dividend-runs/${id}/reconcile`), { success: 'Checks run', onSuccess: (x) => setChecks(x.checks) })
-  const vote = useDirAct((v: { decision: string }, auth) => post(`/coop/admin/requests/${r.request_id}/vote`, { decision: v.decision, ...(auth ? { auth } : {}) }), stepUp, 'Vote recorded')
+  const vote = useDirAct((v: { decision: string }, auth) => post(`/coop/admin/requests/${r.request_id}/vote`, { decision: v.decision, ...(auth ? { auth } : {}) }), (v) => v.decision === 'approve' || stepUp, 'Vote recorded')
   const pay = useDirAct((_: void, auth) => postIdem(`/coop/admin/dividend-runs/${id}/pay`, auth ? { auth } : {}, newKey()), stepUp, 'Dividend paid')
   const req = r?.request
   return (

@@ -18,6 +18,7 @@ import { CustomerStatsPanel } from '@/components/dashboard/CustomerStatsPanel'
 import { formatNaira, initials, formatDate, copyToClipboard } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { ContributionCard, User } from '@/types'
+import { SetupChecklist } from '@/components/setup/SetupChecklist'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 const OFFICER_WALLET_WITHDRAWAL_CHARGE_KOBO = 5_000 // ₦50, flat
@@ -209,6 +210,7 @@ export default function OfficerDashboardPage() {
       </header>
 
       <div className="flex-1 overflow-y-auto pb-safe-nav px-4">
+        <SetupChecklist />
 
         {/* Greeting */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2 mb-4">

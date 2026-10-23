@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
+import { PaymentPinRow } from '@/components/setup/PaymentPinRow'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
 
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
@@ -113,6 +114,7 @@ export default function DirectorProfilePage() {
         </div>
 
         <div className="mb-4">
+          <PaymentPinRow />
           <ChangePasswordSection />
         </div>
 

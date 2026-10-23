@@ -5,7 +5,7 @@ platform-wide numbers, not two different views of them.
 """
 import uuid
 from datetime import date, datetime, timedelta, timezone
-from sqlalchemy import select, func
+from sqlalchemy import select, func, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.analytics_event import AnalyticsEvent
@@ -28,7 +28,55 @@ async def track_event(
     await db.commit()
 
 
-async def get_overview(db: AsyncSession, *, start_date: date | None, end_date: date | None, all_time: bool = False) -> dict:
+_LAGOS = timezone(timedelta(hours=1))   # Nigeria has no daylight saving
+
+
+def _today_bounds() -> tuple[datetime, datetime]:
+    """Midnight-to-midnight for 'today' in Nigerian time, as UTC instants."""
+    now = datetime.now(_LAGOS)
+    start = datetime.combine(now.date(), datetime.min.time(), tzinfo=_LAGOS)
+    return start.astimezone(timezone.utc), (start + timedelta(days=1)).astimezone(timezone.utc)
+
+
+async def get_visitors(db: AsyncSession, *, today: bool, start_date: date | None, end_date: date | None, limit: int = 200) -> dict:
+    """One row per visitor session: who they are when they are signed in, 'Not registered' when they are not."""
+    filters = []
+    if today:
+        a, b = _today_bounds()
+        filters += [AnalyticsEvent.created_at >= a, AnalyticsEvent.created_at < b]
+    else:
+        if start_date:
+            filters.append(AnalyticsEvent.created_at >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc))
+        if end_date:
+            filters.append(AnalyticsEvent.created_at < datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(days=1))
+    rows = (await db.execute(
+        select(
+            AnalyticsEvent.session_id,
+            func.max(cast(AnalyticsEvent.user_id, String)).label("user_id"),
+            func.max(AnalyticsEvent.role).label("role"),
+            func.count().label("events"),
+            func.min(AnalyticsEvent.created_at).label("first_seen"),
+            func.max(AnalyticsEvent.created_at).label("last_seen"),
+        ).where(*filters).group_by(AnalyticsEvent.session_id).order_by(func.max(AnalyticsEvent.created_at).desc()).limit(limit)
+    )).all()
+    ids = {uuid.UUID(r.user_id) for r in rows if r.user_id}
+    names = {}
+    if ids:
+        for u in (await db.execute(select(User).where(User.id.in_(ids)))).scalars().all():
+            names[u.id] = (u.full_name, u.phone_number)
+    out = []
+    for r in rows:
+        nm = names.get(uuid.UUID(r.user_id)) if r.user_id else None
+        out.append({
+            "session_id": r.session_id[:8], "registered": nm is not None,
+            "name": nm[0] if nm else "Not registered", "phone_number": nm[1] if nm else None,
+            "role": r.role or "visitor", "events": r.events,
+            "first_seen": r.first_seen.isoformat(), "last_seen": r.last_seen.isoformat(),
+        })
+    return {"visitors": out, "registered": sum(1 for v in out if v["registered"]), "anonymous": sum(1 for v in out if not v["registered"])}
+
+
+async def get_overview(db: AsyncSession, *, start_date: date | None, end_date: date | None, all_time: bool = False, today: bool = False) -> dict:
     """
     The dashboard's headline numbers plus a daily time series — the
     "Google Analytics inside the app" the product ask was for, scoped
@@ -40,7 +88,7 @@ async def get_overview(db: AsyncSession, *, start_date: date | None, end_date: d
     Defaults to rolling 30-day window when date range is omitted to avoid
     expensive unbounded scans on dashboard load (1.5).
     """
-    if not all_time and start_date is None and end_date is None:
+    if not all_time and not today and start_date is None and end_date is None:
         start_date = date.today() - timedelta(days=30)
 
     start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc) if start_date else None
@@ -48,6 +96,9 @@ async def get_overview(db: AsyncSession, *, start_date: date | None, end_date: d
         datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(days=1)
         if end_date else None
     )
+    if today:
+        start_dt, end_dt = _today_bounds()
+        start_date = end_date = start_dt.astimezone(_LAGOS).date()
     filters = []
     if start_dt: filters.append(AnalyticsEvent.created_at >= start_dt)
     if end_dt:   filters.append(AnalyticsEvent.created_at < end_dt)

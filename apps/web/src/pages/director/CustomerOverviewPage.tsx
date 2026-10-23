@@ -6,6 +6,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatDate, cn } from '@/lib/utils'
+import { CustomerAdminPanel } from '@/components/director/CustomerAdminPanel'
 import { Avatar } from '@/components/ui/Avatar'
 import { ManageMemberSheet } from '@/components/settings/ManageMemberSheet'
 import type { CustomerOverview } from '@/types'
@@ -117,6 +118,8 @@ export default function CustomerOverviewPage() {
             <MessageSquare className="w-4 h-4" /> Message
           </button>
         </div>
+
+        <CustomerAdminPanel customerId={customerId!} name={profile.full_name} />
 
         {/* Everything about them */}
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4 divide-y divide-green-50 dark:divide-night-600">

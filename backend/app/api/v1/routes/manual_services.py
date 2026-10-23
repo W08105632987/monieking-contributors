@@ -148,7 +148,7 @@ class SubmitServiceRequest(BaseModel):
     uploaded_files:     list = Field(default_factory=list, description="Uploaded document URLs or base64 files")
     consent_given:      bool = Field(..., description="Explicit user consent required")
     referred_worker_id: str | None = Field(None, description="Optional Service Worker referral code or ID")
-    transaction_pin:    str | None = Field(None, description="User transaction PIN")
+    transaction_pin:    str | None = Field(None, description="The requester's 4-digit payment PIN")
     withdrawal_password: str | None = Field(None, description="User withdrawal password")
     enrollment_bank:    str | None = Field(None, description="Bank for BVN modification")
     bulk_count:         int = Field(1, description="Number of items for bulk services")
@@ -263,16 +263,9 @@ async def submit_service_request(
     if customer_id and current_user.role == UserRole.OFFICER:
         target_user_id = customer_id
 
-    # Validate Withdrawal Password (or legacy PIN) if set
-    pwd = body.withdrawal_password or body.transaction_pin
-    user_row = await db.get(User, current_user.id)
-    if user_row and user_row.has_withdrawal_password:
-        if not pwd:
-            raise HTTPException(
-                status_code=400,
-                detail="Your withdrawal password is required to authorise this service request."
-            )
-        await check_withdrawal_password(db, user_row, pwd)
+    # Every request is confirmed with the payment PIN. No PIN set yet -> 428 "Set up payment pin".
+    from app.services.pin_service import check_pin
+    await check_pin(db, current_user, body.transaction_pin)
 
     # Guards run BEFORE any money moves.
     category = resolve_category(body.service_category)
