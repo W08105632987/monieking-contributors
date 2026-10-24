@@ -65,7 +65,7 @@ async def _run(monkeypatch):
 
     class FakeProvider:
         async def validate_customer(self, **kw): return {}
-        async def vend_bill(self, **kw): return {"transactionReference": "TX1"}
+        async def vend_bill(self, **kw): return {"vendStatus": "SUCCESS", "transactionReference": "TX1"}
     monkeypatch.setattr("app.integrations.monnify_bills.get_bills_provider", lambda: FakeProvider())
     monkeypatch.setattr("app.services.bill_payment_service.get_bills_provider", lambda: FakeProvider())
     monkeypatch.setattr("app.api.v1.routes.bill_payments.get_bills_provider", lambda: FakeProvider())

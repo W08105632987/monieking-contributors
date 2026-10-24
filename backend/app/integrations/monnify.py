@@ -22,6 +22,15 @@ from app.integrations.base_payment_provider import (
 MONNIFY_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=15.0, pool=5.0)
 
 
+def _raise_for_status_logged(resp: httpx.Response, what: str) -> None:
+    """Same as resp.raise_for_status(), but first logs Monnify's own error
+    text — the bare HTTPStatusError only says "400 Bad Request" and hides the
+    actual reason (invalid BVN, duplicate reference, wallet not enabled...)."""
+    if resp.status_code >= 400:
+        logger.error("[monnify] %s failed: HTTP %s — %s", what, resp.status_code, resp.text[:500])
+    resp.raise_for_status()
+
+
 class MonnifyProvider(BasePaymentProvider):
 
     def __init__(self):
@@ -62,14 +71,23 @@ class MonnifyProvider(BasePaymentProvider):
             raise HTTPException(status_code=504, detail="Payment provider is taking too long to respond. Please try again.")
         except httpx.ConnectError:
             raise HTTPException(status_code=503, detail="Could not reach the payment provider. Please try again.")
-        except httpx.HTTPStatusError:
-            raise HTTPException(status_code=502, detail="Payment provider rejected our credentials. Please contact support.")
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            logger.error("[monnify] login failed: HTTP %s — %s", code, e.response.text[:300])
+            if code in (401, 403):
+                raise HTTPException(status_code=502, detail="Payment provider rejected our credentials. Please contact support.")
+            raise HTTPException(status_code=502, detail=f"Payment provider login failed (HTTP {code}). Please try again.")
 
-        body = resp.json()["responseBody"]
+        try:
+            body = resp.json()["responseBody"]
+            access_token = body["accessToken"]
+        except (ValueError, KeyError, TypeError):
+            logger.error("[monnify] login returned an unexpected body: %s", resp.text[:300])
+            raise HTTPException(status_code=502, detail="Payment provider returned an unexpected login response. Please try again.")
         # Refresh a minute early rather than cutting it exactly at expiry.
         expires_in = body.get("expiresIn", 3600)
         self._token_expires_at = time.monotonic() + max(expires_in - 60, 60)
-        return body["accessToken"]
+        return access_token
 
     async def _headers(self) -> dict:
         if not self._access_token or time.monotonic() >= self._token_expires_at:
@@ -80,59 +98,93 @@ class MonnifyProvider(BasePaymentProvider):
         }
 
     # ── Identity verification (BVN / NIN) ───────────────────────────
-    # These two endpoints are Monnify's LIVE-ONLY verification services —
-    # they don't exist on sandbox at all, so this will 404/fail there by
-    # design until real credentials are in place. That's expected, not a
-    # bug: there's nothing to verify against in sandbox.
+    # Per Monnify's "Verifying your Customers" docs, BVN Information
+    # Verification and NIN Verification exist on the LIVE environment ONLY
+    # (and are billed per successful call). On sandbox they cannot work, so
+    # on sandbox we skip the check with a loud warning instead of failing
+    # every customer's KYC — the rest of the flow (linking the BVN/NIN to the
+    # virtual account) can still be exercised.
     #
-    # Monnify's own docs are inconsistent across versions about the exact
-    # response shape — an older reference shows granular per-field match
-    # info (name/DOB/mobile each with their own status), while the
-    # current docs describe a single boolean. We check for both here
-    # rather than assume one, so this doesn't silently break if the live
-    # response turns out to use the shape we didn't expect.
+    # Monnify's docs are inconsistent across versions about the response
+    # shape — an older reference shows granular per-field match info
+    # (name/DOB/mobile each with their own status), while the current docs
+    # describe a single boolean. We check for both rather than assume one.
     async def verify_bvn(self, *, bvn: str, name: str, date_of_birth: str, mobile_no: str) -> bool:
         """Returns True if the supplied details are an acceptable match
         for the BVN record (full or partial match both count — legitimate
         users routinely get partial matches over things like middle names
-        or spacing differences)."""
+        or spacing differences). date_of_birth must be dd-MMM-yyyy."""
         payload = {"bvn": bvn, "name": name, "dateOfBirth": date_of_birth, "mobileNo": mobile_no}
         return await self._run_verification("/api/v1/vas/bvn-details-match", payload, bool_field="bvnInformationMatch")
 
     async def verify_nin(self, *, nin: str) -> bool:
         """Returns True if the NIN is valid and verifiable.
-        NOTE: the exact endpoint path below is our best-informed guess
-        based on Monnify's established /api/v1/vas/ naming convention for
-        this family of endpoints (bvn-account-match, bvn-details-match) —
-        we could not get 100% confirmation of the literal NIN path from
-        public docs (their interactive API reference is JS-rendered and
-        not scrapeable). If this 404s once live keys are in, that's the
-        signal to grab the exact path from the Monnify dashboard's API
-        reference or ask integration-support@monnify.com, and it's a
-        one-line fix here.
-        """
+        The NIN endpoint is POST /api/v1/vas/nin-details (body {"nin": ...}).
+        The earlier path here, /nin-details-match, was a guess and is only
+        kept as a fallback if Monnify answers 404 for the first one. The
+        endpoint receives only the NIN, so "verified" here means "this NIN
+        exists and Monnify could look it up" — there is nothing else to
+        compare against."""
         payload = {"nin": nin}
-        return await self._run_verification("/api/v1/vas/nin-details-match", payload, bool_field="ninInformationMatch")
+        return await self._run_verification(
+            "/api/v1/vas/nin-details", payload, bool_field="ninInformationMatch",
+            fallback_path="/api/v1/vas/nin-details-match", accept_valid_record=True,
+        )
 
-    async def _run_verification(self, path: str, payload: dict, *, bool_field: str) -> bool:
+    async def _run_verification(
+        self, path: str, payload: dict, *, bool_field: str,
+        fallback_path: str | None = None, accept_valid_record: bool = False,
+    ) -> bool:
+        if self.is_sandbox:
+            logger.warning(
+                "[monnify] %s is a LIVE-ONLY service — skipping identity verification because "
+                "MONNIFY_BASE_URL is the sandbox. Use live credentials to verify for real.", path,
+            )
+            return True
+
         headers = await self._headers()
-        try:
-            async with httpx.AsyncClient(timeout=MONNIFY_TIMEOUT) as client:
-                resp = await client.post(f"{self.base_url}{path}", json=payload, headers=headers)
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="Verification is taking too long. Please try again.")
-        except httpx.ConnectError:
-            raise HTTPException(status_code=503, detail="Could not reach the verification service. Please try again.")
+        resp = None
+        for attempt_path in [p for p in (path, fallback_path) if p]:
+            try:
+                async with httpx.AsyncClient(timeout=MONNIFY_TIMEOUT) as client:
+                    resp = await client.post(f"{self.base_url}{attempt_path}", json=payload, headers=headers)
+            except httpx.TimeoutException:
+                raise HTTPException(status_code=504, detail="Verification is taking too long. Please try again.")
+            except httpx.ConnectError:
+                raise HTTPException(status_code=503, detail="Could not reach the verification service. Please try again.")
+            if resp.status_code == 404 and attempt_path != fallback_path and fallback_path:
+                logger.warning("[monnify] %s returned 404 — trying %s", attempt_path, fallback_path)
+                continue
+            path = attempt_path
+            break
+
+        # Never log the request payload — it holds the BVN/NIN.
+        if resp.status_code >= 400:
+            logger.error("[monnify] verification %s failed: HTTP %s — %s", path, resp.status_code, resp.text[:400])
 
         try:
             data = resp.json()
         except ValueError:
             raise HTTPException(status_code=502, detail="Verification service returned an unexpected response.")
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=502, detail="Verification service returned an unexpected response.")
+
+        if resp.status_code in (401, 403, 404) or resp.status_code >= 500:
+            # Our side / account side problem (service not enabled on this
+            # Monnify account, IP not whitelisted, endpoint missing, outage) —
+            # not something the customer got wrong, so don't show them
+            # Monnify's raw text as if their details were rejected.
+            raise HTTPException(
+                status_code=502,
+                detail="Identity verification is unavailable right now. Please try again later.",
+            )
 
         if not data.get("requestSuccessful"):
-            raise HTTPException(status_code=422, detail=data.get("responseMessage", "Could not verify those details."))
+            raise HTTPException(status_code=422, detail=data.get("responseMessage") or "Could not verify those details.")
 
-        body = data.get("responseBody", {})
+        body = data.get("responseBody") or {}
+        if not isinstance(body, dict):
+            body = {}
 
         # Current shape: a plain boolean.
         if bool_field in data:
@@ -140,15 +192,11 @@ class MonnifyProvider(BasePaymentProvider):
         if bool_field in body:
             return bool(body[bool_field])
 
-        # Older/alternate shape: granular per-field match status. This is
-        # actually the shape Monnify's own BVN Information Verification
-        # docs sample — dateOfBirth/mobileNo are exact-match strings
-        # ("FULL_MATCH"/"NO_MATCH"), name is the only field with a
-        # PARTIAL_MATCH tier. A name match alone isn't enough to accept:
-        # two people can share a surname, and PARTIAL_MATCH can trigger
-        # off as little as a shared middle name. Require the name match
-        # AND at least one of dateOfBirth/mobileNo to fully match, so a
-        # coincidental name overlap can't pass on its own.
+        # Older/alternate shape: granular per-field match status. dateOfBirth/
+        # mobileNo are exact-match strings ("FULL_MATCH"/"NO_MATCH"), name is
+        # the only field with a PARTIAL_MATCH tier. A name match alone isn't
+        # enough to accept: two people can share a surname, so require the
+        # name match AND at least one of dateOfBirth/mobileNo to fully match.
         name_match = body.get("name", {})
         if isinstance(name_match, dict) and "matchStatus" in name_match:
             name_ok = name_match["matchStatus"] in ("FULL_MATCH", "PARTIAL_MATCH")
@@ -158,9 +206,16 @@ class MonnifyProvider(BasePaymentProvider):
             )
             return name_ok and corroborated
 
-        # If neither known shape is present, fail closed rather than
-        # silently accepting unverified identity info.
-        logger.warning(f"[monnify] Unrecognized verification response shape for {path}: {data}")
+        # NIN lookups return the NIN record itself (there is no match flag to
+        # read because only the NIN was supplied): a successful response with
+        # a record means the NIN is real.
+        if accept_valid_record and body:
+            logger.info("[monnify] NIN lookup succeeded (record fields: %s)", sorted(body.keys())[:15])
+            return True
+
+        # If no known shape is present, fail closed rather than silently
+        # accepting unverified identity info.
+        logger.warning("[monnify] Unrecognized verification response shape for %s: keys=%s", path, sorted(data.keys()))
         raise HTTPException(status_code=502, detail="Could not confirm verification result. Please try again or contact support.")
 
     # ── Reserved account creation ─────────────────────────────────
@@ -196,7 +251,7 @@ class MonnifyProvider(BasePaymentProvider):
                 headers=await self._headers(),
                 timeout=30,
             )
-            resp.raise_for_status()
+            _raise_for_status_logged(resp, "create reserved account")
             body = resp.json()["responseBody"]
 
         accounts = body.get("accounts", [])
@@ -233,7 +288,7 @@ class MonnifyProvider(BasePaymentProvider):
                 headers=await self._headers(),
                 timeout=30,
             )
-            resp.raise_for_status()
+            _raise_for_status_logged(resp, "update reserved account KYC")
 
     # ── Single transfer (disbursement) ────────────────────────────
     async def initiate_transfer(
@@ -263,7 +318,7 @@ class MonnifyProvider(BasePaymentProvider):
                 headers=await self._headers(),
                 timeout=30,
             )
-            resp.raise_for_status()
+            _raise_for_status_logged(resp, "single transfer")
             body = resp.json()["responseBody"]
 
         return TransferResult(
