@@ -43,13 +43,13 @@ export default function CleanupCentrePage() {
   const closeDialog = () => { if (busy) return; setDialog(null); setPhrase(''); setPin(''); setBackup(false); setAck(false) }
 
   const purge = () => run('purge', async () => {
-    const r = (await api.post('/cleanup/purge', { confirm_phrase: phrase, pin, backup_confirmed: backup, acknowledge_value: ack })).data
+    const r = (await api.post('/cleanup/purge', { confirm_phrase: phrase, pin, backup_confirmed: backup, acknowledge_value: ack }, { timeout: 300_000 })).data
     setDialog(null); setPhrase(''); setPin(''); setBackup(false); setAck(false); setPreview(null)
     setMsg({ kind: 'ok', text: `${r.message}. Their phone numbers can be registered again.` })
     qc.invalidateQueries({ queryKey: ['cleanup-summary'] })
   })
   const reset = () => run('reset', async () => {
-    const r = (await api.post('/cleanup/reset-stats', { confirm_phrase: phrase, pin, disputes: clearDisputes })).data
+    const r = (await api.post('/cleanup/reset-stats', { confirm_phrase: phrase, pin, disputes: clearDisputes }, { timeout: 120_000 })).data
     setDialog(null); setPhrase(''); setPin('')
     setMsg({ kind: 'ok', text: `${r.message}. Run the preview again.` })
   })

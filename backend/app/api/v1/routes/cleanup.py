@@ -201,12 +201,17 @@ async def purge(body: PurgeBody, director: DirectorOnly, db: AsyncSession = Depe
         raise HTTPException(status_code=409, detail=str(e))
 
     # Remove the logins LAST and only if everything above worked, so the phone numbers can be registered again.
+    import asyncio
     from app.utils.supabase_admin_client import supabase_admin_request
-    for uid in ids:
-        await supabase_admin_request(
-            "DELETE", f"/auth/v1/admin/users/{uid}", ok_statuses=(200, 204), not_found_ok=True,
-            failure_detail="Could not remove a login account. Nothing was deleted — please try again.",
-        )
+    sem = asyncio.Semaphore(6)   # a few at a time: much faster than one by one, still gentle on the auth service
+
+    async def _drop(uid):
+        async with sem:
+            await supabase_admin_request(
+                "DELETE", f"/auth/v1/admin/users/{uid}", ok_statuses=(200, 204), not_found_ok=True,
+                failure_detail="Could not remove a login account. Nothing was deleted — please try again.",
+            )
+    await asyncio.gather(*[_drop(u) for u in ids])
     await log_action(db, actor_id=director.id, action="cleanup.purged", entity_type="user", entity_id="bulk",
                      new_value={"users": result["users"], "rows": result["deleted"]})
     await db.commit()
