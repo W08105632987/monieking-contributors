@@ -70,6 +70,9 @@ async def _run():
         db.add(Withdrawal(customer_id=tcust.id, card_id=tcard.id, requested_amount_kobo=10_000, charge_kobo=0, net_payable_kobo=10_000,
                           bank_name="GTBank", account_number="0123456789", account_name="X", status=WithdrawalStatus.PENDING,
                           claimed_by_director_id=direc.id))
+        await db.execute(text("CREATE UNIQUE INDEX idx_zone_assignments_one_active_per_officer ON zone_assignments(officer_id) WHERE ended_at IS NULL"))
+        for oid in (toff.id, direc.id):
+            await db.execute(text("INSERT INTO zone_assignments (id, zone_name, officer_id, started_at) VALUES (gen_random_uuid(), 'Z', :o, now())"), {"o": str(oid)})
         await db.execute(text("INSERT INTO notifications (id, user_id, title, body, type, is_read, created_at) VALUES (gen_random_uuid(), :u, 't', 'b', 'info', false, now())"), {"u": str(tcust.id)})
         await db.commit()
         ids = {"real": real.id, "tcust": tcust.id, "toff": toff.id, "dir": direc.id, "rcard": rcard.id}
@@ -109,6 +112,7 @@ async def _run():
         assert len(txs) == 1 and txs[0].initiated_by == ids["dir"]
         assert (await db.execute(select(func.count()).select_from(Withdrawal))).scalar_one() == 0
         assert (await db.execute(text("select count(*) from notifications"))).scalar_one() == 0
+        assert (await db.execute(text("select count(*) from zone_assignments"))).scalar_one() == 1   # only the real director's
 
         # a conflict: a test wallet transaction that touches a REAL card must block the purge
         extra = _user(UserRole.CUSTOMER, "Test Two", "08010000009", None, is_test=True)
