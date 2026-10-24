@@ -85,14 +85,17 @@ async def _fks(db: AsyncSession) -> list[Fk]:
           JOIN pg_attribute pa ON pa.attrelid = c.confrelid AND pa.attnum = c.confkey[1]
          WHERE c.contype = 'f' AND array_length(c.conkey, 1) = 1 AND n.nspname = 'public'
     """))).all()
-    return [Fk(r[0], r[1], r[2], r[3], bool(r[4]), r[5]) for r in rows]
+    return [Fk(r[0], r[1], r[2], r[3], bool(r[4]), r[5].decode() if isinstance(r[5], (bytes, bytearray)) else str(r[5])) for r in rows]
 
 
 def _is_owner(fk: Fk) -> bool:
     if (fk.child, fk.col) in OWNER_OVERRIDES:
         return True
     if fk.col in ACTOR_COLS:
-        return False
+        # A required column whose own foreign key says "delete me with the user" (e.g. a test officer's zone
+        # assignment history) belongs to that user. Re-attributing it to the director would pile rows onto the
+        # director and break unique rules, so it is removed with the account instead.
+        return bool(fk.parent == "users" and fk.notnull and fk.ondelete == "c")
     return fk.col in OWNER_COLS or fk.ondelete == "c"
 
 
