@@ -21,6 +21,7 @@ export default function CleanupCentrePage() {
   const [backup, setBackup] = useState(false)
   const [ack, setAck] = useState(false)
   const [recon, setRecon] = useState<any>(null)
+  const [clearDisputes, setClearDisputes] = useState(true)
 
   const summary = useQuery({ queryKey: ['cleanup-summary'], queryFn: async () => (await api.get('/cleanup/summary')).data })
 
@@ -48,9 +49,9 @@ export default function CleanupCentrePage() {
     qc.invalidateQueries({ queryKey: ['cleanup-summary'] })
   })
   const reset = () => run('reset', async () => {
-    const r = (await api.post('/cleanup/reset-stats', { confirm_phrase: phrase, pin })).data
+    const r = (await api.post('/cleanup/reset-stats', { confirm_phrase: phrase, pin, disputes: clearDisputes })).data
     setDialog(null); setPhrase(''); setPin('')
-    setMsg({ kind: 'ok', text: r.message })
+    setMsg({ kind: 'ok', text: `${r.message}. Run the preview again.` })
   })
   const check = () => run('recon', async () => { setRecon((await api.get('/cleanup/reconcile')).data) })
 
@@ -102,7 +103,7 @@ export default function CleanupCentrePage() {
 
       <Card className="space-y-3">
         <p className="text-sm font-bold text-green-950 dark:text-white">3. Start fresh</p>
-        <p className="text-xs text-green-700 dark:text-night-200">Clears visit counts, notifications and health history so statistics begin from today. Customer money and cards are not affected.</p>
+        <p className="text-xs text-green-700 dark:text-night-200">Clears visit counts, banner views, notifications, broadcasts, health history and old disputes so the app starts like new. Customer money and cards are not affected. Do this before deleting test accounts: it also clears most of what blocks the delete.</p>
         <ActionButton tone="ghost" onClick={() => setDialog('reset')}><RotateCcw className="mr-1 inline h-4 w-4" />Restart statistics…</ActionButton>
       </Card>
 
@@ -130,7 +131,8 @@ export default function CleanupCentrePage() {
 
       <DirectorModal open={dialog === 'reset'} title="Restart statistics" onClose={closeDialog} busy={busy === 'reset'}>
         <div className="space-y-3">
-          <p className="text-sm text-green-800 dark:text-night-100">Visit counts, notifications, broadcasts and health history are cleared. Money, cards and customers stay exactly as they are.</p>
+          <p className="text-sm text-green-800 dark:text-night-100">Visit counts, banner views, notifications, broadcasts and health history are cleared. Money, cards and customers stay exactly as they are.</p>
+          <label className="flex items-start gap-2 text-xs text-green-800 dark:text-night-100"><input type="checkbox" className="mt-0.5" checked={clearDisputes} onChange={(e) => setClearDisputes(e.target.checked)} />Also delete all old disputes and their messages.</label>
           <label className="block text-xs font-semibold text-green-700 dark:text-night-200">Type <b>RESET STATISTICS</b>
             <input value={phrase} onChange={(e) => setPhrase(e.target.value)} className="mt-1 w-full rounded-xl border border-green-200 dark:border-night-500 bg-white dark:bg-night-800 px-3 py-2.5 text-sm text-green-950 dark:text-white" />
           </label>

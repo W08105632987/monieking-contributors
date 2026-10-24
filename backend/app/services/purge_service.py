@@ -46,6 +46,10 @@ REFERENCE_TABLES = {
     "verification_service_state", "coop_job_runs", "health_alert_state",
 }
 
+# Rows that only exist because of something else (a viewer of a banner, a reply inside a dispute). When the parent
+# is test content they are simply deleted with it, so a real person appearing in them never blocks a purge.
+SOFT_REF_TABLES = {"promo_banner_events", "dispute_messages"}
+
 CONFIRM_PHRASE = "DELETE TEST ACCOUNTS"
 
 
@@ -145,6 +149,8 @@ async def build_plan(db: AsyncSession, test_user_ids: list[uuid.UUID]) -> Plan:
         if not rows or f.child in REFERENCE_TABLES:
             continue
         if f.parent == "users":
+            if f.child in SOFT_REF_TABLES:
+                continue
             if _is_owner(f):
                 bad = await db.execute(text(
                     f'SELECT count(*) FROM "{f.child}" WHERE ctid::text = ANY(:cts) AND "{f.col}" IS NOT NULL AND NOT ("{f.col}" = ANY(CAST(:ids AS uuid[])))'),
