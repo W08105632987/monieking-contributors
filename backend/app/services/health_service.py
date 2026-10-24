@@ -33,18 +33,26 @@ from app.services.admin_crm_service import get_reconciliation_flags
 # ── Individual checks ───────────────────────────────────────────────
 
 async def check_database(db: AsyncSession) -> dict:
-    start = time.monotonic()
+    """Three pings on the same connection. The first one often pays for opening the connection (cold start
+    through the pooler), which is not the database being slow — so the figure judged is the BEST of the three,
+    and the first is reported separately as connect_ms."""
+    samples: list[int] = []
     try:
-        await db.execute(text("SELECT 1"))
-        latency_ms = round((time.monotonic() - start) * 1000)
+        for _ in range(3):
+            start = time.monotonic()
+            await db.execute(text("SELECT 1"))
+            samples.append(round((time.monotonic() - start) * 1000))
     except Exception as e:
-        return {"check_name": "database", "status": "down", "message": f"Database query failed: {e}", "metrics": {}}
+        return {"check_name": "database", "status": "down", "hard": True, "message": f"Database query failed: {e}", "metrics": {}}
 
+    latency_ms = min(samples)
+    metrics = {"latency_ms": latency_ms, "connect_ms": samples[0], "samples_ms": samples}
+    # The database ANSWERED, so it is never "down" just for being slow — slow is "degraded".
     if latency_ms >= settings.HEALTH_CHECK_DB_LATENCY_CRITICAL_MS:
-        return {"check_name": "database", "status": "down", "message": f"Query latency {latency_ms}ms — critical threshold is {settings.HEALTH_CHECK_DB_LATENCY_CRITICAL_MS}ms", "metrics": {"latency_ms": latency_ms}}
+        return {"check_name": "database", "status": "degraded", "message": f"Queries are slow: best of 3 pings took {latency_ms}ms (critical threshold {settings.HEALTH_CHECK_DB_LATENCY_CRITICAL_MS}ms)", "metrics": metrics}
     if latency_ms >= settings.HEALTH_CHECK_DB_LATENCY_WARN_MS:
-        return {"check_name": "database", "status": "degraded", "message": f"Query latency {latency_ms}ms — slower than usual", "metrics": {"latency_ms": latency_ms}}
-    return {"check_name": "database", "status": "healthy", "message": None, "metrics": {"latency_ms": latency_ms}}
+        return {"check_name": "database", "status": "degraded", "message": f"Query latency {latency_ms}ms — slower than usual", "metrics": metrics}
+    return {"check_name": "database", "status": "healthy", "message": None, "metrics": metrics}
 
 
 async def check_redis() -> dict:
@@ -186,7 +194,7 @@ async def _persist_result(db: AsyncSession, result: dict) -> None:
     ))
 
 
-async def _maybe_alert(db: AsyncSession, result: dict) -> None:
+async def _maybe_alert(db: AsyncSession, result: dict, prev_result_status: str | None = None) -> None:
     """
     Alerts on transition INTO a bad state, and on recovery back to
     healthy — never on every single run while something stays broken,
@@ -207,13 +215,16 @@ async def _maybe_alert(db: AsyncSession, result: dict) -> None:
             not state or not state.last_alerted_at
             or (now - state.last_alerted_at) >= timedelta(minutes=settings.HEALTH_CHECK_ALERT_COOLDOWN_MINUTES)
         )
-        if previous_status == "healthy" or cooldown_elapsed:
+        # A single bad reading is often a blip (a cold connection, one slow provider reply), so a soft problem has
+        # to show up on two checks in a row before anyone is alerted. A hard failure (exception) alerts at once.
+        confirmed = result.get("hard") or prev_result_status in ("degraded", "down") or previous_status != "healthy"
+        if confirmed and (previous_status == "healthy" or cooldown_elapsed):
             should_alert = True
     elif status == "healthy" and previous_status in ("degraded", "down"):
         should_alert = True   # recovery
 
     if should_alert:
-        await _send_alert(check_name=check_name, status=status, previous_status=previous_status, message=result.get("message"))
+        await _send_alert(db, check_name=check_name, status=status, previous_status=previous_status, message=result.get("message"))
 
     if state:
         state.last_status = status
@@ -223,7 +234,7 @@ async def _maybe_alert(db: AsyncSession, result: dict) -> None:
         db.add(HealthAlertState(check_name=check_name, last_status=status, last_alerted_at=now if should_alert else None))
 
 
-async def _send_alert(*, check_name: str, status: str, previous_status: str, message: str | None) -> None:
+async def _send_alert(db: AsyncSession, *, check_name: str, status: str, previous_status: str, message: str | None) -> None:
     is_recovery = status == "healthy"
     subject = f"{STATUS_EMOJI[status]} MonieKing: {check_name} {'has recovered' if is_recovery else f'is {status}'}"
     body = (
@@ -235,6 +246,15 @@ async def _send_alert(*, check_name: str, status: str, previous_status: str, mes
     )
 
     emails = [e.strip() for e in settings.ALERT_EMAIL_TO.split(",") if e.strip()]
+    try:   # plus every director who has a verified email on their account
+        from app.models.user import User, UserRole
+        rows = (await db.execute(select(User.email).where(
+            User.role == UserRole.DIRECTOR, User.email.is_not(None), User.email_verified_at.is_not(None)))).all()
+        for (em,) in rows:
+            if em and em not in emails:
+                emails.append(em)
+    except Exception:
+        pass
     phones = [p.strip() for p in settings.ALERT_PHONE_TO.split(",") if p.strip()]
 
     if emails:
@@ -255,9 +275,16 @@ async def run_all_checks(db: AsyncSession) -> list[dict]:
         fn = {"database": check_database, "transactions": check_transactions, "traffic": check_traffic}[name]
         results.append(await fn(db))
 
+    prev: dict[str, str] = {}
+    for result in results:
+        row = (await db.execute(
+            select(HealthCheckResult.status).where(HealthCheckResult.check_name == result["check_name"])
+            .order_by(HealthCheckResult.checked_at.desc()).limit(1)
+        )).first()
+        prev[result["check_name"]] = row[0] if row else "healthy"
     for result in results:
         await _persist_result(db, result)
-        await _maybe_alert(db, result)
+        await _maybe_alert(db, result, prev.get(result["check_name"]))
 
     await db.commit()
     return results

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Phone, Megaphone, CheckCircle2, Clock, Loader2 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatDate, cn } from '@/lib/utils'
 import type { InactiveCustomersPage } from '@/types'

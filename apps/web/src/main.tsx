@@ -3,7 +3,6 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { Toaster } from 'react-hot-toast'
 import App from './App'
 import './index.css'
 import { queryClient } from '@/lib/queryClient'
@@ -13,6 +12,7 @@ import { CelebrationHost } from '@/components/ui/CelebrationHost'
 import { SeasonalLayer } from '@/components/ui/SeasonalLayer'
 import { DialogHost } from '@/components/ui/DialogHost'
 import { PinHost } from '@/components/ui/PinHost'
+import { NoticeHost } from '@/components/ui/NoticeHost'
 import { DownloadHost } from '@/components/ui/DownloadHost'
 import { initSessionLifecycle } from '@/lib/sessionLifecycle'
 
@@ -33,26 +33,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <DownloadHost />
           <CelebrationHost />
           <SeasonalLayer />
-          <Toaster
-            position="top-center"
-            containerStyle={{
-              top: 'max(1rem, env(safe-area-inset-top))',
-              zIndex: 9999,
-              transform: 'translateZ(0)',
-              WebkitTransform: 'translateZ(0)',
-            }}
-            toastOptions={{
-              style: {
-                fontFamily: '"Plus Jakarta Sans", sans-serif',
-                fontSize: '14px',
-                borderRadius: '12px',
-                background: '#052E16',
-                color: '#ECFDF5',
-              },
-              success: { iconTheme: { primary: '#F59E0B', secondary: '#052E16' } },
-              error:   { iconTheme: { primary: '#EF4444', secondary: '#FEF2F2' } },
-            }}
-          />
+          <NoticeHost />
         </BrowserRouter>
       </QueryClientProvider>
     </ErrorBoundary>

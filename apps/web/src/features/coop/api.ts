@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { askStepUp, isStepUpError, stepUpKind } from './stepup-bus'
 

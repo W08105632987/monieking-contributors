@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { X, AlertTriangle } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { DISPUTE_REASON_LABEL, type DisputeEntityType, type DisputeReason } from '@/types'
 
 const REASONS_BY_ENTITY: Record<DisputeEntityType, DisputeReason[]> = {

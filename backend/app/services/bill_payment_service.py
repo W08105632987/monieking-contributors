@@ -1,6 +1,7 @@
 import logging
 import re
 import uuid
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -118,11 +119,20 @@ async def sync_billers(db: AsyncSession) -> dict:
     deactivated = 0
     errors: list[str] = []
     samples: dict[str, dict] = {}
+    BATCH = 150          # rows per database transaction: small, so the connection is never held for long
+    sem = asyncio.Semaphore(6)
+
+    async def _products_for(biller_code: str, biller_name: str):
+        async with sem:
+            try:
+                return await provider.get_biller_products(biller_code), None
+            except MonnifyBillsError as e:
+                return None, f"{biller_name}: couldn't list products ({e.message})"
 
     for internal_category, monnify_category_code in CATEGORY_CODE_MAP.items():
         category_clean = True
-        seen: set[tuple[str, str]] = set()
 
+        # ── Phase 1: talk to Monnify ONLY (no database open while we wait on the network) ──
         try:
             billers = await provider.get_billers(monnify_category_code)
         except MonnifyBillsError as e:
@@ -132,6 +142,7 @@ async def sync_billers(db: AsyncSession) -> dict:
         if billers:
             samples.setdefault(internal_category.value, {})["biller"] = billers[0]
 
+        jobs = []
         for biller_row in billers:
             raw_biller_code = biller_row.get("billerCode") or biller_row.get("code")
             if not raw_biller_code:
@@ -140,18 +151,18 @@ async def sync_billers(db: AsyncSession) -> dict:
                 continue
             biller_code = str(raw_biller_code)[:80]
             biller_name = str(biller_row.get("name") or biller_row.get("billerName") or biller_code)[:160]
+            jobs.append((biller_code, biller_name))
+        results = await asyncio.gather(*[_products_for(c, n) for c, n in jobs])
 
-            try:
-                products = await provider.get_biller_products(biller_code)
-            except MonnifyBillsError as e:
-                errors.append(f"{biller_name}: couldn't list products ({e.message})")
+        wanted: dict[tuple[str, str], dict] = {}
+        for (biller_code, biller_name), (products, err) in zip(jobs, results):
+            if err:
+                errors.append(err)
                 category_clean = False
                 continue
-
             if products and "product" not in samples.get(internal_category.value, {}):
                 samples.setdefault(internal_category.value, {})["product"] = products[0]
-
-            for product_row in products:
+            for product_row in products or []:
                 raw_product_code = product_row.get("productCode") or product_row.get("code")
                 if not raw_product_code:
                     errors.append(f"{biller_name}: a product row had no productCode, skipped: {product_row}")
@@ -159,53 +170,60 @@ async def sync_billers(db: AsyncSession) -> dict:
                     continue
                 product_code = str(raw_product_code)[:80]
                 product_name = str(product_row.get("name") or product_row.get("productName") or product_code)[:160]
-
-                if (biller_code, product_code) in seen:
+                key = (biller_code, product_code)
+                if key in wanted:
                     continue   # same pair twice in one run would violate the unique constraint
-                seen.add((biller_code, product_code))
+                wanted[key] = {
+                    "name": biller_name,
+                    "product_name": product_name,
+                    # Fixed price if the product declares one; None (customer types an amount) for variable-amount products.
+                    "price_kobo": _price_to_kobo(product_row.get("amount") or product_row.get("price")),
+                    "requires_validation": (
+                        bool(product_row.get("requireValidationRef") or product_row.get("requiresValidation"))
+                        or internal_category in VALIDATION_REQUIRED_CATEGORIES
+                    ),
+                }
 
-                # Fixed price if the product declares one; None (customer
-                # types an amount) for variable-amount products.
-                price_kobo = _price_to_kobo(product_row.get("amount") or product_row.get("price"))
-                requires_validation = (
-                    bool(product_row.get("requireValidationRef") or product_row.get("requiresValidation"))
-                    or internal_category in VALIDATION_REQUIRED_CATEGORIES
-                )
-
-                existing = (await db.execute(
-                    select(Biller).where(Biller.monnify_biller_id == biller_code, Biller.product_id == product_code)
+        # ── Phase 2: write to the database in short batches ──
+        existing_rows = (await db.execute(
+            select(Biller).where(Biller.category == internal_category)
+        )).scalars().all()
+        # (the same biller/product could in theory sit under another category; look those up too)
+        existing = {(r.monnify_biller_id, r.product_id): r for r in existing_rows}
+        pending = 0
+        for key, vals in wanted.items():
+            row = existing.get(key)
+            if row is None:
+                other = (await db.execute(
+                    select(Biller).where(Biller.monnify_biller_id == key[0], Biller.product_id == key[1])
                 )).scalar_one_or_none()
+                row = other
+            if row:
+                row.name = vals["name"]
+                row.product_name = vals["product_name"]
+                row.price_kobo = vals["price_kobo"]
+                row.requires_validation = vals["requires_validation"]
+                row.last_synced_at = datetime.now(timezone.utc)
+                # is_active deliberately untouched — see docstring.
+            else:
+                db.add(Biller(
+                    monnify_biller_id=key[0], category=internal_category, name=vals["name"],
+                    product_id=key[1], product_name=vals["product_name"], price_kobo=vals["price_kobo"],
+                    requires_validation=vals["requires_validation"], is_active=True,
+                ))
+            synced += 1
+            pending += 1
+            if pending >= BATCH:
+                await db.commit()
+                pending = 0
 
-                if existing:
-                    existing.name = biller_name
-                    existing.product_name = product_name
-                    existing.price_kobo = price_kobo
-                    existing.requires_validation = requires_validation
-                    existing.last_synced_at = datetime.now(timezone.utc)
-                    # is_active deliberately untouched — see docstring.
-                else:
-                    db.add(Biller(
-                        monnify_biller_id=biller_code,
-                        category=internal_category,
-                        name=biller_name,
-                        product_id=product_code,
-                        product_name=product_name,
-                        price_kobo=price_kobo,
-                        requires_validation=requires_validation,
-                        is_active=True,
-                    ))
-                synced += 1
-
-        if category_clean and seen:
-            active_rows = (await db.execute(
-                select(Biller).where(Biller.category == internal_category, Biller.is_active == True)  # noqa: E712
-            )).scalars().all()
-            for row in active_rows:
-                if (row.monnify_biller_id, row.product_id) not in seen:
+        if category_clean and wanted:
+            for row in existing_rows:
+                if row.is_active and (row.monnify_biller_id, row.product_id) not in wanted:
                     row.is_active = False
                     deactivated += 1
+        await db.commit()
 
-    await db.commit()
     return {"synced": synced, "deactivated": deactivated, "errors": errors, "samples": samples}
 
 

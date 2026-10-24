@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Copy, Check, FileText, ExternalLink, ArrowRight
 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { copyToClipboard, formatNaira, formatServiceCategory, formatServiceType } from '@/lib/utils'
 
 export interface JobDetailData {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import type { TemplateSchema } from '@/lib/templateRules'
 import type { PriceRule } from '@/lib/templateBuilder'

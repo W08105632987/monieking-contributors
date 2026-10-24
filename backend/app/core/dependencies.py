@@ -63,7 +63,7 @@ _UUID_COLUMNS = {"id", "zone_id", "created_by", "managing_officer_id"}
 # served from cache (see get_current_user below) — any endpoint that
 # mutates current_user directly fetches its own session-attached copy
 # first, so a cached instance never needs to support being written to.
-_CACHE_EXCLUDE = {"login_password_hash", "withdrawal_password_hash", "payment_pin_hash", "webauthn_challenge", "webauthn_challenge_expires_at"}
+_CACHE_EXCLUDE = {"login_password_hash", "withdrawal_password_hash", "payment_pin_hash", "email_code_hash", "webauthn_challenge", "webauthn_challenge_expires_at"}
 _USER_CACHE_TTL_SECONDS = 30   # staleness window: a role/suspension change can take up to this long to take effect app-wide — acceptable for an MVP, not for a "ban this user right now" screen
 
 
@@ -80,12 +80,18 @@ def _serialize_user(user: User) -> str:
         elif not isinstance(value, (str, int, float, bool, type(None))):
             value = str(value)          # uuid.UUID and similar
         data[col.name] = value
+    # The secrets themselves are never cached, but "has this person set one?" must survive the round trip,
+    # otherwise a cached profile claims nobody has a PIN / withdrawal password and the set-up banner keeps coming back.
+    data["_has_payment_pin"] = user.payment_pin_hash is not None
+    data["_has_withdrawal_password"] = user.withdrawal_password_hash is not None
     return json.dumps(data)
 
 
 def _deserialize_user(raw: str) -> User:
     data = json.loads(raw)
     user = User()
+    user._cached_has_payment_pin = bool(data.pop("_has_payment_pin", False))
+    user._cached_has_withdrawal_password = bool(data.pop("_has_withdrawal_password", False))
     for key, value in data.items():
         if key in _ENUM_COLUMNS and value is not None:
             value = _ENUM_COLUMNS[key](value)

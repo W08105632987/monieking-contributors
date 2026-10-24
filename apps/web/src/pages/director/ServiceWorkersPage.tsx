@@ -6,7 +6,7 @@ import {
   Plus, Search, RefreshCw, X, Copy, Check,
   ArrowUpRight, Phone, CheckCircle2
 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, copyToClipboard, formatServiceCategory, formatServiceType } from '@/lib/utils'
 

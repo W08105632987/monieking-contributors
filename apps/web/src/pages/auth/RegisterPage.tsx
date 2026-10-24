@@ -7,7 +7,7 @@ import {
   Eye, EyeOff, Phone, User, Building2,
   CreditCard, Users, ChevronRight, ChevronLeft, Check,
 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { supabase } from '@/lib/supabase'
 import { api } from '@/lib/api'
 import { queryClient } from '@/lib/queryClient'
@@ -21,6 +21,7 @@ import { LegalDocumentModal } from '@/pages/legal/LegalDocumentModal'
 const schema = z.object({
   full_name:           z.string().min(3, 'Enter your full name'),
   phone_number:        z.string().min(10, 'Enter a valid phone number').max(15),
+  email:               z.string().trim().email('Enter a valid email address').optional().or(z.literal('')),
   bank_name:           z.string().min(2, 'Enter your bank name'),
   account_number:      z.string().length(10, 'Account number must be exactly 10 digits'),
   account_name:        z.string().min(3, 'Enter the account name as it appears on your bank'),
@@ -68,7 +69,7 @@ export default function RegisterPage() {
     useForm<FormData>({ resolver: zodResolver(schema), mode: 'onBlur' })
 
   const stepFields: Record<number, (keyof FormData)[]> = {
-    1: ['full_name', 'phone_number'],
+    1: ['full_name', 'phone_number', 'email'],
     2: ['bank_name', 'account_number', 'account_name'],
     3: ['next_of_kin_name', 'next_of_kin_phone'],
     4: ['password', 'confirm_password'],
@@ -141,6 +142,7 @@ export default function RegisterPage() {
         await api.post('/auth/register', {
           full_name:           values.full_name,
           phone_number:        values.phone_number.replace(/\s+/g, ''),
+          ...(values.email ? { email: values.email.trim() } : {}),
           bank_name:           values.bank_name,
           account_number:      values.account_number,
           account_name:        values.account_name,
@@ -244,6 +246,13 @@ export default function RegisterPage() {
                 </div>
                 {errors.phone_number && <p className="input-error">{errors.phone_number.message}</p>}
                 <p className="text-xs text-green-500 mt-1">This will be your login username</p>
+              </div>
+
+              <div>
+                <label className="input-label">Email <span className="font-normal text-green-500">(optional)</span></label>
+                <input type="email" autoCapitalize="none" placeholder="you@example.com" className="input" {...register('email')} />
+                {errors.email && <p className="input-error">{errors.email.message}</p>}
+                <p className="text-xs text-green-500 mt-1">Lets you reset your password by email. We'll send a code to confirm it after you sign in.</p>
               </div>
             </div>
           )}

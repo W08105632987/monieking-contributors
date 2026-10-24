@@ -198,6 +198,13 @@ class MonnifyBillsProvider:
                     return [r for r in value if isinstance(r, dict)]
         return []
 
+    @staticmethod
+    def _is_empty_page(body) -> bool:
+        """A normal paged answer that simply has no rows (e.g. a biller with no products) — not a surprise."""
+        if isinstance(body, dict):
+            return any(isinstance(body.get(k), list) for k in ("content", "items", "data", "billers", "products", "categories", "records"))
+        return isinstance(body, list)
+
     async def _list_all(self, path: str, id_keys: tuple[str, ...]) -> list[dict]:
         """GET a list endpoint, following pages until one adds nothing new."""
         sep = "&" if "?" in path else "?"
@@ -212,13 +219,13 @@ class MonnifyBillsProvider:
                     # back to one plain call rather than failing the sync.
                     body = await self._request("GET", path)
                     rows = self._rows(body)
-                    if body and not rows:
+                    if body and not rows and not self._is_empty_page(body):
                         logger.warning("[monnify-bills] Unrecognised list shape from %s: %s", path, str(body)[:300])
                     return rows
                 raise
 
             rows = self._rows(body)
-            if body and not rows and page == 0:
+            if body and not rows and page == 0 and not self._is_empty_page(body):
                 logger.warning("[monnify-bills] Unrecognised list shape from %s: %s", path, str(body)[:300])
 
             new = 0

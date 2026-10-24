@@ -5,7 +5,7 @@ import {
   ArrowLeft, Building2, CreditCard, Phone, Users, Plus, Fingerprint, Bell,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, initials, cn } from '@/lib/utils'
 import type { User, ContributionCard } from '@/types'

@@ -8,7 +8,7 @@ import {
   X, Check, Wallet, AlertTriangle,
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { showFeedback } from '@/store/feedback.store'
 import { useAuthStore } from '@/store/auth.store'

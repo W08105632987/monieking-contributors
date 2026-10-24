@@ -6,7 +6,7 @@ import {
   Upload, Trash2,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { PromoBanner, PromoBannerLayoutStyle } from '@/types'

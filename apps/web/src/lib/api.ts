@@ -46,6 +46,25 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config
 })
 
+// ── Double-click protection ────────────────────────────────────────
+// If the exact same change (same method, address and body) is already on its way to the server, a second
+// identical click joins that request instead of sending another — so a double tap can never pay twice.
+const baseAdapter = axios.getAdapter(['xhr', 'fetch', 'http'])
+const inflight = new Map<string, Promise<any>>()
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const method = (config.method ?? 'get').toLowerCase()
+  if (!['post', 'put', 'patch', 'delete'].includes(method) || (config as any)._allowDuplicate) return config
+  const key = `${method} ${config.baseURL ?? ''}${config.url ?? ''} ${typeof config.data === 'string' ? config.data : JSON.stringify(config.data ?? null)}`
+  config.adapter = (cfg) => {
+    const existing = inflight.get(key)
+    if (existing) return existing
+    const p = baseAdapter(cfg).finally(() => { inflight.delete(key) })
+    inflight.set(key, p)
+    return p
+  }
+  return config
+})
+
 // ── On a 401, try refreshing the session once before giving up ─────
 // The cookie is httpOnly, so unlike before there's no token this code
 // can inspect or attach directly — the browser sends it automatically,

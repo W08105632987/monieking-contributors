@@ -8,7 +8,7 @@ import {
   Briefcase, ShieldAlert, CheckCircle2
 } from 'lucide-react'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'

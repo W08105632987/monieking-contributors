@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 
 /**

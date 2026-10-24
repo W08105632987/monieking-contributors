@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useSeason } from '@/hooks/useSeasonal'
 import { SEASON_DECOR } from '@/lib/seasonal'
+import { useAuthStore } from '@/store/auth.store'
+import { playJingle, shouldPlayJingle, markJinglePlayed } from '@/lib/jingle'
 
 const PARTICLES = Array.from({ length: 14 }, (_, i) => ({
   left: (i * 73) % 100,
@@ -15,6 +17,25 @@ const PARTICLES = Array.from({ length: 14 }, (_, i) => ({
 export function SeasonalLayer() {
   const season = useSeason()
   const [greet, setGreet] = useState(false)
+  const userId = useAuthStore((s) => (s.isAuthenticated ? s.user?.id : undefined))
+
+  // First login while the Christmas theme is on: one short jingle, once per person per year. If the browser
+  // refuses sound until the person touches the screen, wait for that first tap and try again.
+  useEffect(() => {
+    if (season !== 'christmas' || !userId) return
+    const year = new Date().getFullYear()
+    if (!shouldPlayJingle(userId, year)) return
+    let cancelled = false
+    const attempt = async () => {
+      if (cancelled) return
+      if (await playJingle()) { markJinglePlayed(userId, year); cleanup() }
+    }
+    const cleanup = () => { window.removeEventListener('pointerdown', attempt); window.removeEventListener('keydown', attempt) }
+    void attempt()
+    window.addEventListener('pointerdown', attempt)
+    window.addEventListener('keydown', attempt)
+    return () => { cancelled = true; cleanup() }
+  }, [season, userId])
 
   useEffect(() => {
     if (!season) return

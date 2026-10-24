@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { FoodQrScannerModal } from '@/components/food/FoodQrScannerModal'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'

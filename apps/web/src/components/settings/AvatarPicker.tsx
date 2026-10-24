@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Camera } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { Avatar } from '@/components/ui/Avatar'
 

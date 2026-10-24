@@ -5,10 +5,8 @@ identically against any of them via their SMTP relay, without adding a
 new dependency per provider. Matches the "one integration module per
 capability" pattern already used for SMS (termii.py).
 
-Currently used only for system-health alerts (health_service.py) — not
-a general-purpose transactional email sender for customers, since this
-app has never needed one (everything customer-facing goes by SMS or
-in-app notification).
+Used for system-health alerts (health_service.py) and, from Module D2,
+for verification codes and password-reset codes (services/email_service.py).
 """
 import logging
 import aiosmtplib
@@ -20,7 +18,7 @@ from app.core.config import settings
 logger = logging.getLogger("monieking.email")
 
 
-async def send_email(*, to: list[str], subject: str, body: str) -> bool:
+async def send_email(*, to: list[str], subject: str, body: str, html: str | None = None) -> bool:
     """Returns False on any failure rather than raising — callers
     (health_service.py) already have SMS as a second delivery channel
     for the same alert, so one channel failing should never crash the
@@ -30,11 +28,13 @@ async def send_email(*, to: list[str], subject: str, body: str) -> bool:
         logger.warning("[email] SMTP_HOST not configured or no recipients — email not sent. Subject: %s", subject)
         return False
 
-    message = MIMEMultipart()
+    message = MIMEMultipart("alternative") if html else MIMEMultipart()
     message["From"] = settings.SMTP_FROM_EMAIL
     message["To"] = ", ".join(to)
     message["Subject"] = subject
     message.attach(MIMEText(body, "plain"))
+    if html:
+        message.attach(MIMEText(html, "html"))
 
     try:
         await aiosmtplib.send(

@@ -3,7 +3,7 @@ import { Eye, EyeOff, Copy } from 'lucide-react'
 import { formatNaira, copyToClipboard } from '@/lib/utils'
 import { Button } from '@/components/ui'
 import type { Wallet } from '@/types'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 
 interface WalletCardProps {
   wallet: Wallet

@@ -8,7 +8,7 @@ import {
   Eye, EyeOff, Lock, AlertCircle, X, Clock, ChevronRight, CreditCard,
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { useWallet } from '@/hooks/useWallet'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'

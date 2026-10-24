@@ -3,7 +3,7 @@ import { ask } from '@/lib/dialog'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, AlertTriangle } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { getErrorMessage } from '@/lib/api'
 import { FallbackError } from '@/components/ui/FallbackError'
 import {

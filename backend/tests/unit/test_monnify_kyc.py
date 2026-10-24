@@ -87,7 +87,7 @@ def test_nin_not_found_by_monnify_is_a_422_with_its_message(monkeypatch):
         400, json={"requestSuccessful": False, "responseMessage": "Invalid NIN", "responseCode": "99"}))
     with pytest.raises(HTTPException) as ei:
         run(p.verify_nin(nin="12345678901"))
-    assert ei.value.status_code == 422 and ei.value.detail == "Invalid NIN"
+    assert ei.value.status_code == 422 and "not a valid NIN" in ei.value.detail
 
 
 @pytest.mark.parametrize("status", [401, 403, 404, 500, 503])
@@ -129,3 +129,33 @@ def test_monnify_reason_extracts_the_provider_message():
     assert wl._monnify_reason(err) == "BVN already linked"
     assert wl._monnify_reason(HTTPException(status_code=502, detail="down")) == "down"
     assert wl._monnify_reason(RuntimeError("x")) == ""
+
+
+def test_generic_code_99_is_our_side_not_the_customers_fault():
+    import asyncio
+    import pytest
+    from fastapi import HTTPException
+    from unittest.mock import patch, AsyncMock, MagicMock
+    from app.integrations import monnify as m
+
+    def fake_resp(body, status=400):
+        r = MagicMock(); r.status_code = status; r.json.return_value = body; r.text = str(body)
+        return r
+
+    async def run(body):
+        p = m.MonnifyProvider.__new__(m.MonnifyProvider)
+        p.base_url = "https://api.monnify.com"
+        p._headers = AsyncMock(return_value={})
+        type(p).is_sandbox = property(lambda self: False)
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client); client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(return_value=fake_resp(body))
+        with patch.object(m.httpx, "AsyncClient", return_value=client):
+            return await p._run_verification("/api/v1/vas/bvn-details-match", {"bvn": "1"}, bool_field="bvnInformationMatch")
+
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(run({"requestSuccessful": False, "responseMessage": "There was an error processing the request, Please try again later...", "responseCode": "99"}))
+    assert e.value.status_code == 502 and "unavailable" in e.value.detail
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(run({"requestSuccessful": False, "responseMessage": "Unable to process request. Invalid BVN provided", "responseCode": "99"}))
+    assert e.value.status_code == 422 and "not a valid BVN" in e.value.detail

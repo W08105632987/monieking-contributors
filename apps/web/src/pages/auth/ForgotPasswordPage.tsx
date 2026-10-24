@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Phone, KeyRound, Lock, Eye, EyeOff } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { ArrowLeft, Phone, Mail, KeyRound, Lock, Eye, EyeOff } from 'lucide-react'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { StarfieldBackground } from '@/components/ui/StarfieldBackground'
 import { useDarkMode } from '@/hooks/useDarkMode'
@@ -12,18 +12,22 @@ export default function ForgotPasswordPage() {
   const navigate = useNavigate()
   const { isDark } = useDarkMode()
   const [step, setStep] = useState<Step>('phone')
-  const [phone, setPhone] = useState('')
+  const [phone, setPhone] = useState('')   // a phone number or a verified email
   const [otp, setOtp] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const requestOtp = async () => {
-    if (phone.trim().length < 10) return toast.error('Enter a valid phone number')
+  const isEmail = phone.includes('@')
+
+  const requestOtp = async (channel?: 'email') => {
+    const id = phone.trim()
+    if (!isEmail && id.length < 10) return toast.error('Enter your phone number or your verified email')
+    if (isEmail && !/^\S+@\S+\.\S+$/.test(id)) return toast.error('Enter a valid email address')
     setLoading(true)
     try {
-      await api.post('/auth/forgot-password/request-otp', { phone_number: phone })
-      toast.success('If that number is registered, a code has been sent')
+      await api.post('/auth/forgot-password/request-otp', { identifier: id, channel })
+      toast.success(isEmail || channel === 'email' ? 'If that account has a verified email, a code has been sent' : 'If that number is registered, a code has been sent')
       setStep('reset')
     } catch (e) {
       toast.error(getErrorMessage(e))
@@ -38,7 +42,7 @@ export default function ForgotPasswordPage() {
     setLoading(true)
     try {
       await api.post('/auth/forgot-password/reset', {
-        phone_number: phone, otp, new_password: newPassword,
+        identifier: phone.trim(), otp, new_password: newPassword,
       })
       toast.success('Password updated — you can log in now')
       navigate('/auth/login', { replace: true })
@@ -60,27 +64,28 @@ export default function ForgotPasswordPage() {
       <h1 className="text-3xl font-extrabold text-white leading-tight mb-1">Forgot password?</h1>
       <p className="text-green-300 text-sm mb-8">
         {step === 'phone'
-          ? "Enter your registered phone number and we'll text you a reset code."
-          : `Enter the 6-digit code sent to ${phone}, and your new password.`}
+          ? "Enter your registered phone number (we'll text you a code) or your verified email (we'll email it)."
+          : `Enter the 6-digit code we sent to ${phone}, and your new password.`}
       </p>
 
       {step === 'phone' ? (
         <div className="space-y-4">
           <div>
-            <label className="input-label text-green-300">Phone number</label>
+            <label className="input-label text-green-300">Phone number or email</label>
             <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+              {isEmail ? <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" /> : <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />}
               <input
-                type="tel"
+                type="text"
+                autoCapitalize="none"
                 value={phone}
-                onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
-                placeholder="08012345678"
+                onChange={e => setPhone(e.target.value.includes('@') || /[a-zA-Z]/.test(e.target.value) ? e.target.value.trim() : e.target.value.replace(/\D/g, ''))}
+                placeholder="08012345678 or you@example.com"
                 className="input pl-10 bg-green-800/50 border-green-700 text-white placeholder:text-green-600 focus:border-copper-400 focus:ring-copper-400/20"
               />
             </div>
           </div>
           <button
-            onClick={requestOtp}
+            onClick={() => requestOtp()}
             disabled={loading}
             className="w-full bg-amber-400 text-green-900 font-bold text-sm rounded-full py-4 active:scale-95 transition-all disabled:opacity-50"
           >
@@ -125,6 +130,11 @@ export default function ForgotPasswordPage() {
           >
             {loading ? 'Updating…' : 'Reset password'}
           </button>
+          {!isEmail && (
+            <button onClick={() => requestOtp('email')} disabled={loading} className="w-full text-amber-300 text-xs font-semibold py-2">
+              No SMS yet? Send the code to my verified email instead
+            </button>
+          )}
           <button onClick={() => setStep('phone')} className="w-full text-green-400 text-xs font-semibold py-2">
             Didn't get a code? Try again
           </button>

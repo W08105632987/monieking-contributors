@@ -4,7 +4,7 @@ import { api } from '@/lib/api'
 import { useWalletStore } from '@/store/wallet.store'
 import { useAuthStore } from '@/store/auth.store'
 import { supabase } from '@/lib/supabase'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import type { Wallet, PaginatedResponse, WalletTransaction } from '@/types'
 
 export function useWallet() {

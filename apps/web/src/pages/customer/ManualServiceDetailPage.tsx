@@ -6,7 +6,7 @@ import {
   ArrowLeft, AlertTriangle,
   FileText, ExternalLink, ShieldAlert, X, Upload
 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatDateTime, cn, formatServiceCategory, formatServiceType } from '@/lib/utils'
 import { fieldLabel } from '@/components/worker/ViewInfoModal'

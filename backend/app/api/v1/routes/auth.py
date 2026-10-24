@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -137,6 +137,16 @@ async def register_customer(
     # account's existence, just its limits. Provisioning failure here is
     # non-fatal (logged, not raised) so a Monnify hiccup never blocks
     # registration; the account can be created retroactively.
+    _signup_email_code = None
+    if body.email:
+        from app.services import email_service as es
+        em = es.normalize_email(body.email)
+        if es.is_valid_email(em):
+            _code = es.new_code()
+            user.pending_email = em
+            user.email_code_hash = es.hash_code(_code)
+            user.email_code_expires_at = es.expiry()
+            _signup_email_code = (em, _code)
     wallet = await get_or_create_wallet(db, user.id)
     if settings.MONNIFY_API_KEY:
         try:
@@ -173,6 +183,12 @@ async def register_customer(
     except Exception as e:
         print(f"Audit log failed (non-fatal): {e}")
 
+    if _signup_email_code:
+        try:
+            await es.send_verification_code(*_signup_email_code)
+        except Exception as e:
+            print(f"[signup-email] failed (non-fatal): {e}")
+
     return await build_user_response(db, user)
 
 
@@ -195,6 +211,9 @@ async def set_payment_pin(
     if is_change:
         await pin_service.check_pin(db, user, str(body.get("current_pin", "")))
     await pin_service.set_pin(db, user.id, pin)
+    await db.commit()
+    from app.core.dependencies import invalidate_user_cache
+    await invalidate_user_cache(str(user.id))
     if is_change:
         from app.services.notification_service import send_notification
         from app.models.notification import NotificationType
@@ -233,6 +252,9 @@ async def reset_payment_pin(request: Request, body: dict, current_user: CurrentU
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="Your login password is incorrect")
     await pin_service.set_pin(db, current_user.id, pin)
+    await db.commit()
+    from app.core.dependencies import invalidate_user_cache as _inv
+    await _inv(str(current_user.id))
     return {"message": "PIN reset", "has_pin": True}
 
 
@@ -269,6 +291,9 @@ async def set_withdrawal_password(
             body="Your withdrawal password was just changed. If this wasn't you, contact your officer or a director immediately.",
             type=NotificationType.INFO,
         )
+    await db.commit()
+    from app.core.dependencies import invalidate_user_cache as _inv2
+    await _inv2(str(user.id))
     return {"message": "Withdrawal password updated"}
 
 
@@ -298,35 +323,49 @@ async def request_password_reset_otp(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Sends a 6-digit OTP via SMS to reset the login password. Always
-    returns the same generic message whether or not the phone number is
-    registered — doesn't confirm/deny account existence.
+    Sends a 6-digit code to reset the login password. The person can give a phone number OR a verified
+    email. A code goes to the email when they gave one (or chose email and have one verified); it goes by
+    SMS otherwise — and SMS is also the fallback when the email could not be sent. Always returns the same
+    generic message whether or not the account exists.
     """
-    import secrets
     from datetime import datetime, timezone, timedelta
     from app.integrations.termii import send_sms
+    from app.services import email_service as es
 
-    phone_number = body.get("phone_number", "")
-    generic_response = {"message": "If that number is registered, an OTP has been sent."}
+    raw = (body.get("identifier") or body.get("phone_number") or body.get("email") or "").strip()
+    prefer_email = body.get("channel") == "email"
+    generic_response = {"message": "If that account exists, a reset code has been sent."}
 
-    result = await db.execute(select(User).where(User.phone_number == phone_number))
-    user = result.scalar_one_or_none()
+    user = None
+    if "@" in raw:
+        em = es.normalize_email(raw)
+        if es.is_valid_email(em):
+            user = (await db.execute(
+                select(User).where(func.lower(User.email) == em, User.email_verified_at.is_not(None))
+            )).scalars().first()
+            prefer_email = True
+    elif raw:
+        user = (await db.execute(select(User).where(User.phone_number == raw))).scalar_one_or_none()
     if not user:
         return generic_response
 
-    otp = f"{secrets.randbelow(1_000_000):06d}"
+    otp = es.new_code()
     user.login_password_reset_otp_hash = hash_password(otp)
     user.login_password_reset_otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_TTL_MINUTES)
-    await db.flush()
+    user.password_reset_attempts = 0
+    await db.commit()
 
-    try:
-        await send_sms(phone_number, f"Your MonieKing password reset code is {otp}. Expires in {OTP_TTL_MINUTES} minutes. Don't share this with anyone.")
-    except Exception as e:
-        # The OTP is already saved and valid — a flaky SMS provider
-        # shouldn't turn into a 500 for the user. Log it so it's visible
-        # in ops, but still return the generic success response (keeps
-        # the "don't reveal if the number exists" behavior intact too).
-        print(f"[forgot-password] send_sms failed (non-fatal): {e}")
+    sent = False
+    if prefer_email and user.email_verified:
+        sent = await es.send_reset_code(user.email, otp)
+    if not sent:
+        try:
+            await send_sms(user.phone_number, f"Your MonieKing password reset code is {otp}. Expires in {OTP_TTL_MINUTES} minutes. Don't share this with anyone.")
+            sent = True
+        except Exception as e:
+            print(f"[forgot-password] send_sms failed (non-fatal): {e}")
+    if not sent and user.email_verified and not prefer_email:
+        await es.send_reset_code(user.email, otp)
 
     return generic_response
 
@@ -339,17 +378,21 @@ async def reset_password_with_otp(
     db: AsyncSession = Depends(get_db),
 ):
     from datetime import datetime, timezone
-    import httpx
+    from app.services import email_service as es
 
-    phone_number = body.get("phone_number", "")
+    raw          = (body.get("identifier") or body.get("phone_number") or body.get("email") or "").strip()
     otp          = body.get("otp", "")
     new_password = body.get("new_password", "")
 
     if len(new_password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
-    result = await db.execute(select(User).where(User.phone_number == phone_number))
-    user = result.scalar_one_or_none()
+    if "@" in raw:
+        user = (await db.execute(
+            select(User).where(func.lower(User.email) == es.normalize_email(raw), User.email_verified_at.is_not(None))
+        )).scalars().first()
+    else:
+        user = (await db.execute(select(User).where(User.phone_number == raw))).scalar_one_or_none()
     if not user or not user.login_password_reset_otp_hash:
         raise HTTPException(status_code=400, detail="Invalid or expired code")
 
@@ -359,13 +402,22 @@ async def reset_password_with_otp(
         await db.commit()
         raise HTTPException(status_code=400, detail="This code has expired. Request a new one.")
 
+    if (user.password_reset_attempts or 0) >= 5:
+        user.login_password_reset_otp_hash = None
+        user.login_password_reset_otp_expires_at = None
+        await db.commit()
+        raise HTTPException(status_code=429, detail="Too many wrong codes. Request a new one.")
+
     from app.core.security import verify_password
-    if not verify_password(otp, user.login_password_reset_otp_hash):
+    if not verify_password(str(otp), user.login_password_reset_otp_hash):
+        user.password_reset_attempts = (user.password_reset_attempts or 0) + 1
+        await db.commit()
         raise HTTPException(status_code=400, detail="Invalid or expired code")
 
-    # OTP correct — clear it (single use) and update the real Supabase login password
+    # Code correct — clear it (single use) and update the real Supabase login password
     user.login_password_reset_otp_hash = None
     user.login_password_reset_otp_expires_at = None
+    user.password_reset_attempts = 0
     await db.flush()
 
     from app.utils.supabase_admin_client import supabase_admin_request

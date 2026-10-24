@@ -7,7 +7,7 @@ import {
   ArrowUpRight, Megaphone, AlertCircle, Info, X, Clock,
 } from 'lucide-react'
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { useNotificationsStore } from '@/store/notifications.store'

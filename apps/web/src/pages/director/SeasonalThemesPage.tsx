@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useSeasonalConfig, useUpdateSeasonal } from '@/hooks/useSeasonal'

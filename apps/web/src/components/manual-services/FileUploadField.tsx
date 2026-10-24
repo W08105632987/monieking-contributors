@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { UploadCloud, CheckCircle2, X, FileText, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 
 interface FileUploadFieldProps {
   label: string

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate, useParams } from 'react-router-dom'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { ArrowLeft, Smartphone, CheckCircle2, AlertCircle, Loader2, Info } from 'lucide-react'
 import { formatNaira, cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api'

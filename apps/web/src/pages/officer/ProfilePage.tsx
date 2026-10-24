@@ -14,6 +14,7 @@ import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
 import { KycSection } from '@/components/settings/KycSection'
 import { PaymentPinRow } from '@/components/setup/PaymentPinRow'
+import { EmailRow } from '@/components/setup/EmailRow'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
 import { NotificationSoundRow } from '@/components/settings/NotificationSoundRow'
@@ -21,7 +22,7 @@ import { NotificationSoundRow } from '@/components/settings/NotificationSoundRow
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { formatNaira, maskAccount, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 // ── Change withdrawal password sheet ─────────────────────────────
@@ -318,6 +319,7 @@ export default function OfficerProfilePage() {
             onClick={() => setShowWithdrawSheet(true)}
           />
           <PaymentPinRow />
+          <EmailRow />
           <ChangePasswordSection />
           <BiometricSection />
           <div className="pb-2" />

@@ -22,8 +22,9 @@ import { NotificationSoundRow } from '@/components/settings/NotificationSoundRow
 
 import { formatNaira, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { PaymentPinRow } from '@/components/setup/PaymentPinRow'
+import { EmailRow } from '@/components/setup/EmailRow'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 
 // ── Change withdrawal password sheet ─────────────────────────────
@@ -379,6 +380,7 @@ export default function ProfilePage() {
             onClick={() => setShowWithdrawSheet(true)}
           />
           <PaymentPinRow />
+          <EmailRow />
           <ChangePasswordSection />
           <BiometricSection />
           <div className="pb-2" />

@@ -180,7 +180,22 @@ class MonnifyProvider(BasePaymentProvider):
             )
 
         if not data.get("requestSuccessful"):
-            raise HTTPException(status_code=422, detail=data.get("responseMessage") or "Could not verify those details.")
+            msg = str(data.get("responseMessage") or "")
+            low = msg.lower()
+            if "invalid bvn" in low or "invalid nin" in low:
+                # The customer typed a number that is not a real 11-digit BVN/NIN: their mistake, say so plainly.
+                raise HTTPException(status_code=422, detail="That number is not a valid " + ("BVN" if "bvn" in low else "NIN") + ". Check it and try again.")
+            if str(data.get("responseCode")) == "99" or "try again later" in low or "unable to process" in low:
+                # A generic Monnify failure is almost never the customer's fault. The usual causes are on OUR Monnify
+                # account: the verification service is not switched on, the wallet cannot cover the per-check fee
+                # (BVN ₦10, NIN ₦60), or the server IP is not allowed. Log the cause for the operator, keep the
+                # customer's message calm.
+                logger.error(
+                    "[monnify] %s answered code 99 (%r). Check with Monnify: (1) BVN/NIN verification enabled on this LIVE "
+                    "contract, (2) Monnify wallet balance covers the fee, (3) API calls allowed from this server.", path, msg[:120],
+                )
+                raise HTTPException(status_code=502, detail="Identity verification is unavailable right now. Please try again later.")
+            raise HTTPException(status_code=422, detail=msg or "Could not verify those details.")
 
         body = data.get("responseBody") or {}
         if not isinstance(body, dict):

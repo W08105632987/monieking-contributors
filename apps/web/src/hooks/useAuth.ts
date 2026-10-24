@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { useNotificationsStore } from '@/store/notifications.store'

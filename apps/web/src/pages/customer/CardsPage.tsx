@@ -14,7 +14,7 @@ import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 import { FoodCardRulesModal } from '@/components/food/FoodCardRulesModal'
 import { FoodQrDisplayModal } from '@/components/food/FoodQrDisplayModal'
 import { QrCode } from 'lucide-react'
-import { toast } from 'react-hot-toast'
+import { toast } from '@/lib/notify'
 
 // ── Flippable card ────────────────────────────────────────────────
 function CardItem({ card, grid, onOpenFoodPass }: { card: ContributionCard; grid?: CardGrid; onOpenFoodPass?: (card: ContributionCard) => void }) {

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { Withdrawal, WithdrawForm, PaginatedResponse } from '@/types'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { showFeedback } from '@/store/feedback.store'
 
 export function useMyWithdrawals() {

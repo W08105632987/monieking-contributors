@@ -137,6 +137,14 @@ class User(Base):
     login_password_hash:      Mapped[str | None] = mapped_column(Text)
     withdrawal_password_hash: Mapped[str | None] = mapped_column(Text)
     payment_pin_hash:         Mapped[str | None] = mapped_column(Text)
+    # Optional email (Module D2). `email` is only trusted for reset/alerts once email_verified_at is set.
+    email:                    Mapped[str | None] = mapped_column(String(254))
+    email_verified_at:        Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pending_email:            Mapped[str | None] = mapped_column(String(254))
+    email_code_hash:          Mapped[str | None] = mapped_column(String(255))
+    email_code_expires_at:    Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    email_code_attempts:      Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    password_reset_attempts:  Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     pin_failed_attempts:      Mapped[int]        = mapped_column(default=0, server_default="0")
     pin_locked_until:         Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -174,11 +182,15 @@ class User(Base):
     def has_withdrawal_password(self) -> bool:
         """Lets the frontend tell first-time setup (no current password to
         verify) apart from an actual change — without exposing the hash."""
-        return self.withdrawal_password_hash is not None
+        return self.withdrawal_password_hash is not None or bool(getattr(self, "_cached_has_withdrawal_password", False))
+
+    @property
+    def email_verified(self) -> bool:
+        return bool(self.email and self.email_verified_at)
 
     @property
     def has_payment_pin(self) -> bool:
-        return self.payment_pin_hash is not None
+        return self.payment_pin_hash is not None or bool(getattr(self, "_cached_has_payment_pin", False))
 
     status: Mapped[UserStatus] = mapped_column(
         Enum(UserStatus, name="user_status", values_callable=lambda x: [e.value for e in x]), default=UserStatus.PENDING_VERIFICATION

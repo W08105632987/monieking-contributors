@@ -97,3 +97,73 @@ export function WithdrawalPasswordSheet({ onClose }: { onClose: () => void }) {
     </Sheet>
   )
 }
+
+/** Add or confirm an email. Step 1: type it, we send a 6-digit code. Step 2: type the code. */
+export function EmailSheet({ onClose }: { onClose: () => void }) {
+  const user = useAuthStore((s) => s.user)
+  const setUser = useAuthStore((s) => s.setUser)
+  const waiting = user?.pending_email ?? null
+  const [email, setEmail] = useState(waiting ?? '')
+  const [stage, setStage] = useState<'enter' | 'code'>(waiting ? 'code' : 'enter')
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [info, setInfo] = useState('')
+  const [done, setDone] = useState(false)
+  const input = 'w-full rounded-xl border border-green-200 bg-white px-4 py-3 text-sm text-green-900 dark:border-night-500 dark:bg-night-800 dark:text-white'
+
+  const send = async (resend = false) => {
+    if (busy) return
+    const e = email.trim()
+    if (!resend && !/^\S+@\S+\.\S+$/.test(e)) return setErr('Enter a valid email address.')
+    setBusy(true); setErr(''); setInfo('')
+    try {
+      const { data } = resend ? await api.post('/auth/email/resend') : await api.post('/auth/email/send-code', { email: e })
+      if (user) setUser({ ...user, pending_email: e.toLowerCase() })
+      setStage('code'); setInfo(data.message ?? '')
+    } catch (x) { setErr(getErrorMessage(x)) } finally { setBusy(false) }
+  }
+  const verify = async () => {
+    if (busy || code.length !== 6) return
+    setBusy(true); setErr('')
+    try {
+      const { data } = await api.post('/auth/email/verify', { code })
+      if (user) setUser({ ...user, email: data.email, email_verified: true, pending_email: null })
+      setDone(true); setTimeout(onClose, 1100)
+    } catch (x) { setErr(getErrorMessage(x)) } finally { setBusy(false) }
+  }
+  const remove = async () => {
+    if (busy) return
+    setBusy(true); setErr('')
+    try {
+      await api.delete('/auth/email')
+      if (user) setUser({ ...user, email: null, email_verified: false, pending_email: null })
+      onClose()
+    } catch (x) { setErr(getErrorMessage(x)) } finally { setBusy(false) }
+  }
+  return (
+    <Sheet title={user?.email_verified ? 'Change email' : 'Add your email'} onClose={onClose}
+      sub="Use it to reset your password by email. It is optional, and we only email you codes and important notices.">
+      {done ? <p className="py-8 text-center text-sm font-bold text-green-700">Email verified ✓</p> : stage === 'enter' ? (
+        <div className="space-y-4">
+          <input className={input} type="email" autoCapitalize="none" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          {err && <p role="alert" className="text-xs font-semibold text-red-600">{err}</p>}
+          <button disabled={busy} onClick={() => send()} className={primary}>{busy ? 'Sending…' : 'Send code'}</button>
+          {user?.email && <button disabled={busy} onClick={remove} className="w-full py-2 text-xs font-semibold text-red-600">Remove email</button>}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-sm text-green-700 dark:text-night-200">{info || `Enter the 6-digit code we sent to ${email}.`}</p>
+          <input className={`${input} text-center tracking-[0.4em]`} inputMode="numeric" placeholder="123456" value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+          {err && <p role="alert" className="text-xs font-semibold text-red-600">{err}</p>}
+          <button disabled={busy || code.length !== 6} onClick={verify} className={primary}>{busy ? 'Checking…' : 'Verify email'}</button>
+          <div className="flex justify-between text-xs font-semibold text-green-700 dark:text-night-200">
+            <button disabled={busy} onClick={() => send(true)}>Resend code</button>
+            <button disabled={busy} onClick={() => { setStage('enter'); setCode(''); setErr('') }}>Use a different email</button>
+          </div>
+        </div>
+      )}
+    </Sheet>
+  )
+}

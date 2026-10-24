@@ -7,7 +7,7 @@ import {
   Upload, ShieldAlert, X, Eye,
   Briefcase,
 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatServiceCategory, formatServiceType } from '@/lib/utils'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'

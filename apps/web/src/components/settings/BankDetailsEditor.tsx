@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Landmark, ShieldCheck, ChevronRight, X } from 'lucide-react'
 import { motion } from 'framer-motion'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { withPin, isPinCancelled } from '@/lib/pin'
 import { BankPickerModal, type Bank } from './BankPickerModal'

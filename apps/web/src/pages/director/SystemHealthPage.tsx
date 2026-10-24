@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Activity, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Database, Zap, Send, MessageSquare, Users } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 

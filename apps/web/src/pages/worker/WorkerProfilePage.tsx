@@ -14,6 +14,7 @@ import { api, getErrorMessage } from '@/lib/api'
 import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
 import { PaymentPinRow } from '@/components/setup/PaymentPinRow'
+import { EmailRow } from '@/components/setup/EmailRow'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
 import { BankDetailsEditor } from '@/components/settings/BankDetailsEditor'
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
@@ -21,7 +22,7 @@ import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
 import { NotificationSoundRow } from '@/components/settings/NotificationSoundRow'
 
 import { formatNaira, maskAccount, formatDate, copyToClipboard, cn } from '@/lib/utils'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
 
 const NIGERIAN_STATES = [
@@ -590,6 +591,7 @@ export default function WorkerProfilePage() {
             onClick={() => setShowWithdrawSheet(true)}
           />
           <PaymentPinRow />
+          <EmailRow />
           <ChangePasswordSection />
           <BiometricSection />
           <div className="pb-2" />

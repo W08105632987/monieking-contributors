@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Eye, EyeOff, KeyRound } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 
 /**

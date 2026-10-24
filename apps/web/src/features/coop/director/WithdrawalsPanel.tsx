@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, Copy, Search, SlidersHorizontal, Wallet } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { formatNaira } from '@/lib/utils'
 import { post, postIdem, useCoopAction } from '../api'
 import { newKey, useAuthPrompt } from '../auth'

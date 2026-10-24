@@ -28,6 +28,7 @@ class RegisterCustomerRequest(UserBase):
     next_of_kin_name:  str
     next_of_kin_phone: str
     accepted_terms: bool
+    email: Optional[str] = None   # optional; a verification code is sent after signup
 
     @field_validator("accepted_terms")
     @classmethod
@@ -99,6 +100,9 @@ class UserResponse(BaseModel):
     detected_state: Optional[str]
     has_withdrawal_password: bool = False
     has_payment_pin: bool = False
+    email: Optional[str] = None
+    email_verified: bool = False
+    pending_email: Optional[str] = None
     bvn_linked: bool = False
     nin_linked: bool = False
     bvn_last4:  Optional[str] = None

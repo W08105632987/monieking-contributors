@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Fingerprint } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { getErrorMessage } from '@/lib/api'
 import { isBiometricAvailable, enrollBiometric, listBiometricCredentials, removeBiometricCredential } from '@/lib/webauthn'
 import { FEATURE_FLAGS } from '@/config/featureFlags'

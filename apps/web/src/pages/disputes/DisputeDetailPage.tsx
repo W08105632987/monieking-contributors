@@ -9,7 +9,7 @@ import { api } from '@/lib/api'
 import { cn, formatDateTime, formatNaira } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { Spinner } from '@/components/ui/Spinner'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import type { DisputeDetail, DisputeMessage } from '@/types'
 import { DISPUTE_REASON_LABEL } from '@/types'
 

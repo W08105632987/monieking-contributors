@@ -42,6 +42,8 @@ export interface User {
   detected_state: string | null
   has_withdrawal_password?: boolean
   has_payment_pin?: boolean
+  email_verified?: boolean
+  pending_email?: string | null
   bvn_linked?: boolean
   nin_linked?: boolean
   bvn_last4?: string | null

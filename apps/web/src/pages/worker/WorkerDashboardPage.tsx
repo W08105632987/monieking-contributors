@@ -6,7 +6,7 @@ import {
   Clock, CheckCircle2, Copy, Check,
   ArrowRight, RefreshCw, X, Upload, Star, Eye
 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'

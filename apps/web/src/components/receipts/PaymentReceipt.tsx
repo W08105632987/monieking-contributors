@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, CheckCircle2, XCircle, Clock, Share2, Download, Copy, ChevronDown } from 'lucide-react'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { formatNaira } from '@/lib/utils'
 import { exportReceiptAsPng, exportReceiptAsPdf, shareReceipt } from '@/lib/exportReceipt'
 import { cn } from '@/lib/utils'

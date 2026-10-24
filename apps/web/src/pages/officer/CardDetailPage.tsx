@@ -7,7 +7,7 @@ import {
   Check, AlertCircle, Eye, EyeOff, Lock, XCircle, Fingerprint,
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
+import toast from '@/lib/notify'
 import { celebrateContribution } from '@/store/celebrate.store'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatDate, MONTH_NAMES, cn, idempotencyKey } from '@/lib/utils'
