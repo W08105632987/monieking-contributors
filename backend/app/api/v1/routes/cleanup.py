@@ -216,6 +216,7 @@ class ResetBody(BaseModel):
     notifications: bool = True
     health_history: bool = True
     broadcasts: bool = True
+    disputes: bool = True
 
 
 @router.post("/reset-stats")
@@ -232,6 +233,8 @@ async def reset_stats(body: ResetBody, director: DirectorOnly, db: AsyncSession 
         plan += ["health_check_results", "health_alert_state"]
     if body.broadcasts:
         plan += ["broadcasts"]
+    if body.disputes:
+        plan += ["disputes"]   # their messages go with them
     cleared = {}
     for t in plan:
         try:

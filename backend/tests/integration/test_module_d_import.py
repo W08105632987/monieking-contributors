@@ -154,6 +154,7 @@ async def _run(monkeypatch):
         assert rc["clean"], rc
         r = await c.post(cl + "/reset-stats", json={"confirm_phrase": "RESET STATISTICS", "pin": "4821"})
         assert r.status_code == 200
+        assert "disputes" in r.json()["cleared"]
     main_mod.app.dependency_overrides.clear()
     await engine.dispose()
 
