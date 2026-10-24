@@ -229,9 +229,37 @@ def summarize(plan: Plan) -> dict:
     }
 
 
+async def _guard_triggers(db: AsyncSession, tables: set[str]) -> list[tuple[str, str]]:
+    """Tables like the cooperative money book are protected by 'immutable' triggers that refuse DELETE/UPDATE.
+    A purge of TEST data must be allowed to pass them, so they are switched off inside this one transaction and
+    switched back on before it ends (if anything fails, the whole transaction rolls back, triggers included)."""
+    if not tables:
+        return []
+    res = await db.execute(text("""
+        SELECT c.relname, t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+         WHERE NOT t.tgisinternal AND c.relname = ANY(:t) AND t.tgname ILIKE '%immutable%'"""), {"t": sorted(tables)})
+    found = [(r[0], r[1]) for r in res.all()]
+    for table, trig in found:
+        await db.execute(text(f'ALTER TABLE "{table}" DISABLE TRIGGER "{trig}"'))
+    return found
+
+
 async def purge(db: AsyncSession, *, test_user_ids: list[uuid.UUID], director_id: uuid.UUID) -> dict:
-    """Runs inside the caller's transaction; the caller deletes the Supabase logins and then commits."""
+    """Runs inside the caller's transaction; the caller deletes the Supabase logins and then commits.
+    Raises ValueError with a plain-language reason when something cannot be removed (nothing is saved then)."""
     plan = await build_plan(db, test_user_ids)
+    touched = set(plan.owned) | {f.child for f in plan.nullify} | {f.child for f in plan.reattribute}
+    guarded = await _guard_triggers(db, touched)
+    try:
+        out = await _purge(db, plan, test_user_ids, director_id)
+    except DBAPIError as e:
+        raise ValueError(f"The database refused part of the delete: {str(getattr(e, 'orig', e))[:240]}")
+    for table, trig in guarded:
+        await db.execute(text(f'ALTER TABLE "{table}" ENABLE TRIGGER "{trig}"'))
+    return out
+
+
+async def _purge(db: AsyncSession, plan: "Plan", test_user_ids: list[uuid.UUID], director_id: uuid.UUID) -> dict:
     if plan.conflicts:
         raise ValueError("Conflicts must be resolved before purging")
     ids = [str(u) for u in test_user_ids]
@@ -252,6 +280,7 @@ async def purge(db: AsyncSession, *, test_user_ids: list[uuid.UUID], director_id
 
     # 2. delete owned rows, children first (retry passes so we never need a hand-made order)
     remaining = {t: set(c) for t, c in owned_cts.items()}
+    last_err: dict[str, str] = {}
     for _ in range(len(remaining) + 5):
         progressed = False
         for table in list(remaining):
@@ -263,10 +292,12 @@ async def purge(db: AsyncSession, *, test_user_ids: list[uuid.UUID], director_id
                     await db.execute(text(f'DELETE FROM "{table}" WHERE ctid::text = ANY(:cts)'), {"cts": list(remaining[table])})
                 del remaining[table]
                 progressed = True
-            except DBAPIError:
+            except DBAPIError as e:
+                last_err[table] = str(getattr(e, "orig", e))[:200]
                 continue
         if not remaining:
             break
         if not progressed:
-            raise ValueError("Could not delete in a safe order: " + ", ".join(remaining))
+            first = sorted(remaining)[0]
+            raise ValueError(f"Could not delete from {first.replace('_', ' ')}: {last_err.get(first, 'unknown reason')}")
     return {"deleted": plan.counts, "users": plan.counts.get("users", 0)}

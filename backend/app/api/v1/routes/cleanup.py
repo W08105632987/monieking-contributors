@@ -194,7 +194,11 @@ async def purge(body: PurgeBody, director: DirectorOnly, db: AsyncSession = Depe
     if plan.value_users and not body.acknowledge_value:
         raise HTTPException(status_code=409, detail="Some test accounts still hold money. Tick the acknowledgement to continue.")
 
-    result = await purge_service.purge(db, test_user_ids=ids, director_id=director.id)
+    try:
+        result = await purge_service.purge(db, test_user_ids=ids, director_id=director.id)
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(e))
 
     # Remove the logins LAST and only if everything above worked, so the phone numbers can be registered again.
     from app.utils.supabase_admin_client import supabase_admin_request

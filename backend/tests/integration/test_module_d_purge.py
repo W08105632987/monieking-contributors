@@ -83,10 +83,21 @@ async def _run():
         assert "contribution_records.contributed_by" in s["will_reassign_to_you"]
         assert "wallet_transactions.initiated_by" in s["will_reassign_to_you"]
 
+    # protected tables (like the cooperative money book) refuse DELETE/UPDATE through "immutable" triggers
+    async with maker() as db:
+        await db.execute(text("CREATE FUNCTION refuse_change() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'immutable'; END; $$ LANGUAGE plpgsql"))
+        for t in ("notifications", "wallet_transactions"):
+            await db.execute(text(f"CREATE TRIGGER {t}_immutable BEFORE UPDATE OR DELETE ON {t} FOR EACH ROW EXECUTE FUNCTION refuse_change()"))
+        await db.commit()
+
     async with maker() as db:
         res = await purge_service.purge(db, test_user_ids=[ids["tcust"], ids["toff"]], director_id=ids["dir"])
         await db.commit()
         assert res["users"] == 2
+
+    async with maker() as db:   # protection is back on afterwards
+        on = (await db.execute(text("select count(*) from pg_trigger where tgname like '%_immutable' and tgenabled = 'O'"))).scalar_one()
+        assert on == 2
 
     async with maker() as db:
         users = {u.full_name for u in (await db.execute(select(User))).scalars().all()}
