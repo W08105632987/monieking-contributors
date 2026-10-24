@@ -148,7 +148,11 @@ async def delete_customer(user_id: str, body: DeleteBody, director: DirectorOnly
         plan = await purge_service.build_plan(db, [uid])
         if plan.conflicts:
             raise HTTPException(status_code=409, detail="This account is tied to other real records, so it can only be archived.")
-        await purge_service.purge(db, test_user_ids=[uid], director_id=director.id)
+        try:
+            await purge_service.purge(db, test_user_ids=[uid], director_id=director.id)
+        except ValueError as e:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail=str(e))
         result = "deleted"
     else:
         user.full_name = "Deleted customer"
