@@ -203,19 +203,28 @@ async def purge(body: PurgeBody, director: DirectorOnly, db: AsyncSession = Depe
     # Remove the logins LAST and only if everything above worked, so the phone numbers can be registered again.
     import asyncio
     from app.utils.supabase_admin_client import supabase_admin_request
-    sem = asyncio.Semaphore(6)   # a few at a time: much faster than one by one, still gentle on the auth service
+    sem = asyncio.Semaphore(4)
+    failed: list[str] = []
 
     async def _drop(uid):
         async with sem:
-            await supabase_admin_request(
-                "DELETE", f"/auth/v1/admin/users/{uid}", ok_statuses=(200, 204), not_found_ok=True,
-                failure_detail="Could not remove a login account. Nothing was deleted — please try again.",
-            )
+            for attempt in range(4):
+                try:
+                    await supabase_admin_request(
+                        "DELETE", f"/auth/v1/admin/users/{uid}", ok_statuses=(200, 204), not_found_ok=True,
+                    )
+                    return
+                except HTTPException:
+                    await asyncio.sleep(1.5 * (attempt + 1))
+            failed.append(str(uid))
     await asyncio.gather(*[_drop(u) for u in ids])
     await log_action(db, actor_id=director.id, action="cleanup.purged", entity_type="user", entity_id="bulk",
-                     new_value={"users": result["users"], "rows": result["deleted"]})
+                     new_value={"users": result["users"], "rows": result["deleted"], "logins_not_removed": failed})
     await db.commit()
-    return {"message": f"{result['users']} test accounts removed", **result}
+    msg = f"{result['users']} test accounts removed"
+    if failed:
+        msg += f". {len(failed)} login(s) could not be removed from the sign-in service; their records are gone and the logins are harmless, but tell support to delete them."
+    return {"message": msg, "logins_not_removed": failed, **result}
 
 
 class ResetBody(BaseModel):
