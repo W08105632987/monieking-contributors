@@ -1,11 +1,13 @@
+import logging
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import CustomerOrOfficer, DirectorOnly
-from app.models.bill_payment import Biller, BillPaymentRequest, BillerCategory
+from app.models.bill_payment import Biller, BillPaymentRequest, BillPaymentStatus, BillerCategory
 from app.models.identity_service import InitiatedBy
 from app.schemas.bill_payment import (
     BillerItem, ValidateBillRequest, ValidateBillResponse,
@@ -16,6 +18,11 @@ from app.integrations.monnify_bills import get_bills_provider, MonnifyBillsError
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/bill-payments", tags=["bill-payments"])
+logger = logging.getLogger(__name__)
+
+# Don't hit Monnify's requery endpoint for a request created seconds ago —
+# the original vend call is usually still in flight.
+REQUERY_AFTER_SECONDS = 5
 
 
 @router.get("/categories")
@@ -162,6 +169,21 @@ async def get_request(request_id: uuid.UUID, user: CustomerOrOfficer, db: AsyncS
     # already works).
     if user.role == "customer" and request.customer_id != user.id:
         raise HTTPException(status_code=403, detail="Not your request")
+
+    # A request still PENDING (provider was slow / said "in progress") is
+    # settled here as the app polls it: Monnify is asked for the real status
+    # and the request is completed, or refunded if it truly failed.
+    if request.status == BillPaymentStatus.PENDING:
+        age = (datetime.now(timezone.utc) - request.created_at).total_seconds()
+        if age >= REQUERY_AFTER_SECONDS:
+            try:
+                resolved = await bill_payment_service.resolve_pending_bill(db, request.id)
+                if resolved is not None:
+                    request = resolved
+            except Exception:
+                logger.exception("Could not resolve pending bill payment %s", request.id)
+                await db.rollback()
+                request = await db.get(BillPaymentRequest, request_id) or request
     return await _to_item(db, request)
 
 

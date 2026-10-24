@@ -1,4 +1,5 @@
 """Wallet routes — balance, transactions, virtual account info."""
+import logging
 import uuid
 from datetime import datetime, date, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -27,6 +28,32 @@ from app.utils.audit import log_action
 from app.utils.bank_codes import resolve_bank_code
 
 router = APIRouter(prefix="/wallets", tags=["wallets"])
+logger = logging.getLogger(__name__)
+
+# Month names are spelled out here instead of strftime("%b"), which follows
+# the server's locale and would send "oct."/"okt" to Monnify on a non-English host.
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _monnify_dob(iso_date: str) -> str:
+    """"1993-10-03" -> "03-Oct-1993" (Monnify's dd-MMM-yyyy)."""
+    d = datetime.strptime(iso_date, "%Y-%m-%d")
+    return f"{d.day:02d}-{_MONTHS[d.month - 1]}-{d.year}"
+
+
+def _monnify_reason(exc: Exception) -> str:
+    """Monnify's own explanation from a failed call, or "" — shown to the
+    customer only as a hint, and always logged in full."""
+    response = getattr(exc, "response", None)
+    if response is not None:
+        try:
+            msg = response.json().get("responseMessage")
+            if msg:
+                return str(msg)[:200]
+        except Exception:
+            pass
+    detail = getattr(exc, "detail", None)
+    return str(detail)[:200] if detail else ""
 
 # Default fee if the setting row is somehow missing — the live value is
 # director-editable via GET/PATCH /settings, key 'wallet_instant_withdrawal_fee_kobo'
@@ -89,7 +116,7 @@ async def submit_kyc(
     # against Monnify's real BVN/NIN records.
     if body.bvn:
         try:
-            dob_formatted = datetime.strptime(body.date_of_birth, "%Y-%m-%d").strftime("%d-%b-%Y")
+            dob_formatted = _monnify_dob(body.date_of_birth)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date of birth")
         matched = await provider.verify_bvn(
@@ -116,8 +143,9 @@ async def submit_kyc(
                 nin=                body.nin,
             )
         except Exception as e:
-            print(f"[wallets] Monnify KYC linking failed for user {current_user.id}: {e}")
-            raise HTTPException(status_code=502, detail="Verified, but couldn't update your account limit right now. Please try again shortly.")
+            logger.error("[wallets] Monnify KYC linking failed for user %s: %s | %s", current_user.id, e, _monnify_reason(e))
+            reason = _monnify_reason(e)
+            raise HTTPException(status_code=502, detail="Verified, but couldn't update your account limit right now." + (f" ({reason})" if reason else " Please try again shortly."))
     else:
         # Fallback: account creation at signup failed (Monnify hiccup,
         # non-fatal at the time) and never got retried — create it now,
@@ -133,8 +161,9 @@ async def submit_kyc(
                 nin=                body.nin,
             )
         except Exception as e:
-            print(f"[wallets] Monnify VA creation failed for user {current_user.id}: {e}")
-            raise HTTPException(status_code=502, detail="Verified, but couldn't set up your account right now. Please try again shortly.")
+            logger.error("[wallets] Monnify VA creation failed for user %s: %s | %s", current_user.id, e, _monnify_reason(e))
+            reason = _monnify_reason(e)
+            raise HTTPException(status_code=502, detail="Verified, but couldn't set up your account right now." + (f" ({reason})" if reason else " Please try again shortly."))
 
         wallet.virtual_account_number = account.account_number
         wallet.virtual_account_bank   = account.bank_name
