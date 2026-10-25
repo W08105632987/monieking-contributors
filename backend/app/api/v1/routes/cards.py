@@ -34,6 +34,9 @@ async def create_contribution_card(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.kyc_gate import require_kyc
+    if current_user.role == UserRole.CUSTOMER:
+        require_kyc(current_user)   # customers must finish KYC before moving money
     owner_id = current_user.id
 
     if body.owner_id and body.owner_id != current_user.id:
@@ -305,6 +308,9 @@ async def post_card_contribution(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.kyc_gate import require_kyc
+    if current_user.role == UserRole.CUSTOMER:
+        require_kyc(current_user)   # customers must finish KYC before moving money
     # A double-tap, a slow network causing the client to retry, or a
     # request that actually succeeded but timed out before the response
     # arrived — any of these would otherwise post a real second

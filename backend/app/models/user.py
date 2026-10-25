@@ -144,6 +144,10 @@ class User(Base):
     email_code_hash:          Mapped[str | None] = mapped_column(String(255))
     email_code_expires_at:    Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     email_code_attempts:      Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    phone_verified_at:        Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    phone_otp_hash:           Mapped[str | None] = mapped_column(String(255))
+    phone_otp_expires_at:     Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    phone_otp_attempts:       Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     password_reset_attempts:  Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     pin_failed_attempts:      Mapped[int]        = mapped_column(default=0, server_default="0")
     pin_locked_until:         Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -183,6 +187,14 @@ class User(Base):
         """Lets the frontend tell first-time setup (no current password to
         verify) apart from an actual change — without exposing the hash."""
         return self.withdrawal_password_hash is not None or bool(getattr(self, "_cached_has_withdrawal_password", False))
+
+    @property
+    def phone_verified(self) -> bool:
+        return self.phone_verified_at is not None
+
+    @property
+    def kyc_complete(self) -> bool:
+        return bool(self.nin_linked or self.bvn_linked)
 
     @property
     def email_verified(self) -> bool:

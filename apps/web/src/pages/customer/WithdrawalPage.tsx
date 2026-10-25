@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { ensureKyc } from '@/lib/kyc'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Check, AlertCircle, Eye, EyeOff, Lock, Wallet as WalletIcon, ChevronRight, Fingerprint } from 'lucide-react'
@@ -52,6 +53,7 @@ function WalletWithdrawSheet({ onClose }: { onClose: () => void }) {
   }
 
   const handleSubmit = async () => {
+    if (!ensureKyc()) return
     if (!canSubmit) return
     setLoading(true)
     try {
@@ -284,6 +286,7 @@ export default function WithdrawalPage() {
   }
 
   const handleSubmit = () => {
+    if (!ensureKyc()) return
     if (!canWithdraw) return
     const authPayload = { auth_method: 'password', withdrawal_password: password }
     if (preview?.is_risky) {

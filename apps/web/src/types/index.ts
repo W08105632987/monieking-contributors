@@ -45,6 +45,8 @@ export interface User {
   email_verified?: boolean
   pending_email?: string | null
   bvn_linked?: boolean
+  phone_verified?: boolean
+  kyc_complete?: boolean
   nin_linked?: boolean
   bvn_last4?: string | null
   nin_last4?: string | null
@@ -82,6 +84,7 @@ export interface Wallet {
   balance_kobo: number
   virtual_account_number: string | null
   virtual_account_bank: string | null
+  virtual_account_name?: string | null
   virtual_account_ref: string | null
   is_frozen: boolean
   created_at: string

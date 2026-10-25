@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ensureKyc } from '@/lib/kyc'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from '@/lib/notify'
@@ -158,6 +159,7 @@ export default function AirtimeDataPage() {
   const canPay = tab === 'airtime' ? baseOk && amountOk && !!airtimeBiller : baseOk && !!selectedPlan
 
   function handlePay() {
+    if (!ensureKyc()) return
     if (!canPay) return
 
     // The one visible consequence of the silent validation -- caught
@@ -181,6 +183,7 @@ export default function AirtimeDataPage() {
   }
 
   function handleConfirmPay() {
+    if (!ensureKyc()) return
     const biller = tab === 'airtime' ? airtimeBiller : selectedPlan
     if (!biller) return
     payMutation.mutate(

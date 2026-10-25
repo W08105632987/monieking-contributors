@@ -8,7 +8,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0))
 const err = (status: number, detail: string) => ({ response: { status, data: { detail } } })
 
 describe('withPin', () => {
-  beforeEach(() => { usePinStore.setState({ current: null }) })
+  beforeEach(() => { usePinStore.setState({ current: null }); useAuthStore.setState({ user: { id: '1', role: 'customer', nin_linked: true } as any }) })
 
   it('passes the typed PIN to the action', async () => {
     const p = withPin(async (pin) => `ok-${pin}`)
@@ -26,7 +26,7 @@ describe('withPin', () => {
   })
 
   it('marks the PIN as not set on a 428 and asks again (set-up flow)', async () => {
-    useAuthStore.setState({ user: { id: '1', role: 'customer', has_payment_pin: true } as any })
+    useAuthStore.setState({ user: { id: '1', role: 'customer', nin_linked: true, has_payment_pin: true } as any })
     let n = 0
     const p = withPin(async (pin) => { if (n++ === 0) throw err(428, 'Set up payment pin'); return pin })
     await tick(); answer('4821'); await tick()

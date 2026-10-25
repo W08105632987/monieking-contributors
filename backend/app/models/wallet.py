@@ -32,6 +32,7 @@ class Wallet(Base):
     virtual_account_number: Mapped[str | None] = mapped_column(String(20), unique=True)
     virtual_account_bank:   Mapped[str | None] = mapped_column(String(100))
     virtual_account_ref:    Mapped[str | None] = mapped_column(String(100), unique=True)
+    virtual_account_name:   Mapped[str | None] = mapped_column(String(200))
     is_frozen: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

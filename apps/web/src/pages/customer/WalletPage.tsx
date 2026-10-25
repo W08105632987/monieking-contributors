@@ -8,8 +8,8 @@ import {
   X, ChevronRight, Clock, CreditCard,
 } from 'lucide-react'
 import { useWallet } from '@/hooks/useWallet'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, getErrorMessage } from '@/lib/api'
 import { DisputeModal } from '@/components/disputes/DisputeModal'
 import { useAuthStore } from '@/store/auth.store'
 import { formatNaira, formatDateTime, timeAgo, copyToClipboard } from '@/lib/utils'
@@ -186,7 +186,7 @@ function FundWalletSheet({ onClose }: { onClose: () => void }) {
                   {wallet.virtual_account_number}
                 </p>
                 <p className="text-green-300 dark:text-night-300 text-sm font-medium">{wallet.virtual_account_bank}</p>
-                <p className="text-green-400 dark:text-night-300 text-xs mt-1">Account name: MonieKing / {wallet.virtual_account_number}</p>
+                <p className="text-green-400 dark:text-night-300 text-xs mt-1">Account name: {wallet.virtual_account_name ?? 'MonieKing'}</p>
               </div>
             </div>
 
@@ -223,20 +223,32 @@ function FundWalletSheet({ onClose }: { onClose: () => void }) {
 // ── Shown wherever a virtual account would normally appear, but KYC
 // hasn't been completed yet — since accounts are no longer auto-created,
 // this isn't a "please wait" state, it needs an action. ────────────────
-function KycRequiredPrompt({ onClose }: { onClose: () => void }) {
-  const navigate = useNavigate()
+function KycRequiredPrompt({ onClose: _onClose }: { onClose: () => void }) {
+  const qc = useQueryClient()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const create = async () => {
+    if (busy) return
+    setBusy(true); setErr('')
+    try {
+      await api.post('/wallets/me/virtual-account')
+      await qc.invalidateQueries({ queryKey: ['wallet'] })
+    } catch (e) { setErr(getErrorMessage(e)) } finally { setBusy(false) }
+  }
   return (
     <div className="text-center py-8">
       <CreditCard className="w-12 h-12 text-green-200 dark:text-night-400 mx-auto mb-3" />
-      <p className="text-green-700 dark:text-night-100 font-semibold">Setting up your account</p>
+      <p className="text-green-700 dark:text-night-100 font-semibold">Get your account number</p>
       <p className="text-green-400 dark:text-night-300 text-sm mt-1 mb-5 px-4">
-        Your account number is still being set up. This is usually quick — completing identity verification now will also finish setting it up.
+        Your personal account number, in your registered name, is created in a few seconds. You can fund it right away; KYC is only needed when you spend.
       </p>
+      {err && <p role="alert" className="text-red-600 text-xs font-semibold mb-3 px-4">{err}</p>}
       <button
-        onClick={() => { onClose(); navigate('/customer/profile') }}
-        className="bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full px-6 py-3 active:scale-95 transition-all"
+        onClick={create}
+        disabled={busy}
+        className="bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full px-6 py-3 active:scale-95 transition-all disabled:opacity-50"
       >
-        Complete identity verification
+        {busy ? 'Creating…' : err ? 'Try again' : 'Get my account number'}
       </button>
     </div>
   )

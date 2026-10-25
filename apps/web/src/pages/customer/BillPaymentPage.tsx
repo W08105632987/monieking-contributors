@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ensureKyc } from '@/lib/kyc'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from '@/lib/notify'
 import { ArrowLeft, Zap, Tv, CheckCircle2, Loader2, ShieldCheck } from 'lucide-react'
@@ -79,6 +80,7 @@ export default function BillPaymentPage() {
   }
 
   function handleValidate() {
+    if (!ensureKyc()) return
     if (!selectedBiller || customerReference.length < 5) return
     validateMutation.mutate(
       { biller_id: selectedBiller.id, customer_reference: customerReference },
@@ -294,7 +296,7 @@ export default function BillPaymentPage() {
 
       <div className="fixed left-0 right-0 z-30 bg-white/95 dark:bg-night-900/95 backdrop-blur border-t border-green-50 dark:border-night-700 px-4 py-3" style={{ bottom: 'var(--bottom-nav-height, 4.5rem)' }}>
         <motion.button
-          whileTap={{ scale: 0.98 }} onClick={() => canPay && setShowConfirm(true)}
+          whileTap={{ scale: 0.98 }} onClick={() => { if (!ensureKyc()) return; if (canPay) setShowConfirm(true) }}
           disabled={!canPay || payMutation.isPending}
           className="w-full font-bold py-3.5 rounded-2xl disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
           style={{ background: brand.main, color: brand.on }}

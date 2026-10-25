@@ -102,6 +102,8 @@ class UserResponse(BaseModel):
     has_payment_pin: bool = False
     email: Optional[str] = None
     email_verified: bool = False
+    phone_verified: bool = False
+    kyc_complete: bool = False
     pending_email: Optional[str] = None
     bvn_linked: bool = False
     nin_linked: bool = False

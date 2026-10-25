@@ -63,7 +63,7 @@ _UUID_COLUMNS = {"id", "zone_id", "created_by", "managing_officer_id"}
 # served from cache (see get_current_user below) — any endpoint that
 # mutates current_user directly fetches its own session-attached copy
 # first, so a cached instance never needs to support being written to.
-_CACHE_EXCLUDE = {"login_password_hash", "withdrawal_password_hash", "payment_pin_hash", "email_code_hash", "webauthn_challenge", "webauthn_challenge_expires_at"}
+_CACHE_EXCLUDE = {"login_password_hash", "withdrawal_password_hash", "payment_pin_hash", "email_code_hash", "phone_otp_hash", "webauthn_challenge", "webauthn_challenge_expires_at"}
 _USER_CACHE_TTL_SECONDS = 30   # staleness window: a role/suspension change can take up to this long to take effect app-wide — acceptable for an MVP, not for a "ban this user right now" screen
 
 

@@ -727,7 +727,7 @@ async def update_bank_details(
     unaffected — see UpdateBankDetailsRequest's docstring.)
     """
     from app.services.pin_service import check_pin
-    await check_pin(db, current_user, body.pin)
+    await check_pin(db, current_user, body.pin, need_kyc=False)
 
     from app.integrations.monnify import get_payment_provider
     provider = get_payment_provider()

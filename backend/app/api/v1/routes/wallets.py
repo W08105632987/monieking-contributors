@@ -69,6 +69,38 @@ async def get_my_wallet(
     return wallet
 
 
+@router.post("/me/virtual-account", response_model=WalletResponse)
+@limiter.limit("4/minute")
+async def ensure_virtual_account(request: Request, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Everyone is meant to have an account number from day one. If creating it at signup failed (Monnify hiccup),
+    this makes it now, in the name they registered with. Safe to call again: it never creates a second one."""
+    from app.api.v1.routes.kyc import _create_account
+    user = await db.get(User, current_user.id)
+    wallet = await get_or_create_wallet(db, user.id)
+    if wallet.virtual_account_number:
+        return wallet
+    await db.commit()
+    await _create_account(db, user, wallet, get_payment_provider(), name=user.full_name)
+    await db.commit()
+    return wallet
+
+
+@router.post("/me/virtual-account", response_model=WalletResponse)
+@limiter.limit("4/minute")
+async def ensure_virtual_account(request: Request, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Everyone is meant to have an account number from day one. If creating it at signup failed (Monnify hiccup),
+    this makes it now, in the name they registered with. Safe to call again: it never creates a second one."""
+    from app.api.v1.routes.kyc import _create_account
+    user = await db.get(User, current_user.id)
+    wallet = await get_or_create_wallet(db, user.id)
+    if wallet.virtual_account_number:
+        return wallet
+    await db.commit()
+    await _create_account(db, user, wallet, get_payment_provider(), name=user.full_name)
+    await db.commit()
+    return wallet
+
+
 @router.post("/me/submit-kyc", response_model=WalletResponse)
 async def submit_kyc(
     body: KycSubmitRequest,
@@ -100,7 +132,7 @@ async def submit_kyc(
 
     if body.auth_method == "password":
         from app.services.pin_service import check_pin
-        await check_pin(db, current_user, body.pin)
+        await check_pin(db, current_user, body.pin, need_kyc=False)
     elif body.auth_method == "biometric":
         if not body.webauthn_assertion:
             raise HTTPException(status_code=400, detail="WebAuthn assertion required")
@@ -198,6 +230,8 @@ async def request_wallet_withdrawal(
     """Instantly withdraw from wallet balance to the account registered at
     sign-up. Flat ₦50 charge. Sends the money immediately via Monnify —
     unlike card withdrawals, there is no director approval step here."""
+    from app.services.kyc_gate import require_kyc
+    require_kyc(current_user)
     if not current_user.account_number or not current_user.account_name:
         raise HTTPException(status_code=400, detail="No registered bank account on file. Please update your profile first.")
 

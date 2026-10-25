@@ -1,5 +1,6 @@
 import { usePinStore } from '@/store/pin.store'
 import { useAuthStore } from '@/store/auth.store'
+import { ensureKyc } from '@/lib/kyc'
 
 let seq = 0
 
@@ -25,10 +26,12 @@ const detail = (e: any): string => String(e?.response?.data?.detail ?? e?.respon
  *  - wrong PIN (401)       -> asks again with the error shown inside the prompt
  *  - cancelled             -> throws PinCancelled (callers simply stop)
  */
-export async function withPin<T>(action: (pin: string) => Promise<T>, opts: { title?: string; message?: string } = {}): Promise<T> {
+export async function withPin<T>(action: (pin: string) => Promise<T>, opts: { title?: string; message?: string; skipKyc?: boolean } = {}): Promise<T> {
+  // No KYC, no service: show the "Complete your KYC" box before even asking for the PIN.
+  if (!opts.skipKyc && !ensureKyc()) throw new PinCancelled()
   let error: string | undefined
   for (let attempt = 0; attempt < 6; attempt++) {
-    const pin = await requestPin({ ...opts, error })
+    const pin = await requestPin({ title: opts.title, message: opts.message, error })
     if (!pin) throw new PinCancelled()
     try {
       return await action(pin)

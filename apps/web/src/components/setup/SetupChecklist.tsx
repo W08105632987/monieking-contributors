@@ -14,7 +14,7 @@ export function SetupChecklist() {
   if (!user || (user.role !== 'customer' && user.role !== 'officer')) return null
 
   const items = [
-    { key: 'kyc', done: !!user.bvn_linked && !!user.nin_linked, icon: BadgeCheck, title: 'Verify your identity', hint: 'Add your NIN and BVN in your profile', go: () => nav(`/${user.role}/profile?kyc=1`) },
+    { key: 'kyc', done: !!(user.nin_linked || user.bvn_linked), icon: BadgeCheck, title: 'Complete your KYC', hint: 'Verify your NIN — it unlocks every service', go: () => nav(`/${user.role}/kyc`) },
     { key: 'pin', done: !!user.has_payment_pin, icon: KeyRound, title: 'Set up your payment PIN', hint: '4 digits that approve airtime, bills and services', go: () => setSheet('pin') },
     { key: 'wd', done: !!user.has_withdrawal_password, icon: Lock, title: 'Set your withdrawal password', hint: 'Used only when you withdraw', go: () => setSheet('withdraw') },
   ]

@@ -13,6 +13,7 @@ class WalletResponse(BaseModel):
     balance_kobo:          int
     virtual_account_number:Optional[str]
     virtual_account_bank:  Optional[str]
+    virtual_account_name:  Optional[str] = None
     is_frozen:             bool
     created_at:            datetime
 

@@ -33,9 +33,12 @@ async def set_pin(db: AsyncSession, user_id, pin: str) -> None:
     await db.flush()
 
 
-async def check_pin(db: AsyncSession, user: User, pin: str | None) -> None:
+async def check_pin(db: AsyncSession, user: User, pin: str | None, *, need_kyc: bool = True) -> None:
     """Raises on a missing PIN setup (428), lockout (429) or a wrong PIN (401). Returns on success."""
     user = await db.get(User, user.id)   # never trust a cached copy for a security check
+    if need_kyc:
+        from app.services.kyc_gate import require_kyc
+        require_kyc(user)   # before anything else: no KYC, no service
     now = datetime.now(timezone.utc)
     if not user.payment_pin_hash:
         raise HTTPException(status_code=428, detail=PIN_NOT_SET)

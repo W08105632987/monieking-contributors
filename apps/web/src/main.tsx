@@ -13,6 +13,7 @@ import { SeasonalLayer } from '@/components/ui/SeasonalLayer'
 import { DialogHost } from '@/components/ui/DialogHost'
 import { PinHost } from '@/components/ui/PinHost'
 import { NoticeHost } from '@/components/ui/NoticeHost'
+import { KycGateHost } from '@/components/ui/KycGateHost'
 import { DownloadHost } from '@/components/ui/DownloadHost'
 import { initSessionLifecycle } from '@/lib/sessionLifecycle'
 
@@ -34,6 +35,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <CelebrationHost />
           <SeasonalLayer />
           <NoticeHost />
+          <KycGateHost />
         </BrowserRouter>
       </QueryClientProvider>
     </ErrorBoundary>

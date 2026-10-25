@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ensureKyc } from '@/lib/kyc'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, CreditCard, ChevronRight, RotateCcw, Lock, CheckCircle, Clock } from 'lucide-react'
@@ -261,6 +262,7 @@ function CreateCardModal({ onClose }: { onClose: () => void }) {
         return
       }
     }
+    if (!ensureKyc()) return
     setLoading(true)
     try {
       await createCard.mutateAsync({ card_type: cardType, rate_kobo: rateKobo })

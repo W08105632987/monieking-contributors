@@ -209,7 +209,7 @@ async def set_payment_pin(
     user = await db.get(User, current_user.id)
     is_change = user.payment_pin_hash is not None
     if is_change:
-        await pin_service.check_pin(db, user, str(body.get("current_pin", "")))
+        await pin_service.check_pin(db, user, str(body.get("current_pin", "")), need_kyc=False)
     await pin_service.set_pin(db, user.id, pin)
     await db.commit()
     from app.core.dependencies import invalidate_user_cache
@@ -227,7 +227,7 @@ async def set_payment_pin(
 @limiter.limit("10/minute")
 async def verify_payment_pin(request: Request, body: dict, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
     from app.services import pin_service
-    await pin_service.check_pin(db, current_user, str(body.get("pin", "")))
+    await pin_service.check_pin(db, current_user, str(body.get("pin", "")), need_kyc=False)
     return {"verified": True}
 
 

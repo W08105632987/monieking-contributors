@@ -3,6 +3,7 @@ import { idempotencyKey } from './utils'
 import { useServerHealthStore } from '@/store/serverHealth.store'
 import { useAuthStore } from '@/store/auth.store'
 import { useMaintenanceStore } from '@/store/maintenance.store'
+import { useKycGateStore } from '@/store/kyc.store'
 import type { ApiError } from '@/types'
 
 // ── Base URL ─────────────────────────────────────────────────────
@@ -100,6 +101,11 @@ api.interceptors.response.use(
       useMaintenanceStore.getState().set({ on: true, message: d.message ?? '', eta: d.eta ?? null })
     }
 
+    // Services need KYC: show the "Complete your KYC" box instead of a raw error.
+    if (error.response?.status === 403 && d && typeof d === 'object' && d.code === 'kyc_required') {
+      useKycGateStore.getState().show()
+    }
+
     const original = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined
 
     const isAuthEndpoint = original?.url?.includes('/auth/login')
@@ -152,6 +158,7 @@ export const getErrorMessage = (error: unknown): string => {
       // throws "Objects are not valid as a React child" and crashes the
       // render tree. Normalize every shape down to a string here.
       if (typeof detail === 'string') return detail
+      if (typeof detail === 'object' && detail !== null && (detail as any).code === 'kyc_required') return ''   // the KYC box is already showing
       if (typeof detail === 'object' && detail !== null && 'message' in detail) return String((detail as any).message)
       if (Array.isArray(detail)) return detail.map((d: any) => d?.msg ?? JSON.stringify(d)).join(', ')
       return JSON.stringify(detail)

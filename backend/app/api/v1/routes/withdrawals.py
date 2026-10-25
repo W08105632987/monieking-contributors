@@ -60,6 +60,9 @@ async def request_withdrawal(
     db: AsyncSession = Depends(get_db),
 ):
     """Customer or Officer submits a withdrawal request."""
+    from app.services.kyc_gate import require_kyc
+    if current_user.role == UserRole.CUSTOMER:
+        require_kyc(current_user)
     redis = get_redis()
     idem_key = request.headers.get("Idempotency-Key")
     try:

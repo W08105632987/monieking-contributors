@@ -38,6 +38,7 @@ const LocationConsentPage = lazy(() => import('@/pages/auth/LocationConsentPage'
 const ForgotPasswordPage  = lazy(() => import('@/pages/auth/ForgotPasswordPage'))
 
 // ── Customer pages ────────────────────────────────────────────────
+const KycPage              = lazy(() => import('@/pages/kyc/KycPage'))
 const CustomerDashboard    = lazy(() => import('@/pages/customer/DashboardPage'))
 const CustomerCards        = lazy(() => import('@/pages/customer/CardsPage'))
 const CustomerWallet       = lazy(() => import('@/pages/customer/WalletPage'))
@@ -294,6 +295,8 @@ export default function App() {
             <Route path="/director/food/archives"         element={<AuthGuard allowedRoles={['director']}><DirectorFoodArchives /></AuthGuard>} />
             <Route path="/director/food/archives/:year"   element={<AuthGuard allowedRoles={['director']}><DirectorFoodArchiveOne /></AuthGuard>} />
             <Route path="/customer/notifications" element={<AuthGuard allowedRoles={['customer']}><CustomerNotifications /></AuthGuard>} />
+            <Route path="/customer/kyc"           element={<AuthGuard allowedRoles={['customer']}><KycPage /></AuthGuard>} />
+            <Route path="/officer/kyc"            element={<AuthGuard allowedRoles={['officer']}><KycPage /></AuthGuard>} />
             <Route path="/customer/profile"       element={<AuthGuard allowedRoles={['customer']}><CustomerProfile /></AuthGuard>} />
             <Route path="/customer/cards/:cardId/contribute" element={<AuthGuard allowedRoles={['customer']}><ContributePage /></AuthGuard>} />
             <Route path="/customer/cards/:cardId" element={<AuthGuard allowedRoles={['customer']}><CardDetailPage /></AuthGuard>} />

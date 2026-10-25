@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ensureKyc } from '@/lib/kyc'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from '@/lib/notify'
 import { ArrowLeft, GraduationCap, Loader2, Minus, Plus } from 'lucide-react'
@@ -48,6 +49,7 @@ export default function EducationPaymentsPage() {
   function chooseGroup(g: BillerGroup) { setGroupKey(g.key); setProductId(null); setQuantity(1) }
 
   function handlePay() {
+    if (!ensureKyc()) return
     if (!canPay || !selected) return
     payMutation.mutate(
       {

@@ -45,7 +45,7 @@ async def _run(monkeypatch):
     users = {}
     async with maker() as db:
         for key, role, phone in [("ada", UserRole.CUSTOMER, "08011111111"), ("dir", UserRole.DIRECTOR, "08044444444")]:
-            u = User(payment_pin_hash=__import__('app.core.security', fromlist=['x']).hash_withdrawal_password('7391'), role=role, full_name=key, phone_number=phone, bank_code="058", bank_name="GTBank", account_number="0123456789",
+            u = User(nin_linked=True, payment_pin_hash=__import__('app.core.security', fromlist=['x']).hash_withdrawal_password('7391'), role=role, full_name=key, phone_number=phone, bank_code="058", bank_name="GTBank", account_number="0123456789",
                      account_name=key.upper(), status=UserStatus.ACTIVE)
             db.add(u)
             await db.flush()

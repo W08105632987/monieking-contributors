@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { ensureKyc } from '@/lib/kyc'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Check, AlertCircle, Wallet } from 'lucide-react'
@@ -44,6 +45,7 @@ export default function ContributePage() {
   })) : []
 
   const handleContribute = async () => {
+    if (!ensureKyc()) return
     if (!card || !isValid || !hasBalance || wouldExceed) return
     setLoading(true)
     try {
