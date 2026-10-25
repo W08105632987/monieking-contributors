@@ -147,6 +147,7 @@ class User(Base):
     phone_verified_at:        Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     phone_otp_hash:           Mapped[str | None] = mapped_column(String(255))
     phone_otp_expires_at:     Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    nin_encrypted:            Mapped[str | None] = mapped_column(Text, nullable=True)   # Fernet token, never the raw NIN
     phone_otp_attempts:       Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     password_reset_attempts:  Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     pin_failed_attempts:      Mapped[int]        = mapped_column(default=0, server_default="0")

@@ -46,6 +46,8 @@ async def _run(monkeypatch):
     limiter.enabled = False
     from app.core.config import settings
     settings.SUPABASE_JWT_SECRET = settings.SUPABASE_JWT_SECRET or "test-secret"
+    from cryptography.fernet import Fernet
+    settings.NIN_ENCRYPTION_KEY = Fernet.generate_key().decode()
     engine = create_async_engine(TEST_DB_URL)
     async with engine.begin() as conn:
         for stmt in ("DROP SCHEMA public CASCADE", "CREATE SCHEMA public",
@@ -122,11 +124,9 @@ async def _run(monkeypatch):
         r = await c.post("/api/v1/contributions", json={"card_id": "00000000-0000-0000-0000-000000000000", "amount_kobo": 10000})
         assert r.status_code == 403 and r.json()["detail"]["code"] == "kyc_required"
 
-        # 2) a customer with no account number can get one on demand, in their registered name
-        r = await c.post("/api/v1/wallets/me/virtual-account")
-        assert r.status_code == 200 and r.json()["virtual_account_number"] == "1234567890"
-        assert calls["create"][0]["account_name"] == "Ada Okafor" and "nin" not in calls["create"][0]
-        assert (await c.post("/api/v1/wallets/me/virtual-account")).status_code == 200 and len(calls["create"]) == 1
+        # 2) Monnify needs a BVN/NIN to create an account, so before KYC there is no on-demand account
+        r = await c.post("/api/v1/wallets/me/virtual-account", json={})
+        assert r.status_code == 403 and r.json()["detail"]["code"] == "kyc_required" and not calls["create"]
 
         # 3) optional phone check
         assert (await c.post(f"{k}/phone/send")).status_code == 200 and calls["sms"]
@@ -153,7 +153,7 @@ async def _run(monkeypatch):
         assert r.status_code == 403
         r = await c.post(f"{k}/nin/confirm", json={"number": "12345678901", "proof": pv["proof"], "pin": "7391"})
         assert r.status_code == 200, r.text
-        assert calls["update"][0]["nin"] == "12345678901"       # NIN attached to the existing account
+        assert calls["create"][0]["nin"] == "12345678901" and calls["create"][0]["account_name"] == "Ada Chioma Okafor"   # no account yet -> created now WITH the NIN
         me = (await c.get("/api/v1/users/me")).json()
         assert me["kyc_complete"] is True and me["nin_linked"] is True and me["nin_last4"] == "8901"
         assert any("KYC complete" in t for t in await notes(ids["a"]))
@@ -177,7 +177,30 @@ async def _run(monkeypatch):
         r = await c.post(f"{k}/nin/confirm", json={"number": "12345678901", "proof": pv["proof"], "pin": "7391"})
         assert r.status_code == 400
 
-        # 10) directors are never gated
+        # 10) NIN vault: stored encrypted, only a director can read it, reveals are audited, one-click account number
+        who["id"] = ids["a"]
+        async with maker() as s:
+            tok = (await s.get(User, ids["a"])).nin_encrypted
+        assert tok and "12345678901" not in tok and tok.startswith("gAAAA")
+        r = await c.get(f"/api/v1/director-customers/{ids['a']}/nin")
+        assert r.status_code == 403
+        who["id"] = ids["d"]
+        r = await c.get(f"/api/v1/director-customers/{ids['a']}/nin")
+        assert r.status_code == 200 and r.json()["nin"] == "12345678901" and r.json()["last4"] == "8901"
+        from app.models.audit import AuditLog
+        async with maker() as s:
+            assert (await s.execute(select(AuditLog).where(AuditLog.action == "kyc.nin_viewed"))).scalars().first()
+        from app.models.wallet import Wallet
+        async with maker() as s:
+            w = (await s.execute(select(Wallet).where(Wallet.owner_id == ids["a"]))).scalar_one()
+            w.virtual_account_number = None; w.virtual_account_ref = None
+            await s.commit()
+        who["id"] = ids["a"]
+        n = len(calls["create"])
+        r = await c.post("/api/v1/wallets/me/virtual-account", json={})
+        assert r.status_code == 200 and len(calls["create"]) == n + 1 and calls["create"][-1]["nin"] == "12345678901"
+
+        # 11) directors are never gated
         who["id"] = ids["d"]
         from app.services.kyc_gate import needs_kyc
         async with maker() as s:

@@ -2,11 +2,14 @@
 import logging
 import uuid
 from datetime import datetime, date, timedelta, timezone
+from typing import Optional
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.core.database import get_db
+from app.services import nin_vault
 from app.core.dependencies import CurrentUser, DirectorOnly, invalidate_user_cache
 from app.services.settings_service import get_config_int
 from app.core.security import verify_withdrawal_password, generate_reference
@@ -69,34 +72,34 @@ async def get_my_wallet(
     return wallet
 
 
+class VirtualAccountRequest(BaseModel):
+    nin: Optional[str] = None
+
+
 @router.post("/me/virtual-account", response_model=WalletResponse)
 @limiter.limit("4/minute")
-async def ensure_virtual_account(request: Request, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
-    """Everyone is meant to have an account number from day one. If creating it at signup failed (Monnify hiccup),
-    this makes it now, in the name they registered with. Safe to call again: it never creates a second one."""
+async def ensure_virtual_account(request: Request, body: VirtualAccountRequest, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Monnify (live) refuses to create an account without a BVN/NIN, so this needs the person's NIN.
+    We never store the full NIN, so someone who verified earlier types it once more here: it must end with the
+    same 4 digits we verified. Safe to call again: it never creates a second account."""
     from app.api.v1.routes.kyc import _create_account
     user = await db.get(User, current_user.id)
     wallet = await get_or_create_wallet(db, user.id)
     if wallet.virtual_account_number:
         return wallet
+    if not (user.nin_linked or user.bvn_linked):
+        raise HTTPException(status_code=403, detail={"code": "kyc_required", "message": "Verify your NIN first to get your account number."})
+    nin = (body.nin or "").strip()
+    if not nin:
+        nin = nin_vault.unseal(user.nin_encrypted) or ""   # on file: one click, no typing
+    if len(nin) != 11 or not nin.isdigit():
+        raise HTTPException(status_code=422, detail="Enter your 11-digit NIN to create your account number.")
+    if user.nin_last4 and nin[-4:] != user.nin_last4:
+        raise HTTPException(status_code=422, detail="That NIN does not match the one you verified.")
     await db.commit()
-    await _create_account(db, user, wallet, get_payment_provider(), name=user.full_name)
-    await db.commit()
-    return wallet
-
-
-@router.post("/me/virtual-account", response_model=WalletResponse)
-@limiter.limit("4/minute")
-async def ensure_virtual_account(request: Request, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
-    """Everyone is meant to have an account number from day one. If creating it at signup failed (Monnify hiccup),
-    this makes it now, in the name they registered with. Safe to call again: it never creates a second one."""
-    from app.api.v1.routes.kyc import _create_account
-    user = await db.get(User, current_user.id)
-    wallet = await get_or_create_wallet(db, user.id)
-    if wallet.virtual_account_number:
-        return wallet
-    await db.commit()
-    await _create_account(db, user, wallet, get_payment_provider(), name=user.full_name)
+    await _create_account(db, user, wallet, get_payment_provider(), name=user.full_name, nin=nin)
+    if not user.nin_encrypted:
+        user.nin_encrypted = nin_vault.seal(nin)   # remember it (encrypted) so this is one click next time
     await db.commit()
     return wallet
 

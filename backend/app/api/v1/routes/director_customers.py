@@ -17,7 +17,7 @@ from app.models.notification import NotificationType
 from app.models.user import User, UserRole
 from app.models.withdrawal import Withdrawal
 from app.models.zone import Zone
-from app.services import sms_service
+from app.services import nin_vault, sms_service
 from app.services.notification_service import send_notification
 from app.services.user_service import resolve_user
 from app.utils.audit import log_action
@@ -48,6 +48,22 @@ async def _customer(db: AsyncSession, user_id: str) -> User:
     if not c:
         raise HTTPException(status_code=404, detail="Customer not found")
     return c
+
+
+@router.get("/{user_id}/nin")
+async def reveal_nin(user_id: str, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Director-only: the customer's NIN, decrypted on demand. Every reveal is written to the audit log."""
+    user = await resolve_user(db, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    nin = nin_vault.unseal(user.nin_encrypted)
+    await log_action(db, actor_id=director.id, action="kyc.nin_viewed", entity_type="user", entity_id=str(user.id),
+                     new_value={"found": bool(nin)})
+    await db.commit()
+    if not nin:
+        return {"nin": None, "last4": user.nin_last4, "linked": bool(user.nin_linked),
+                "message": "Verified earlier; the full NIN was not kept. It is saved the next time they verify or create their account number." if user.nin_linked else "No NIN yet."}
+    return {"nin": nin, "last4": user.nin_last4, "linked": True, "message": None}
 
 
 @router.get("/{user_id}/extra")

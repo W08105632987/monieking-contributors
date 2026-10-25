@@ -16,6 +16,7 @@ import { formatNaira, formatDateTime, timeAgo, copyToClipboard } from '@/lib/uti
 import { cn } from '@/lib/utils'
 import { txLabel } from '@/lib/txLabel'
 import toast from '@/lib/notify'
+import { kycPath } from '@/lib/kyc'
 import type { WalletTransaction } from '@/types'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
@@ -223,32 +224,57 @@ function FundWalletSheet({ onClose }: { onClose: () => void }) {
 // ── Shown wherever a virtual account would normally appear, but KYC
 // hasn't been completed yet — since accounts are no longer auto-created,
 // this isn't a "please wait" state, it needs an action. ────────────────
-function KycRequiredPrompt({ onClose: _onClose }: { onClose: () => void }) {
+function KycRequiredPrompt({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()
+  const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
+  const verified = !!(user?.nin_linked || user?.bvn_linked)
+  const [nin, setNin] = useState('')
+  const [needNin, setNeedNin] = useState(false)   // true only when we don't have their NIN on file
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const create = async () => {
-    if (busy) return
+    if (busy || (needNin && nin.length !== 11)) return
     setBusy(true); setErr('')
     try {
-      await api.post('/wallets/me/virtual-account')
+      await api.post('/wallets/me/virtual-account', needNin ? { nin } : {})
       await qc.invalidateQueries({ queryKey: ['wallet'] })
-    } catch (e) { setErr(getErrorMessage(e)) } finally { setBusy(false) }
+    } catch (e) {
+      const st = (e as { response?: { status?: number } })?.response?.status
+      if (!needNin && st === 422) setNeedNin(true)   // not on file: ask once
+      else setErr(getErrorMessage(e))
+    } finally { setBusy(false) }
+  }
+  if (!verified) {
+    return (
+      <div className="text-center py-8">
+        <CreditCard className="w-12 h-12 text-green-200 dark:text-night-400 mx-auto mb-3" />
+        <p className="text-green-700 dark:text-night-100 font-semibold">Verify your NIN to get your account number</p>
+        <p className="text-green-400 dark:text-night-300 text-sm mt-1 mb-5 px-4">
+          Nigerian banks only issue a personal account number to a verified identity. It takes about a minute, and your account number appears as soon as you finish.
+        </p>
+        <button onClick={() => { onClose(); navigate(kycPath(user?.role)) }}
+          className="bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full px-6 py-3 active:scale-95 transition-all">
+          Verify my NIN
+        </button>
+      </div>
+    )
   }
   return (
-    <div className="text-center py-8">
+    <div className="text-center py-6">
       <CreditCard className="w-12 h-12 text-green-200 dark:text-night-400 mx-auto mb-3" />
-      <p className="text-green-700 dark:text-night-100 font-semibold">Get your account number</p>
-      <p className="text-green-400 dark:text-night-300 text-sm mt-1 mb-5 px-4">
-        Your personal account number, in your registered name, is created in a few seconds. You can fund it right away; KYC is only needed when you spend.
+      <p className="text-green-700 dark:text-night-100 font-semibold">{needNin ? 'Confirm your NIN' : 'Get your account number'}</p>
+      <p className="text-green-400 dark:text-night-300 text-sm mt-1 mb-4 px-4">
+        {needNin ? 'You verified earlier but we need your NIN once more to create the account. We store it encrypted.' : "You're verified. Tap below and your account number is created in a few seconds."}
       </p>
+      {needNin && (
+        <input value={nin} onChange={(e) => { setNin(e.target.value.replace(/\D/g, '').slice(0, 11)); setErr('') }} inputMode="numeric" placeholder="11-digit NIN"
+          className="w-full max-w-xs mx-auto mb-3 rounded-2xl border-2 border-green-200 dark:border-night-500 bg-white dark:bg-night-800 px-4 py-3 text-center text-lg font-bold tracking-widest text-green-950 dark:text-white focus:outline-none focus:border-green-600" />
+      )}
       {err && <p role="alert" className="text-red-600 text-xs font-semibold mb-3 px-4">{err}</p>}
-      <button
-        onClick={create}
-        disabled={busy}
-        className="bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full px-6 py-3 active:scale-95 transition-all disabled:opacity-50"
-      >
-        {busy ? 'Creating…' : err ? 'Try again' : 'Get my account number'}
+      <button onClick={create} disabled={busy || (needNin && nin.length !== 11)}
+        className="bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm rounded-full px-6 py-3 active:scale-95 transition-all disabled:opacity-40">
+        {busy ? 'Creating…' : 'Get my account number'}
       </button>
     </div>
   )

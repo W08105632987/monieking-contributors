@@ -19,6 +19,7 @@ from app.schemas.wallet import WalletResponse
 from app.services import kyc_flow
 from app.services.notification_service import send_notification
 from app.services.wallet_service import get_or_create_wallet
+from app.services import nin_vault
 from app.utils.audit import log_action
 from app.verification import breaker as B
 from app.verification import constants as C
@@ -202,6 +203,9 @@ async def nin_confirm(request: Request, body: NinConfirmBody, current_user: Curr
             # The identity IS verified; don't make them redo it. Account number can be fetched again from the wallet page.
 
     user.nin_linked, user.nin_last4 = True, number[-4:]
+    sealed = nin_vault.seal(number)
+    if sealed:
+        user.nin_encrypted = sealed
     user.kyc_completed_at = datetime.now(timezone.utc)
     await log_action(db, actor_id=user.id, action="kyc.verified", entity_type="user", entity_id=str(user.id),
                      new_value={"kind": "nin", "id_last4": number[-4:], "verified_name": verified_name})

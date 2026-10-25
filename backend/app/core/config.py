@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     # so a new key can be added in front for rotation (oldest still decrypts).
     # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     VERIFICATION_ENCRYPTION_KEY: str = ""
+    # Optional dedicated Fernet key for the customer NIN vault; falls back to VERIFICATION_ENCRYPTION_KEY.
+    NIN_ENCRYPTION_KEY: str = ""
 
     # ── Redis ─────────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"

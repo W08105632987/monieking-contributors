@@ -31,6 +31,21 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   )
 }
 
+function NinReveal({ customerId, linked }: { customerId: string; linked: boolean }) {
+  const [busy, setBusy] = useState(false)
+  const [res, setRes] = useState<{ nin: string | null; last4: string | null; message: string | null } | null>(null)
+  if (!linked) return <span>No NIN</span>
+  if (res) return <span className="font-mono tracking-wider">{res.nin ?? (res.last4 ? `•••••••${res.last4}` : '—')}{!res.nin && res.message ? <span className="block text-[11px] font-normal text-amber-600 tracking-normal">{res.message}</span> : null}</span>
+  return (
+    <button disabled={busy} onClick={async () => {
+      setBusy(true)
+      try { setRes((await api.get(`/director-customers/${customerId}/nin`)).data) } catch (e) { toast.error(getErrorMessage(e)) } finally { setBusy(false) }
+    }} className="rounded-full bg-green-900 px-3 py-1 text-xs font-bold text-white disabled:opacity-50 dark:bg-night-100 dark:text-night-900">
+      {busy ? 'Opening…' : 'Reveal NIN'}
+    </button>
+  )
+}
+
 export default function CustomerOverviewPage() {
   const { customerId } = useParams()
   const navigate = useNavigate()
@@ -132,7 +147,7 @@ export default function CustomerOverviewPage() {
           <Row k="Type" v={extra?.is_manual_customer ? 'Officer-managed (cash)' : 'Self-service (app)'} />
           <Row k="Bank" v={extra?.bank.bank_name ? `${extra.bank.bank_name} · ${extra.bank.account_number}` : null} />
           <Row k="Account name" v={extra?.bank.account_name} />
-          <Row k="BVN / NIN" v={`${profile.bvn_linked ? 'BVN linked' : 'No BVN'} · ${profile.nin_linked ? 'NIN linked' : 'No NIN'}`} />
+          <Row k="NIN" v={<NinReveal customerId={customerId!} linked={!!profile.nin_linked} />} />
           <Row k="SMS alerts" v={extra ? (extra.sms_alerts_enabled ? 'On' : 'Off') : null} />
           {extra && extra.sms_accrued_kobo > 0 && <Row k="SMS charges owed" v={formatNaira(extra.sms_accrued_kobo)} />}
         </div>
