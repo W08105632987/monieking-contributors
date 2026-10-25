@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from '@/lib/notify'
-import { ArrowLeft, Smartphone, CheckCircle2, AlertCircle, Loader2, Info } from 'lucide-react'
+import { ArrowLeft, Smartphone, CheckCircle2, AlertCircle, Loader2, Info, Check, Clock } from 'lucide-react'
 import { formatNaira, cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api'
 import { useWallet } from '@/hooks/useWallet'
@@ -13,6 +13,8 @@ import { PaymentReceipt, type ReceiptField } from '@/components/receipts/Payment
 import { isPinCancelled } from '@/lib/pin'
 import { PaymentConfirmSheet } from '@/components/payments/PaymentConfirmSheet'
 import { NetworkBadge, ALL_NETWORKS, type NetworkName } from '@/components/NetworkBadge'
+import { bucketDataPlans, BUCKET_META, matchesNetwork, pickAirtimeProduct, type PlanBucket } from '@/lib/billCatalog'
+import { networkBrand } from '@/lib/billerBrand'
 import type { BillPaymentRequest } from '@/types'
 
 // Prefix -> network map, used two ways: (1) auto-detect while typing, and
@@ -67,6 +69,7 @@ export default function AirtimeDataPage() {
   const [completedRequest, setCompletedRequest] = useState<BillPaymentRequest | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const [dataKind, setDataKind] = useState<'vtu' | 'standard'>('standard')
+  const [bucket, setBucket] = useState<PlanBucket | null>(null)
 
   const { data: cfgData } = useBillsConfig()
   const cfg = cfgData ?? DEFAULT_BILLS_CONFIG
@@ -117,19 +120,35 @@ export default function AirtimeDataPage() {
   // error. Recomputed on every phone/network change.
   const mismatch = useMemo(() => (network ? checkMismatch(phone, network) : null), [phone, network])
 
-  const { data: dataPlans = [], isLoading: plansLoading, isError: plansError, refetch: refetchPlans, isFetching: plansFetching } =
-    useBillers(tab === 'data' ? 'data' : 'airtime')
+  // Monnify lists each network's data bundles inside its airtime biller too. Until the
+  // catalogue has been re-synced with the corrected categories, fixed-price rows under
+  // "airtime" ARE the data plans, so the Data tab reads both and merges them.
+  const airtimeQ = useBillers('airtime')
+  const dataQ = useBillers('data')
+  const airtimeRows = airtimeQ.data ?? []
+  const dataPlans = useMemo(() => {
+    if (tab === 'airtime') return airtimeRows
+    const seen = new Set<string>()
+    return [...(dataQ.data ?? []), ...airtimeRows.filter(r => r.price_kobo != null)].filter(r => (seen.has(r.id) ? false : (seen.add(r.id), true)))
+  }, [tab, airtimeRows, dataQ.data])
+  const plansLoading = tab === 'airtime' ? airtimeQ.isLoading : airtimeQ.isLoading || dataQ.isLoading
+  const plansError = tab === 'airtime' ? airtimeQ.isError : airtimeQ.isError && dataQ.isError
+  const plansFetching = airtimeQ.isFetching || dataQ.isFetching
+  const refetchPlans = () => { airtimeQ.refetch(); dataQ.refetch() }
 
   const isVtu = (p: { name: string; product_name: string }) => `${p.name} ${p.product_name}`.toUpperCase().includes('VTU')
-  const plansAll = network ? dataPlans.filter(p => p.name.toUpperCase().includes(network === '9mobile' ? '9MOBILE' : network.toUpperCase())) : dataPlans
+  const plansAll = network ? dataPlans.filter(p => matchesNetwork(p, network)) : dataPlans
   const hasVtu = tab === 'data' && plansAll.some(isVtu) && cfg.data_vtu_enabled
   const hasStd = tab === 'data' && plansAll.some(p => !isVtu(p)) && cfg.data_standard_enabled
   const effKind = dataKind === 'vtu' ? (hasVtu ? 'vtu' : 'standard') : (hasStd ? 'standard' : 'vtu')
   const plansForNetwork = tab === 'data'
     ? plansAll.filter(p => (effKind === 'vtu' ? isVtu(p) : !isVtu(p)) && (effKind === 'vtu' ? cfg.data_vtu_enabled : cfg.data_standard_enabled))
     : plansAll
+  const bucketGroups = tab === 'data' ? bucketDataPlans(plansForNetwork) : []
+  const activeBucket = bucketGroups.find(g => g.bucket === bucket) ?? bucketGroups[0]
   const selectedPlan = plansForNetwork.find(p => p.id === selectedPlanId)
-  const airtimeBiller = dataPlans.find(p => network && p.name.toUpperCase().includes(network === '9mobile' ? '9MOBILE' : network.toUpperCase()))
+  // The airtime product is the VARIABLE-amount one. A fixed-price row here would charge a bundle's price instead of the typed amount.
+  const airtimeBiller = pickAirtimeProduct(airtimeRows, network)
 
   const payMutation = usePayBill(customerId)
 
@@ -351,6 +370,9 @@ export default function AirtimeDataPage() {
             <p className={cn('mt-1.5 text-[11px] font-semibold', typeof amountNaira === 'number' && !amountOk ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-night-300')}>
               Between ₦{cfg.min_airtime_naira.toLocaleString()} and ₦{cfg.max_airtime_naira.toLocaleString()}
             </p>
+            {network && !airtimeQ.isLoading && !airtimeBiller && (
+              <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300">Airtime isn't available for {network} right now.</p>
+            )}
           </div>
         ) : (
           <div>
@@ -370,29 +392,78 @@ export default function AirtimeDataPage() {
             {plansError ? (
               <FallbackError title="Couldn't load data plans" onRetry={() => refetchPlans()} isRetrying={plansFetching} />
             ) : plansLoading ? (
-              <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-16 bg-white dark:bg-night-700 rounded-2xl animate-pulse" />)}</div>
-            ) : plansForNetwork.length === 0 ? (
+              <div className="grid grid-cols-2 gap-2.5">{[1, 2, 3, 4].map(i => <div key={i} className="h-28 bg-white dark:bg-night-700 rounded-2xl animate-pulse" />)}</div>
+            ) : plansForNetwork.length === 0 || !activeBucket ? (
               <p className="text-green-600 dark:text-night-300 text-sm">{network ? `No ${network} plans available right now.` : 'Choose a network to see plans.'}</p>
             ) : (
-              <div className="space-y-2">
-                {plansForNetwork.map((plan, i) => (
-                  <motion.button
-                    key={plan.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: Math.min(i, 8) * 0.03 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setSelectedPlanId(plan.id)}
-                    className={cn('w-full flex items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left transition-colors',
-                      selectedPlanId === plan.id ? 'border-transparent' : 'bg-white dark:bg-night-700 border-green-100 dark:border-night-500')}
-                    style={selectedPlanId === plan.id ? { background: theme.main, color: theme.on } : undefined}
+              <div>
+                {/* Daily / Weekly / Monthly … */}
+                <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 -mx-1 px-1" role="tablist">
+                  {bucketGroups.map(g => {
+                    const on = g.bucket === activeBucket.bucket
+                    return (
+                      <button
+                        key={g.bucket} role="tab" aria-selected={on}
+                        onClick={() => { setBucket(g.bucket); setSelectedPlanId(null) }}
+                        className={cn('relative shrink-0 px-4 py-2 rounded-full text-xs font-bold border transition-colors',
+                          on ? 'border-transparent' : 'bg-white dark:bg-night-700 text-green-800 dark:text-night-100 border-green-100 dark:border-night-500')}
+                        style={on ? { color: theme.on } : undefined}
+                      >
+                        {on && <motion.span layoutId="plan-bucket" className="absolute inset-0 rounded-full" style={{ background: theme.main, boxShadow: `0 6px 18px ${theme.main}66` }} transition={{ type: 'spring', stiffness: 380, damping: 30 }} />}
+                        <span className="relative">{BUCKET_META[g.bucket].label} <span className="opacity-70">· {g.plans.length}</span></span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="text-[11px] text-green-600 dark:text-night-300 mb-3">{BUCKET_META[activeBucket.bucket].hint}</p>
+
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={`${activeBucket.bucket}-${effKind}-${network ?? 'all'}`}
+                    initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -18 }} transition={{ duration: 0.2 }}
+                    className="grid grid-cols-2 gap-2.5"
                   >
-                    <span className={cn('text-sm font-bold', selectedPlanId === plan.id ? '' : 'text-green-900 dark:text-white')}>{plan.product_name}</span>
-                    {plan.price_kobo != null && (
-                      <span className={cn('text-sm font-extrabold', selectedPlanId === plan.id ? '' : 'text-green-700 dark:text-night-200')}>{formatNaira(plan.price_kobo)}</span>
-                    )}
-                  </motion.button>
-                ))}
+                    {activeBucket.plans.map(({ plan, info }, i) => {
+                      const on = selectedPlanId === plan.id
+                      return (
+                        <motion.button
+                          key={plan.id}
+                          initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+                          transition={{ delay: Math.min(i, 10) * 0.03, type: 'spring', stiffness: 340, damping: 26 }}
+                          whileTap={{ scale: 0.96 }}
+                          onClick={() => setSelectedPlanId(plan.id)}
+                          aria-pressed={on}
+                          className={cn('relative text-left rounded-2xl border px-3.5 py-3.5 overflow-hidden transition-colors',
+                            on ? 'border-transparent' : 'bg-white dark:bg-night-700 border-green-100 dark:border-night-500')}
+                          style={on ? { background: `linear-gradient(135deg, ${theme.main}, ${theme.main}cc)`, color: theme.on, boxShadow: `0 10px 26px ${theme.main}55` } : undefined}
+                        >
+                          {on && (
+                            <motion.span aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(circle at 80% 0%, rgba(255,255,255,0.35), transparent 60%)' }}
+                              animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }} />
+                          )}
+                          {on && (
+                            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 18 }}
+                              className="absolute top-2 right-2 w-5 h-5 rounded-full bg-white flex items-center justify-center">
+                              <Check className="w-3 h-3 text-green-900" strokeWidth={3.5} />
+                            </motion.span>
+                          )}
+                          <p className={cn('relative text-xl leading-none font-extrabold', on ? '' : 'text-green-950 dark:text-white')}>{info.sizeText ?? plan.product_name}</p>
+                          {info.sizeText && info.sizeText !== plan.product_name && info.validityText == null && (
+                            <p className={cn('relative text-[11px] mt-1 line-clamp-2', on ? 'opacity-80' : 'text-green-600 dark:text-night-300')}>{plan.product_name}</p>
+                          )}
+                          {info.validityText && (
+                            <p className={cn('relative mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold', on ? 'opacity-90' : 'text-green-600 dark:text-night-300')}>
+                              <Clock className="w-3 h-3" /> {info.validityText}
+                            </p>
+                          )}
+                          {plan.price_kobo != null && (
+                            <p className={cn('relative mt-2 text-base font-extrabold', on ? '' : 'text-green-800 dark:text-night-100')}>{formatNaira(plan.price_kobo)}</p>
+                          )}
+                        </motion.button>
+                      )
+                    })}
+                  </motion.div>
+                </AnimatePresence>
               </div>
             )}
           </div>
@@ -439,6 +510,7 @@ export default function AirtimeDataPage() {
           timestamp={new Date(completedRequest.created_at).toLocaleString()}
           fields={receiptFields}
           failureReason={completedRequest.failure_reason ?? undefined}
+          brand={network ? networkBrand(network, theme.main, theme.on) : null}
         />
       )}
     </div>

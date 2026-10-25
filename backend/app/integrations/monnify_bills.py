@@ -244,6 +244,11 @@ class MonnifyBillsProvider:
                 total_pages = body.get("totalPages")
                 if isinstance(total_pages, int) and page + 1 >= total_pages:
                     break
+                total = body.get("totalElements")
+                if isinstance(total, int) and len(out) >= total:
+                    break
+                if "nextPage" in body and body["nextPage"] is None and len(rows) < PAGE_SIZE:
+                    break
         return out
 
     async def get_biller_categories(self) -> list[dict]:

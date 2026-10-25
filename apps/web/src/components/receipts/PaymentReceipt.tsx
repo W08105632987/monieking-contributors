@@ -6,6 +6,9 @@ import { formatNaira } from '@/lib/utils'
 import { exportReceiptAsPng, exportReceiptAsPdf, shareReceipt } from '@/lib/exportReceipt'
 import { cn } from '@/lib/utils'
 import { AppLogo } from '@/components/ui/AppLogo'
+import { BillerLogo } from '@/components/billers/BillerLogo'
+import { TokenCard } from '@/components/billers/TokenCard'
+import { rgba, type BillerBrand } from '@/lib/billerBrand'
 
 export type ReceiptStatus = 'completed' | 'failed' | 'pending'
 
@@ -14,6 +17,8 @@ export interface ReceiptField {
   value: string
   /** Renders large/monospace with its own copy button — use for tokens/PINs. */
   emphasis?: boolean
+  /** 'token' renders the big grouped-digits card with Copy and Read-out buttons (electricity tokens). */
+  kind?: 'token'
 }
 
 export interface PaymentReceiptProps {
@@ -27,6 +32,8 @@ export interface PaymentReceiptProps {
   fields: ReceiptField[]
   failureReason?: string
   paidBy?: string             // "Processed by Officer: Jane D." — shown for officer-initiated transactions
+  /** The provider/network paid. Puts its logo and colours on the receipt. */
+  brand?: BillerBrand | null
 }
 
 const statusMeta: Record<ReceiptStatus, { label: string; icon: typeof CheckCircle2; color: string; bg: string }> = {
@@ -36,7 +43,7 @@ const statusMeta: Record<ReceiptStatus, { label: string; icon: typeof CheckCircl
 }
 
 export function PaymentReceipt(props: PaymentReceiptProps) {
-  const { open, onClose, status, amountKobo, serviceName, reference, timestamp, fields, failureReason, paidBy } = props
+  const { open, onClose, status, amountKobo, serviceName, reference, timestamp, fields, failureReason, paidBy, brand } = props
   const receiptRef = useRef<HTMLDivElement>(null)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -104,13 +111,19 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
             <div
               ref={receiptRef}
               className="w-full max-w-sm bg-white dark:bg-night-900 rounded-3xl p-6 flex flex-col items-center"
-              style={{ aspectRatio: '9 / 16' }}
+              style={{ minHeight: '100%', ...(brand ? { backgroundImage: `linear-gradient(180deg, ${rgba(brand.main, 0.18)} 0%, transparent 38%)` } : { aspectRatio: '9 / 16' }) }}
             >
-              {/* Header — brand mark, matches LogoLoader's treatment */}
+              {/* Header — the provider's logo when we know it, otherwise our own mark */}
               <div className="flex flex-col items-center mb-6">
-                <div className="w-14 h-14 rounded-2xl bg-green-900 flex items-center justify-center mb-2">
-                  <AppLogo size={30} rounded="10px" />
-                </div>
+                {brand ? (
+                  <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 320, damping: 20 }} className="mb-2">
+                    <BillerLogo brand={brand} size={64} glow />
+                  </motion.div>
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-green-900 flex items-center justify-center mb-2">
+                    <AppLogo size={30} rounded="10px" />
+                  </div>
+                )}
                 <span className="text-xs text-green-600 dark:text-night-300 tracking-wide uppercase">Payment Receipt</span>
               </div>
 
@@ -134,7 +147,9 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
 
               {/* Details */}
               <div className="w-full space-y-3 mb-6">
-                {fields.map((f) => (
+                {fields.map((f) => f.kind === 'token' ? (
+                  <TokenCard key={f.label} token={f.value} label={f.label} brand={brand} />
+                ) : (
                   <div key={f.label} className={cn('flex items-start justify-between gap-3', f.emphasis && 'flex-col')}>
                     <span className="text-xs text-green-500 dark:text-night-400 shrink-0">{f.label}</span>
                     {f.emphasis ? (
