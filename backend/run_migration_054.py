@@ -10,7 +10,8 @@ from pathlib import Path
 from sqlalchemy import text
 from app.core.database import engine
 
-SQL_FILE = Path(__file__).resolve().parent.parent / "supabase" / "migrations" / "054_kyc_nin_phone.sql"
+_p = Path(__file__).resolve().parent.parent / "supabase" / "migrations" / "054_nin_vault.sql"
+SQL_FILE = _p if _p.exists() else Path(__file__).resolve().parent.parent / "supabase" / "migrations" / "054_kyc_nin_phone.sql"
 
 
 def _statements() -> list[str]:
