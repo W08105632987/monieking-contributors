@@ -53,21 +53,24 @@ async def get_billers(db: AsyncSession, category: str) -> list[Biller]:
     return list(result.scalars().all())
 
 
-# Our internal (lowercase) category values -> Monnify's own categoryCode
-# strings, confirmed from developers.monnify.com/docs/bills-payment/
-# process-a-bill's own examples ("ELECTRICITY, DATA, CABLE_TV"). AIRTIME
-# and EDUCATION follow the same naming pattern but weren't shown
-# explicitly in that example — verify these two specifically against
-# your account's actual biller-categories response before depending on
-# them, since an unconfirmed guess here just returns an empty biller list
-# for that category rather than an obvious error.
-CATEGORY_CODE_MAP = {
-    BillerCategory.AIRTIME: "AIRTIME",
-    BillerCategory.DATA: "DATA",
-    BillerCategory.ELECTRICITY: "ELECTRICITY",
-    BillerCategory.CABLE_TV: "CABLE_TV",
-    BillerCategory.EDUCATION: "EDUCATION",
-}
+# Where each of our categories comes from in Monnify. Confirmed from this account's
+# own biller-categories response (live): Monnify keeps the network data plans in
+# DATA_BUNDLE (MTN, AIRTEL, GLO, 9MOBILE, VITEL), and at least one DISCO's postpaid
+# product sits under TRANSPORTATION, so that category is read too but only for
+# electricity-looking billers. Several sources can feed one category of ours.
+#   (our category, Monnify categoryCode, optional name filter)
+ELECTRICITY_NAME = re.compile(r"electric|disco|power|distribution", re.I)
+CATALOGUE_SOURCES: list[tuple[BillerCategory, str, "re.Pattern | None"]] = [
+    (BillerCategory.AIRTIME, "AIRTIME", None),
+    (BillerCategory.DATA, "DATA", None),
+    (BillerCategory.DATA, "DATA_BUNDLE", None),
+    (BillerCategory.ELECTRICITY, "ELECTRICITY", None),
+    (BillerCategory.ELECTRICITY, "TRANSPORTATION", ELECTRICITY_NAME),
+    (BillerCategory.CABLE_TV, "CABLE_TV", None),
+    (BillerCategory.EDUCATION, "EDUCATION", None),
+]
+# Kept for older callers: our category -> its main Monnify code.
+CATEGORY_CODE_MAP = {cat: code for cat, code, flt in CATALOGUE_SOURCES if flt is None and code != "DATA_BUNDLE"}
 
 # Monnify's validation step is mandatory for these before a vend. Whether a
 # validationReference is then needed comes from the validate-customer
@@ -97,7 +100,7 @@ def _price_to_kobo(raw) -> int | None:
 # "2GB 30 Days" plans). The Data screen and the director's data switches work
 # off category = data, so fixed-price products found under AIRTIME are filed as DATA.
 
-SYNC_CONCURRENCY = 6
+SYNC_CONCURRENCY = 4
 
 
 def _classify(category: BillerCategory, product_name: str, price_kobo: int | None) -> BillerCategory:
@@ -108,15 +111,16 @@ def _classify(category: BillerCategory, product_name: str, price_kobo: int | Non
     return category
 
 
-async def _retry_once(call):
-    """One retry, after a short pause, for transient provider errors."""
-    try:
-        return await call()
-    except MonnifyBillsError as e:
-        if not e.retriable:
-            raise
-        await asyncio.sleep(1.0)
-        return await call()
+async def _retry_once(call, delays=(1.0, 3.0)):
+    """Retry transient provider/network errors, pausing between tries (1s, then 3s)."""
+    for delay in delays:
+        try:
+            return await call()
+        except MonnifyBillsError as e:
+            if not e.retriable:
+                raise
+            await asyncio.sleep(delay)
+    return await call()
 
 
 async def fetch_catalogue(provider=None) -> dict:
@@ -142,7 +146,7 @@ async def fetch_catalogue(provider=None) -> dict:
         async with gate:
             return await _retry_once(lambda: provider.get_biller_products(code))
 
-    for internal_category, monnify_category_code in CATEGORY_CODE_MAP.items():
+    for internal_category, monnify_category_code, name_filter in CATALOGUE_SOURCES:
         try:
             billers = await _retry_once(lambda: provider.get_billers(monnify_category_code))
         except MonnifyBillsError as e:
@@ -150,7 +154,9 @@ async def fetch_catalogue(provider=None) -> dict:
             all_clean = False
             continue
 
-        biller_counts[internal_category.value] = len(billers)
+        if name_filter is not None:
+            billers = [b for b in billers if name_filter.search(str(b.get("name") or b.get("billerName") or ""))]
+        biller_counts[internal_category.value] = biller_counts.get(internal_category.value, 0) + len(billers)
         if billers:
             samples.setdefault(internal_category.value, {})["biller"] = billers[0]
 
