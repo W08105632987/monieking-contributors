@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.bill_payment import Biller, BillPaymentRequest, BillPaymentStatus, BillerCategory
@@ -91,140 +92,199 @@ def _price_to_kobo(raw) -> int | None:
     return kobo if kobo > 0 else None
 
 
-async def sync_billers(db: AsyncSession) -> dict:
+# Monnify lists data bundles inside the AIRTIME category's network billers
+# (e.g. biller AIRTEL has the variable "Airtel Mobile Top up" AND fixed-price
+# "2GB 30 Days" plans). The Data screen and the director's data switches work
+# off category = data, so fixed-price products found under AIRTIME are filed as DATA.
+
+SYNC_CONCURRENCY = 6
+
+
+def _classify(category: BillerCategory, product_name: str, price_kobo: int | None) -> BillerCategory:
+    """Plain airtime is a variable amount (no fixed price). A fixed-price product
+    under the AIRTIME category is a bundle, so it is filed as DATA."""
+    if category == BillerCategory.AIRTIME and price_kobo is not None:
+        return BillerCategory.DATA
+    return category
+
+
+async def _retry_once(call):
+    """One retry, after a short pause, for transient provider errors."""
+    try:
+        return await call()
+    except MonnifyBillsError as e:
+        if not e.retriable:
+            raise
+        await asyncio.sleep(1.0)
+        return await call()
+
+
+async def fetch_catalogue(provider=None) -> dict:
     """
-    Populates/refreshes the billers table from Monnify's live Discovery
-    API. Without this having run at least once, GET /bill-payments/billers
-    always returns an empty list for every category.
+    Reads the whole catalogue from Monnify. Touches NO database, so no
+    connection is held open while the (slow) HTTP calls run — the earlier
+    version kept one transaction open for the whole crawl and the pooler
+    killed it before the final save.
 
-    Three-step discovery per Monnify's documented flow — the middle and
-    last steps are real HTTP calls per biller, so this is deliberately
-    NOT something to run on every page load; run it via
-    scripts/sync_billers.py on a schedule (daily is plenty) or manually
-    after a provider-side catalog update.
-
-    Upserts on (monnify_biller_id, product_id) — matches the table's own
-    UNIQUE constraint — so re-running this is always safe.
-
-    - A director's manual hide (is_active = False) is respected: existing
-      rows are never re-activated by a sync.
-    - A product that Monnify no longer lists is deactivated, but only when
-      that whole category synced cleanly, so a transient error can't wipe
-      the catalogue.
-    - `samples` returns the first raw biller/product row per category so the
-      real Monnify field names can be checked against what we read.
+    Returns {"rows": {(biller_code, product_code): {...}}, "errors": [...],
+             "samples": {...}, "all_clean": bool}.
     """
-    provider = get_bills_provider()
-    synced = 0
-    deactivated = 0
+    provider = provider or get_bills_provider()
+    rows: dict[tuple[str, str], dict] = {}
     errors: list[str] = []
     samples: dict[str, dict] = {}
-    BATCH = 150          # rows per database transaction: small, so the connection is never held for long
-    sem = asyncio.Semaphore(6)
+    empty_billers: dict[str, list[str]] = {}
+    biller_counts: dict[str, int] = {}
+    all_clean = True
+    gate = asyncio.Semaphore(SYNC_CONCURRENCY)
 
-    async def _products_for(biller_code: str, biller_name: str):
-        async with sem:
-            try:
-                return await provider.get_biller_products(biller_code), None
-            except MonnifyBillsError as e:
-                return None, f"{biller_name}: couldn't list products ({e.message})"
+    async def products_for(code: str):
+        async with gate:
+            return await _retry_once(lambda: provider.get_biller_products(code))
 
     for internal_category, monnify_category_code in CATEGORY_CODE_MAP.items():
-        category_clean = True
-
-        # ── Phase 1: talk to Monnify ONLY (no database open while we wait on the network) ──
         try:
-            billers = await provider.get_billers(monnify_category_code)
+            billers = await _retry_once(lambda: provider.get_billers(monnify_category_code))
         except MonnifyBillsError as e:
             errors.append(f"{internal_category.value}: couldn't list billers ({e.message})")
+            all_clean = False
             continue
 
+        biller_counts[internal_category.value] = len(billers)
         if billers:
             samples.setdefault(internal_category.value, {})["biller"] = billers[0]
 
-        jobs = []
+        valid: list[tuple[str, str]] = []
         for biller_row in billers:
-            raw_biller_code = biller_row.get("billerCode") or biller_row.get("code")
-            if not raw_biller_code:
+            raw_code = biller_row.get("billerCode") or biller_row.get("code")
+            if not raw_code:
                 errors.append(f"{internal_category.value}: a biller row had no billerCode, skipped: {biller_row}")
-                category_clean = False
+                all_clean = False
                 continue
-            biller_code = str(raw_biller_code)[:80]
-            biller_name = str(biller_row.get("name") or biller_row.get("billerName") or biller_code)[:160]
-            jobs.append((biller_code, biller_name))
-        results = await asyncio.gather(*[_products_for(c, n) for c, n in jobs])
+            code = str(raw_code)[:80]
+            valid.append((code, str(biller_row.get("name") or biller_row.get("billerName") or code)[:160]))
 
-        wanted: dict[tuple[str, str], dict] = {}
-        for (biller_code, biller_name), (products, err) in zip(jobs, results):
-            if err:
-                errors.append(err)
-                category_clean = False
+        results = await asyncio.gather(*(products_for(code) for code, _ in valid), return_exceptions=True)
+
+        for (biller_code, biller_name), result in zip(valid, results):
+            if isinstance(result, MonnifyBillsError):
+                errors.append(f"{biller_name}: couldn't list products ({result.message})")
+                all_clean = False
                 continue
-            if products and "product" not in samples.get(internal_category.value, {}):
-                samples.setdefault(internal_category.value, {})["product"] = products[0]
-            for product_row in products or []:
-                raw_product_code = product_row.get("productCode") or product_row.get("code")
-                if not raw_product_code:
+            if isinstance(result, BaseException):
+                raise result
+
+            if not result:
+                empty_billers.setdefault(internal_category.value, []).append(biller_name)
+            if result and "product" not in samples.get(internal_category.value, {}):
+                samples.setdefault(internal_category.value, {})["product"] = result[0]
+
+            for product_row in result:
+                raw_product = product_row.get("productCode") or product_row.get("code")
+                if not raw_product:
                     errors.append(f"{biller_name}: a product row had no productCode, skipped: {product_row}")
-                    category_clean = False
+                    all_clean = False
                     continue
-                product_code = str(raw_product_code)[:80]
-                product_name = str(product_row.get("name") or product_row.get("productName") or product_code)[:160]
+                product_code = str(raw_product)[:80]
                 key = (biller_code, product_code)
-                if key in wanted:
-                    continue   # same pair twice in one run would violate the unique constraint
-                wanted[key] = {
-                    "name": biller_name,
+                if key in rows:
+                    continue   # same pair under two categories: first one wins (unique constraint)
+                product_name = str(product_row.get("name") or product_row.get("productName") or product_code)[:160]
+                price_kobo = _price_to_kobo(product_row.get("amount") or product_row.get("price"))
+                category = _classify(internal_category, product_name, price_kobo)
+                rows[key] = {
+                    "category": category,
+                    "biller_name": biller_name,
                     "product_name": product_name,
-                    # Fixed price if the product declares one; None (customer types an amount) for variable-amount products.
-                    "price_kobo": _price_to_kobo(product_row.get("amount") or product_row.get("price")),
+                    "price_kobo": price_kobo,
                     "requires_validation": (
                         bool(product_row.get("requireValidationRef") or product_row.get("requiresValidation"))
-                        or internal_category in VALIDATION_REQUIRED_CATEGORIES
+                        or category in VALIDATION_REQUIRED_CATEGORIES
                     ),
                 }
+    return {
+        "rows": rows, "errors": errors, "samples": samples, "all_clean": all_clean,
+        "biller_counts": biller_counts, "empty_billers": empty_billers,
+    }
 
-        # ── Phase 2: write to the database in short batches ──
-        existing_rows = (await db.execute(
-            select(Biller).where(Biller.category == internal_category)
-        )).scalars().all()
-        # (the same biller/product could in theory sit under another category; look those up too)
-        existing = {(r.monnify_biller_id, r.product_id): r for r in existing_rows}
-        pending = 0
-        for key, vals in wanted.items():
-            row = existing.get(key)
-            if row is None:
-                other = (await db.execute(
-                    select(Biller).where(Biller.monnify_biller_id == key[0], Biller.product_id == key[1])
-                )).scalar_one_or_none()
-                row = other
-            if row:
-                row.name = vals["name"]
-                row.product_name = vals["product_name"]
-                row.price_kobo = vals["price_kobo"]
-                row.requires_validation = vals["requires_validation"]
-                row.last_synced_at = datetime.now(timezone.utc)
-                # is_active deliberately untouched — see docstring.
-            else:
-                db.add(Biller(
-                    monnify_biller_id=key[0], category=internal_category, name=vals["name"],
-                    product_id=key[1], product_name=vals["product_name"], price_kobo=vals["price_kobo"],
-                    requires_validation=vals["requires_validation"], is_active=True,
-                ))
-            synced += 1
-            pending += 1
-            if pending >= BATCH:
-                await db.commit()
-                pending = 0
 
-        if category_clean and wanted:
-            for row in existing_rows:
-                if row.is_active and (row.monnify_biller_id, row.product_id) not in wanted:
-                    row.is_active = False
-                    deactivated += 1
-        await db.commit()
+async def _write_catalogue(db: AsyncSession, rows: dict, deactivate_missing: bool) -> tuple[int, int]:
+    """Saves the fetched catalogue. One read of the existing rows, in-memory
+    upsert, one commit — a short transaction instead of hundreds of round
+    trips. Existing rows are never re-activated (a director's hide stays)."""
+    existing_rows = (await db.execute(select(Biller))).scalars().all()
+    existing = {(b.monnify_biller_id, b.product_id): b for b in existing_rows}
+    now = datetime.now(timezone.utc)
+    synced = 0
+    for (biller_code, product_code), r in rows.items():
+        biller = existing.get((biller_code, product_code))
+        if biller:
+            biller.category = r["category"]
+            biller.name = r["biller_name"]
+            biller.product_name = r["product_name"]
+            biller.price_kobo = r["price_kobo"]
+            biller.requires_validation = r["requires_validation"]
+            biller.last_synced_at = now
+        else:
+            db.add(Biller(
+                monnify_biller_id=biller_code, category=r["category"], name=r["biller_name"],
+                product_id=product_code, product_name=r["product_name"], price_kobo=r["price_kobo"],
+                requires_validation=r["requires_validation"], is_active=True,
+            ))
+        synced += 1
+        if synced % 150 == 0:
+            await db.flush()
 
-    return {"synced": synced, "deactivated": deactivated, "errors": errors, "samples": samples}
+    deactivated = 0
+    if deactivate_missing and rows:
+        for key, biller in existing.items():
+            if key not in rows and biller.is_active:
+                biller.is_active = False
+                deactivated += 1
+    await db.commit()
+    return synced, deactivated
+
+
+async def sync_billers(db: AsyncSession) -> dict:
+    """
+    Populates/refreshes the billers table from Monnify's live Discovery API.
+    Without this having run at least once, GET /bill-payments/billers
+    always returns an empty list for every category.
+
+    Phase 1 reads everything from Monnify (no database connection held).
+    Phase 2 writes it in one short transaction, retried once if the database
+    connection drops. Upserts on (monnify_biller_id, product_id) — matches the
+    table's UNIQUE constraint — so re-running is always safe.
+
+    - A director's manual hide (is_active = False) is respected: existing
+      rows are never re-activated by a sync.
+    - A product Monnify no longer lists is deactivated, but only when every
+      category synced cleanly, so a transient error can't wipe the catalogue.
+    - `samples` returns the first raw biller/product row per category so the
+      real Monnify field names can be checked against what we read.
+    """
+    fetched = await fetch_catalogue()
+    rows = fetched["rows"]
+    synced = deactivated = 0
+    if rows:
+        for attempt in (1, 2):
+            try:
+                synced, deactivated = await _write_catalogue(db, rows, fetched["all_clean"])
+                break
+            except DBAPIError:
+                await db.rollback()
+                if attempt == 2:
+                    raise
+                logger.warning("[bills] database connection dropped while saving the catalogue — retrying once")
+
+    counts: dict[str, int] = {}
+    for r in rows.values():
+        counts[r["category"].value] = counts.get(r["category"].value, 0) + 1
+    return {
+        "synced": synced, "deactivated": deactivated, "errors": fetched["errors"],
+        "samples": fetched["samples"], "counts": counts,
+        "biller_counts": fetched["biller_counts"], "empty_billers": fetched["empty_billers"],
+    }
 
 
 def _read_vend_instruction(result: dict) -> tuple[bool, str | None]:
@@ -247,8 +307,13 @@ def _read_vend_instruction(result: dict) -> tuple[bool, str | None]:
 def _read_customer_name(result: dict) -> str | None:
     if not isinstance(result, dict):
         return None
-    name = result.get("customerName") or result.get("customerFullName")
-    return str(name)[:160] if name else None
+    instruction = result.get("vendInstruction") if isinstance(result.get("vendInstruction"), dict) else {}
+    for source in (result, instruction):
+        for key in ("customerName", "customerFullName", "accountName", "customerAccountName", "fullName", "name"):
+            value = source.get(key)
+            if value and isinstance(value, str):
+                return value[:160]
+    return None
 
 
 async def validate_bill(
