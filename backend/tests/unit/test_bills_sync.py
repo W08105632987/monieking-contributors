@@ -21,7 +21,7 @@ class FakeProvider:
     def __init__(self, billers, products, product_errors=()):
         self.billers, self.products, self.product_errors = billers, products, set(product_errors)
 
-    async def get_billers(self, category_code):
+    async def get_billers(self, category_code, max_pages=None):
         return self.billers.get(category_code, [])
 
     async def get_biller_products(self, biller_code):
@@ -37,6 +37,12 @@ def catalogue():
             "AIRTIME": [airtel], "DATA": [airtel],               # Monnify returns the same biller for both
             "ELECTRICITY": [{"billerCode": "ikedc", "name": "Ikeja Electric"}],
             "CABLE_TV": [{"billerCode": "dstv", "name": "DStv"}, {"billerCode": "nobody", "name": "Empty TV"}],
+            # the real data plans live in DATA_BUNDLE, and one DISCO's postpaid sits under TRANSPORTATION
+            "DATA_BUNDLE": [{"billerCode": "MTN", "name": "MTN"}],
+            "TRANSPORTATION": [
+                {"billerCode": "aedc-post", "name": "Abuja Electricity Distribution Postpaid"},
+                {"billerCode": "shuttle", "name": "Shuttlers Metropolitan Mobility Ltd"},
+            ],
         },
         products={
             "AIRTEL": [
@@ -45,6 +51,9 @@ def catalogue():
             ],
             "ikedc": [{"productCode": "product-ikedc-pre", "name": "IKEDC PREPAID"}, {"productCode": "product-ikedc-post", "name": "IKEDC POSTPAID"}],
             "dstv": [{"productCode": "dstv-1", "name": "DStv Padi", "amount": 2950}],
+            "MTN": [{"productCode": "m1", "name": "1GB Daily", "amount": "350"}, {"productCode": "m2", "name": "10GB 30 Days", "amount": "3500"}],
+            "aedc-post": [{"productCode": "product-aedc-post", "name": "AEDC POSTPAID"}],
+            "shuttle": [{"productCode": "bus", "name": "Bus ticket", "amount": 500}],
         },
     )
 
@@ -147,3 +156,36 @@ def test_a_dropped_database_connection_is_retried_once(monkeypatch):
 ])
 def test_customer_name_is_found_under_the_usual_keys(payload, expected):
     assert svc._read_customer_name(payload) == expected
+
+
+def test_data_plans_come_from_data_bundle():
+    rows = run(svc.fetch_catalogue(catalogue()))["rows"]
+    assert rows[("MTN", "m1")]["category"] == BillerCategory.DATA and rows[("MTN", "m1")]["price_kobo"] == 35000
+    assert rows[("MTN", "m2")]["category"] == BillerCategory.DATA
+
+
+def test_a_disco_filed_under_transportation_is_read_as_electricity_but_real_transport_is_not():
+    rows = run(svc.fetch_catalogue(catalogue()))["rows"]
+    assert rows[("aedc-post", "product-aedc-post")]["category"] == BillerCategory.ELECTRICITY
+    assert not any(k[0] == "shuttle" for k in rows)
+
+
+def test_transient_connection_errors_are_retried_with_a_pause(monkeypatch):
+    calls = []
+
+    async def no_sleep(_):
+        calls.append("sleep")
+    monkeypatch.setattr(svc.asyncio, "sleep", no_sleep)
+    attempts = {"n": 0}
+
+    async def flaky():
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise MonnifyBillsError("ConnectError", retriable=True)
+        return "ok"
+    assert run(svc._retry_once(flaky)) == "ok" and attempts["n"] == 3 and len(calls) == 2
+
+    async def permanent():
+        raise MonnifyBillsError("bad request", retriable=False)
+    with pytest.raises(MonnifyBillsError):
+        run(svc._retry_once(permanent))

@@ -127,9 +127,9 @@ class MonnifyBillsProvider:
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as e:
             # The request never reached Monnify — definitely not processed.
             raise MonnifyBillsError(
-                f"Could not reach the bills provider ({type(e).__name__}). This is almost always a network "
-                "reachability problem (wrong MONNIFY_BASE_URL for this environment, or your server's IP isn't "
-                "whitelisted with Monnify for live use). Please try again.",
+                f"Could not reach Monnify ({type(e).__name__}). The connection from the machine running this "
+                "failed — usually an unstable internet connection, a firewall, or the wrong MONNIFY_BASE_URL. "
+                "Check your connection and try again.",
                 retriable=True, ambiguous=False,
             )
         except httpx.TimeoutException:
@@ -205,12 +205,12 @@ class MonnifyBillsProvider:
             return any(isinstance(body.get(k), list) for k in ("content", "items", "data", "billers", "products", "categories", "records"))
         return isinstance(body, list)
 
-    async def _list_all(self, path: str, id_keys: tuple[str, ...]) -> list[dict]:
+    async def _list_all(self, path: str, id_keys: tuple[str, ...], max_pages: int = MAX_PAGES) -> list[dict]:
         """GET a list endpoint, following pages until one adds nothing new."""
         sep = "&" if "?" in path else "?"
         seen: set[str] = set()
         out: list[dict] = []
-        for page in range(MAX_PAGES):
+        for page in range(max_pages):
             try:
                 body = await self._request("GET", f"{path}{sep}page={page}&size={PAGE_SIZE}")
             except MonnifyBillsError as e:
@@ -254,7 +254,7 @@ class MonnifyBillsProvider:
     async def get_biller_categories(self) -> list[dict]:
         return await self._list_all(f"{BILLS_PREFIX}/biller-categories", ("code", "categoryCode", "name"))
 
-    async def get_billers(self, category_code: str) -> list[dict]:
+    async def get_billers(self, category_code: str, max_pages: int = MAX_PAGES) -> list[dict]:
         """category_code is Monnify's own category string (e.g.
         "ELECTRICITY", "DATA", "CABLE_TV") — see CATEGORY_CODE_MAP in
         bill_payment_service.py for the mapping from our internal
@@ -265,7 +265,7 @@ class MonnifyBillsProvider:
         ignored by the server, so we send both rather than guess."""
         c = quote(category_code, safe="")
         return await self._list_all(
-            f"{BILLS_PREFIX}/billers?categoryCode={c}&category_code={c}", ("billerCode", "code"),
+            f"{BILLS_PREFIX}/billers?categoryCode={c}&category_code={c}", ("billerCode", "code"), max_pages,
         )
 
     async def get_biller_products(self, biller_code: str) -> list[dict]:
