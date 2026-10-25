@@ -251,8 +251,9 @@ class MonnifyProvider(BasePaymentProvider):
             "contractCode":      self.contract_code,
             "customerEmail":     customer_email,
             "customerName":      customer_name,
-            "getAllAvailableBanks": False,
-            "preferredBanks":    ["035"],  # Wema Bank ALAT
+            # Wema (035) answers "503 Service unavailable" to every NIN/BVN-backed creation on our live contract
+            # (verified with scripts/diagnose_monnify_va.py), while "all available banks" works (Moniepoint).
+            "getAllAvailableBanks": True,
         }
         if bvn:
             payload["bvn"] = bvn
