@@ -9,8 +9,11 @@ CREATE TABLE IF NOT EXISTS funding_fee_settings (
     CONSTRAINT funding_fee_settings_single CHECK (id = 1)
 );
 ALTER TABLE funding_fee_settings ADD COLUMN IF NOT EXISTS pass_monnify_fee BOOLEAN NOT NULL DEFAULT FALSE;
-INSERT INTO funding_fee_settings (id, charge_customers, tiers) VALUES (1, FALSE,
- '[{"from":0,"to":5000,"fee":10},{"from":5001,"to":10000,"fee":20},{"from":10001,"to":20000,"fee":30},{"from":20001,"to":null,"fee":50}]'::jsonb)
+INSERT INTO funding_fee_settings (id, charge_customers, tiers) VALUES (1, FALSE, jsonb_build_array(
+  jsonb_build_object('from', 0,     'to', 5000,  'fee', 10),
+  jsonb_build_object('from', 5001,  'to', 10000, 'fee', 20),
+  jsonb_build_object('from', 10001, 'to', 20000, 'fee', 30),
+  jsonb_build_object('from', 20001, 'to', NULL,  'fee', 50)))
 ON CONFLICT (id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS funding_records (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
