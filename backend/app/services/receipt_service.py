@@ -160,3 +160,49 @@ async def build_receipt_details(db: AsyncSession, tx: WalletTransaction) -> dict
         # A missing/garbled historical row should never break the
         # receipt page — fall back to the transaction's own fields.
         return {}
+
+
+_FALLBACK = {
+    "bill_payment": "The provider could not complete this payment. Your money was returned to your wallet.",
+    "manual_service_request": "The request could not be completed. Your money was returned to your wallet.",
+    "identity_service": "The identity check could not be completed. Nothing was charged.",
+    "withdrawal": "The withdrawal was not approved.",
+}
+
+
+def _clean(reason: str | None, fallback: str) -> str:
+    """Customer-safe reason text: trimmed, no internal noise, never empty."""
+    text = " ".join((reason or "").split())
+    if not text or text.lower().startswith(("traceback", "sqlalchemy", "httpx")):
+        return fallback
+    return text[:240]
+
+
+async def failure_info(db: AsyncSession, tx: WalletTransaction) -> dict[str, Any]:
+    """{'failed': bool, 'failure_reason': str|None} for the transaction's underlying request, so every
+    receipt and transaction sheet can say WHY something failed."""
+    kind, eid = tx.related_entity_type, tx.related_entity_id
+    try:
+        if kind == "bill_payment" and eid:
+            from app.models.bill_payment import BillPaymentRequest
+            row = await db.get(BillPaymentRequest, eid)
+            if row and str(getattr(row.status, "value", row.status)) in ("failed", "reversed"):
+                return {"failed": True, "failure_reason": _clean(row.failure_reason, _FALLBACK[kind])}
+        elif kind == "manual_service_request" and eid:
+            row = await db.get(ManualServiceRequest, eid)
+            if row and str(getattr(row.status, "value", row.status)) == "failed":
+                return {"failed": True, "failure_reason": _clean(row.worker_remarks or row.worker_response, _FALLBACK[kind])}
+        elif kind == "identity_service" and eid:
+            from app.models.identity_service import IdentityServiceRequest
+            row = await db.get(IdentityServiceRequest, eid)
+            if row and str(getattr(row.status, "value", row.status)) == "failed":
+                return {"failed": True, "failure_reason": _clean(row.failure_reason, _FALLBACK[kind])}
+        elif kind == "withdrawal" and eid:
+            row = await db.get(Withdrawal, eid)
+            if row and str(getattr(row.status, "value", row.status)) == "rejected":
+                return {"failed": True, "failure_reason": _clean(row.rejection_reason, _FALLBACK[kind])}
+    except Exception:
+        pass
+    if str(getattr(tx.category, "value", tx.category)) == "reversal":
+        return {"failed": False, "failure_reason": None}
+    return {"failed": False, "failure_reason": None}

@@ -422,6 +422,8 @@ export default function WorkerMyJobsPage() {
         {/* ── Tab: Awaiting outcome ── */}
         {activeTab === 'awaiting' && (
           <AwaitingList
+            details={Object.fromEntries(jobsList.map((j) => [j.id, j as JobDetailData]))}
+            onView={(id) => { const job = jobsList.find((j) => j.id === id); if (job) setSelectedJob(job as JobDetailData) }}
             onResolve={(id) => {
               const job = jobsList.find((j) => j.id === id)
               if (!job) return

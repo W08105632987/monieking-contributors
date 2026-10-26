@@ -479,9 +479,15 @@ class MonnifyProvider(BasePaymentProvider):
 
         status_str = str(body.get("paymentStatus") or body.get("status") or "").upper()
 
+        settle = body.get("settlementAmount")
+        try:
+            settlement_kobo = int(round(float(settle) * 100)) if settle not in (None, "") else None
+        except (ValueError, TypeError):
+            settlement_kobo = None
         return WebhookEvent(
             transaction_reference= str(tx_ref),
             amount_kobo=           int(round(amount_naira * 100)),
+            settlement_kobo=       settlement_kobo,
             account_number=        str(account_num),
             status=                status_str,
             provider=              "monnify",

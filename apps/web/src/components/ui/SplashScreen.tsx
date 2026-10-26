@@ -4,7 +4,7 @@ import { StarfieldBackground } from './StarfieldBackground'
 import { Crown, Users, Wallet } from 'lucide-react'
 import { OrbitRing } from '@/components/onboarding/OrbitRing'
 
-const SPLASH_MIN_DURATION_MS = 1900
+const SPLASH_MIN_DURATION_MS = 1500
 
 /**
  * The full-screen splash shown once, on app boot, before anything
@@ -43,7 +43,7 @@ export function SplashScreen({ onDone, keepVisible = false }: { onDone: () => vo
         <motion.div
           className="fixed inset-0 z-[999] flex flex-col items-center justify-center overflow-hidden bg-[#02100a]"
           initial={{ opacity: 1 }}
-          exit={{ opacity: 0, transition: { duration: 0.6, ease: 'easeInOut' } }}
+          exit={{ opacity: 0, transition: { duration: 0.35, ease: 'easeOut' } }}
         >
           <div
             aria-hidden="true"
@@ -56,8 +56,9 @@ export function SplashScreen({ onDone, keepVisible = false }: { onDone: () => vo
             <motion.div
               className="aspect-square w-[78%] max-w-[18rem]"
               initial={{ scale: 0.6, opacity: 0, rotate: -10 }}
+              style={{ willChange: 'transform, opacity' }}
               animate={{ scale: 1, opacity: 1, rotate: 0 }}
-              transition={{ duration: 0.9, ease: [0.34, 1.3, 0.64, 1] }}
+              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             >
               <OrbitRing badges={[
                 { icon: Crown, angle: 38, radius: 52, accent: true },
@@ -70,11 +71,13 @@ export function SplashScreen({ onDone, keepVisible = false }: { onDone: () => vo
                     MONIE<span className="text-amber-400">KING</span>
                   </p>
                   <p className="mt-0.5 text-[0.5rem] font-medium tracking-[0.1em] whitespace-nowrap text-emerald-100/70">SAVE • CONTRIBUTE • GROW</p>
+                  {/* shimmer: a soft gradient moved with transform (no blur filter, no layout work) */}
                   <motion.div
-                    className="pointer-events-none absolute inset-y-0 w-10 bg-white/15 blur-md"
-                    style={{ left: '-20%' }}
-                    animate={{ left: ['-20%', '130%'] }}
-                    transition={{ delay: 0.9, duration: 1, ease: 'easeInOut' }}
+                    className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                    style={{ willChange: 'transform' }}
+                    initial={{ x: '-120%' }}
+                    animate={{ x: '420%' }}
+                    transition={{ delay: 0.55, duration: 0.8, ease: 'easeInOut' }}
                   />
                 </div>
               </OrbitRing>
@@ -82,17 +85,18 @@ export function SplashScreen({ onDone, keepVisible = false }: { onDone: () => vo
 
             <div className="mt-12 h-[3px] w-28 overflow-hidden rounded-full bg-white/10">
               <motion.div
-                className="h-full rounded-full bg-amber-500"
-                initial={{ width: 0 }}
-                animate={{ width: '100%' }}
-                transition={{ duration: SPLASH_MIN_DURATION_MS / 1000 - 0.3, ease: 'linear' }}
+                className="h-full w-full origin-left rounded-full bg-amber-500"
+                style={{ willChange: 'transform' }}
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: SPLASH_MIN_DURATION_MS / 1000 - 0.2, ease: 'linear' }}
               />
             </div>
             <motion.p
               className="mt-4 text-center text-sm text-emerald-100/70"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.6, duration: 0.5 }}
+              transition={{ delay: 0.35, duration: 0.35 }}
             >
               Building a stronger<br />tomorrow together...
             </motion.p>

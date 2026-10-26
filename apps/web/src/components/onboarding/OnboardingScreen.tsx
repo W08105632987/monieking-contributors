@@ -64,6 +64,10 @@ const SWIPE = 55;
 const pad = (n: number) => String(n).padStart(2, "0");
 
 export function OnboardingScreen({ onFinish }: OnboardingScreenProps = {}) {
+  // Decode every slide picture up front so a swipe never waits on the network or the image decoder.
+  useEffect(() => {
+    slides.forEach((sl) => { const im = new Image(); im.src = sl.image; im.decode?.().catch(() => {}) })
+  }, [])
   const navigate = useNavigate();
   const [[index, dir], setPage] = useState<[number, number]>([0, 0]);
   const last = index === slides.length - 1;
@@ -125,16 +129,16 @@ export function OnboardingScreen({ onFinish }: OnboardingScreenProps = {}) {
                 key={index}
                 custom={dir}
                 variants={{
-                  enter: (d: number) => ({ x: d >= 0 ? 60 : -60, opacity: 0, scale: 0.92 }),
+                  enter: (d: number) => ({ x: d >= 0 ? 40 : -40, opacity: 0, scale: 0.96 }),
                   center: { x: 0, opacity: 1, scale: 1 },
-                  exit: (d: number) => ({ x: d >= 0 ? -60 : 60, opacity: 0, scale: 0.94 }),
+                  exit: (d: number) => ({ x: d >= 0 ? -40 : 40, opacity: 0, scale: 0.97, transition: { duration: 0.14 } }),
                 }}
                 initial="enter"
                 animate="center"
                 exit="exit"
-                transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                 className="shrink-0"
-                style={{ width: "min(100cqw, 100cqh)", height: "min(100cqw, 100cqh)" }}
+                style={{ width: "min(100cqw, 100cqh)", height: "min(100cqw, 100cqh)", willChange: "transform, opacity" }}
               >
                 <OrbitRing badges={slide.badges}>
                   <img
@@ -158,8 +162,8 @@ export function OnboardingScreen({ onFinish }: OnboardingScreenProps = {}) {
                 key={index}
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.28, ease: "easeOut" }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
                 className="min-h-[10.5rem] sm:min-h-[11.5rem]"
               >
                 <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-950/70 px-3 py-1 text-xs font-semibold tabular-nums tracking-wider text-zinc-100">
@@ -189,7 +193,7 @@ export function OnboardingScreen({ onFinish }: OnboardingScreenProps = {}) {
                   style={{
                     width: i === index ? "1.6rem" : "0.5rem",
                     background: i === index ? "#f59e0b" : "rgba(255,255,255,0.22)",
-                    transition: "all 400ms cubic-bezier(0.22,1,0.36,1)",
+                    transition: "width 250ms cubic-bezier(0.22,1,0.36,1), background-color 250ms",
                   }}
                 />
               ))}
@@ -207,7 +211,7 @@ export function OnboardingScreen({ onFinish }: OnboardingScreenProps = {}) {
                 aria-label={`Go to step ${i + 1}`}
                 onClick={() => go(i)}
                 className="h-2 rounded-full"
-                style={{ width: i === index ? "1.6rem" : "0.5rem", background: i === index ? "#f59e0b" : "rgba(255,255,255,0.22)", transition: "all 400ms cubic-bezier(0.22,1,0.36,1)" }}
+                style={{ width: i === index ? "1.6rem" : "0.5rem", background: i === index ? "#f59e0b" : "rgba(255,255,255,0.22)", transition: "width 250ms cubic-bezier(0.22,1,0.36,1), background-color 250ms" }}
               />
             ))}
           </div>

@@ -65,9 +65,17 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
   const navigate = useNavigate()
   const isCredit = tx.type === 'credit'
   const [showDispute, setShowDispute] = useState(false)
+  // The receipt knows whether the underlying request failed, and why.
+  const { data: receipt } = useQuery({
+    queryKey: ['tx-receipt', tx.id],
+    queryFn: async () => (await api.get<{ failed?: boolean; failure_reason?: string | null }>(`/wallets/transactions/${tx.id}/receipt`)).data,
+    staleTime: 60_000,
+  })
+  const failed = !!receipt?.failed
 
   const rows = [
-    { label: 'Status',         value: 'Successful' },
+    { label: 'Status',         value: failed ? 'Failed' : 'Successful' },
+    ...(failed && receipt?.failure_reason ? [{ label: 'Reason', value: receipt.failure_reason }] : []),
     { label: 'Reference',      value: tx.reference, mono: true },
     { label: 'Date & time',    value: formatDateTime(tx.created_at) },
     { label: 'Balance after',  value: formatNaira(tx.balance_after_kobo) },
@@ -141,6 +149,7 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
 // ── Fund wallet bottom sheet ──────────────────────────────────────
 function FundWalletSheet({ onClose }: { onClose: () => void }) {
   const { wallet } = useWallet()
+  const { data: feeInfo } = useQuery({ queryKey: ['funding-fee-info'], queryFn: async () => (await api.get<{ charging: boolean; mode?: 'none' | 'ranges' | 'monnify'; tiers: { from: number; to: number | null; fee: number }[] }>('/wallets/funding-fee')).data, staleTime: 60_000 })
   const [copied, setCopied] = useState(false)
 
   const copyAccount = async () => {
@@ -206,10 +215,28 @@ function FundWalletSheet({ onClose }: { onClose: () => void }) {
               }
             </button>
 
+            {feeInfo?.mode === 'monnify' && (
+              <div className="mt-4 rounded-2xl border border-green-100 bg-green-50/60 p-4 text-xs text-green-900 dark:border-night-500 dark:bg-night-600 dark:text-white">
+                <p className="mb-1 font-bold">Bank charge</p>
+                <p>The bank's transfer charge is taken from what you send. After each funding you will see the amount sent, the charge, and exactly what was added to your wallet.</p>
+              </div>
+            )}
+            {feeInfo?.mode !== 'monnify' && feeInfo?.charging && feeInfo.tiers.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-green-100 bg-green-50/60 p-4 dark:border-night-500 dark:bg-night-600">
+                <p className="mb-2 text-xs font-bold text-green-800 dark:text-night-100">Funding fee (taken from what you send)</p>
+                {feeInfo.tiers.map((t, i) => (
+                  <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05, duration: 0.2 }} className="flex justify-between py-1 text-xs text-green-900 dark:text-white">
+                    <span>{t.to === null ? `₦${t.from.toLocaleString()} and above` : `₦${t.from.toLocaleString()} – ₦${t.to.toLocaleString()}`}</span>
+                    <b>₦{t.fee.toLocaleString()}</b>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+
             <div className="mt-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-4">
               <p className="text-amber-700 dark:text-amber-300 text-xs font-semibold mb-1">⚡ How it works</p>
               <p className="text-amber-600 dark:text-amber-300/80 text-xs leading-relaxed">
-                Transfer any amount from your bank app to this account number. Your MonieKing wallet balance will update automatically within 60 seconds. No fees charged.
+                Transfer any amount from your bank app to this account number. Your MonieKing wallet balance will update automatically within 60 seconds. 
               </p>
             </div>
           </>

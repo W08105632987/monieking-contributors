@@ -31,17 +31,22 @@ export function StarfieldBackground({ starCount = 90, constellationDistance = 11
 
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-    let width = 0, height = 0, dpr = Math.min(window.devicePixelRatio || 1, 2)
+    let width = 0, height = 0, dpr = Math.min(window.devicePixelRatio || 1, 1.5)
     let stars: Star[] = []
-    let animationFrame: number
+    let animationFrame = 0
     let time = 0
+    let last = 0
+    // The faint constellation lines never move, so they are drawn ONCE onto this layer
+    // and simply copied each frame (instead of re-measuring thousands of pairs 60x a second).
+    const lines = document.createElement('canvas')
 
     const resize = () => {
       width = canvas.clientWidth
       height = canvas.clientHeight
       canvas.width = width * dpr
       canvas.height = height * dpr
-      ctx.scale(dpr, dpr)
+      lines.width = canvas.width
+      lines.height = canvas.height
 
       const count = Math.min(starCount, Math.floor((width * height) / 6000))
       stars = Array.from({ length: count }, () => ({
@@ -52,30 +57,38 @@ export function StarfieldBackground({ starCount = 90, constellationDistance = 11
         twinkleSpeed: Math.random() * 0.015 + 0.005,
         twinklePhase: Math.random() * Math.PI * 2,
       }))
-    }
 
-    const draw = () => {
-      ctx.clearRect(0, 0, width, height)
-
-      // Constellation lines between nearby stars
-      for (let i = 0; i < stars.length; i++) {
-        for (let j = i + 1; j < stars.length; j++) {
-          const dx = stars[i].x - stars[j].x
-          const dy = stars[i].y - stars[j].y
-          const dist = Math.sqrt(dx * dx + dy * dy)
-          if (dist < constellationDistance) {
-            const opacity = (1 - dist / constellationDistance) * 0.15
-            ctx.strokeStyle = `rgba(167, 243, 208, ${opacity})`
-            ctx.lineWidth = 0.6
-            ctx.beginPath()
-            ctx.moveTo(stars[i].x, stars[i].y)
-            ctx.lineTo(stars[j].x, stars[j].y)
-            ctx.stroke()
+      const lctx = lines.getContext('2d')
+      if (lctx) {
+        lctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        lctx.clearRect(0, 0, width, height)
+        lctx.lineWidth = 0.6
+        for (let i = 0; i < stars.length; i++) {
+          for (let j = i + 1; j < stars.length; j++) {
+            const dx = stars[i].x - stars[j].x
+            const dy = stars[i].y - stars[j].y
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            if (dist < constellationDistance) {
+              lctx.strokeStyle = `rgba(167, 243, 208, ${(1 - dist / constellationDistance) * 0.15})`
+              lctx.beginPath()
+              lctx.moveTo(stars[i].x, stars[i].y)
+              lctx.lineTo(stars[j].x, stars[j].y)
+              lctx.stroke()
+            }
           }
         }
       }
+    }
 
-      // Twinkling stars
+    const draw = (now = 0) => {
+      // ~30 frames a second is plenty for twinkling, and leaves the GPU free for the page's own animations
+      if (!prefersReducedMotion && now - last < 33) { animationFrame = requestAnimationFrame(draw); return }
+      last = now
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(lines, 0, 0)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
       for (const star of stars) {
         const twinkle = prefersReducedMotion
           ? star.baseOpacity
@@ -86,20 +99,22 @@ export function StarfieldBackground({ starCount = 90, constellationDistance = 11
         ctx.fill()
       }
 
-      time += 1
-      if (!prefersReducedMotion) {
-        animationFrame = requestAnimationFrame(draw)
-      }
+      time += 2
+      if (!prefersReducedMotion && !document.hidden) animationFrame = requestAnimationFrame(draw)
     }
+
+    const onVisible = () => { if (!document.hidden && !prefersReducedMotion) { cancelAnimationFrame(animationFrame); animationFrame = requestAnimationFrame(draw) } }
 
     resize()
     draw()
 
-    const handleResize = () => resize()
+    const handleResize = () => { resize() }
     window.addEventListener('resize', handleResize)
+    document.addEventListener('visibilitychange', onVisible)
 
     return () => {
       window.removeEventListener('resize', handleResize)
+      document.removeEventListener('visibilitychange', onVisible)
       if (animationFrame) cancelAnimationFrame(animationFrame)
     }
   }, [starCount, constellationDistance])

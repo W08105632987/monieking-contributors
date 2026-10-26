@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Settings, Megaphone, Image, BarChart3, LineChart, Activity,
-  FileClock, Send, Power, Users, User, AlertTriangle, Fingerprint, UserCheck, Package, Wrench, HeartHandshake, MessageSquare, Smartphone, PartyPopper, Eraser, MapPinned,
+  FileClock, Send, Power, Users, User, AlertTriangle, Fingerprint, UserCheck, Package, Wrench, HeartHandshake, MessageSquare, Smartphone, PartyPopper, Eraser, MapPinned, Coins,
 } from 'lucide-react'
 
 const actions = [
+  { label: 'Wallet funding fee', icon: Coins, href: '/director/funding-fees', color: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' },
   { label: 'Maintenance switch', icon: Power, href: '/director/maintenance', color: 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300' },
   { label: 'SMS centre', icon: MessageSquare, href: '/director/sms', color: 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300' },
   { label: 'Cooperative', icon: HeartHandshake, href: '/director/coop', color: 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300' },

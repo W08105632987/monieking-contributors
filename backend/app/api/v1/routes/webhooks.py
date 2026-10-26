@@ -19,6 +19,9 @@ from app.services.wallet_service import credit_wallet
 from app.services.notification_service import send_notification
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+from app.models.funding_fee import FundingRecord
+from app.services.funding_fees import fee_for, get_settings as get_fee_settings
+
 logger = logging.getLogger(__name__)
 
 # The only Monnify event that means "money arrived in a customer's account".
@@ -142,19 +145,37 @@ async def monnify_payment_webhook(
         logger.error("Monnify payment %s for unknown account — logged for manual review", event.transaction_reference)
         return {"message": "Wallet not found — logged for manual review"}
 
-    # ── Step 5: Credit wallet ─────────────────────────────────────
+    # ── Step 5: Credit wallet (less the director-set funding fee, if charging is on) ──
+    monnify_fee = (event.amount_kobo - event.settlement_kobo) if event.settlement_kobo is not None and 0 <= event.settlement_kobo <= event.amount_kobo else None
+    customer_fee, fee_label = 0, "funding fee"
+    try:
+        fee_settings = await get_fee_settings(db)
+        if fee_settings.pass_monnify_fee:
+            # The customer bears Monnify's actual charge and is shown what is left.
+            fee_label = "Monnify charge"
+            if monnify_fee and 0 < monnify_fee < event.amount_kobo:
+                customer_fee = monnify_fee
+        elif fee_settings.charge_customers:
+            customer_fee = fee_for(event.amount_kobo, fee_settings.tiers)
+    except Exception:
+        # A fee lookup must never stop a customer being credited: fall back to "no fee" and say so.
+        logger.exception("Funding-fee settings unavailable for %s; crediting the full amount", event.transaction_reference)
+    credited = event.amount_kobo - customer_fee
     try:
         async with db.begin_nested():
             await credit_wallet(
                 db,
                 wallet=       wallet,
-                amount_kobo=  event.amount_kobo,
+                amount_kobo=  credited,
                 category=     TxCategory.WALLET_FUNDING,
                 reference=    event.transaction_reference,
-                description=  f"Monnify deposit — {event.transaction_reference}",
+                description=  f"Monnify deposit — {event.transaction_reference}" + (f" (₦{customer_fee / 100:,.2f} {fee_label})" if customer_fee else ""),
                 initiated_by= wallet.owner_id,
                 related_entity_type="wallet_funding",
             )
+            db.add(FundingRecord(reference=event.transaction_reference, wallet_id=wallet.id, user_id=wallet.owner_id,
+                                 gross_kobo=event.amount_kobo, customer_fee_kobo=customer_fee, credited_kobo=credited,
+                                 monnify_fee_kobo=monnify_fee))
     except HTTPException as e:
         # A business-rule refusal (e.g. frozen wallet). Retrying can't fix it
         # and returning an error would make Monnify retry forever while the
@@ -177,8 +198,8 @@ async def monnify_payment_webhook(
         db,
         user_id= wallet.owner_id,
         title=   "Wallet funded ✓",
-        body=    f"Your wallet has been credited with ₦{event.amount_kobo / 100:,.2f}. "
-                 f"Ref: {event.transaction_reference}",
+        body=    (f"Your wallet has been credited with ₦{credited / 100:,.2f} (₦{event.amount_kobo / 100:,.2f} sent, ₦{customer_fee / 100:,.2f} {fee_label}). " if customer_fee
+                  else f"Your wallet has been credited with ₦{event.amount_kobo / 100:,.2f}. ") + f"Ref: {event.transaction_reference}",
         type=    NotificationType.SUCCESS,
         deep_link_url="/customer/wallet/transactions",
     )

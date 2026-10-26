@@ -19,6 +19,8 @@ interface ReceiptData {
   account_holder_name: string | null
   verification_code: string
   details: Record<string, string | number>
+  failed?: boolean
+  failure_reason?: string | null
 }
 
 const CATEGORY_TITLE: Record<string, string> = {
@@ -182,6 +184,13 @@ export default function ReceiptPage() {
                     <p className="text-green-600 text-sm font-semibold mt-2">{data.description}</p>
                   )}
                 </div>
+
+                {data.failed && (
+                  <div role="alert" className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+                    <p className="text-[11px] font-extrabold uppercase tracking-wide text-red-600">Failed. Reason</p>
+                    <p className="mt-1 text-sm font-semibold text-red-700">{data.failure_reason}</p>
+                  </div>
+                )}
 
                 {/* Core fields */}
                 <div className="bg-green-50/70 rounded-2xl p-4 space-y-2.5">

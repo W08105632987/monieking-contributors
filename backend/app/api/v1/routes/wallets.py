@@ -26,7 +26,7 @@ from app.schemas.withdrawal import WalletWithdrawalRequest, WithdrawalResponse
 from app.schemas.user import KycSubmitRequest
 from app.services.wallet_service import get_or_create_wallet, debit_wallet, credit_wallet
 from app.services.notification_service import send_notification
-from app.services.receipt_service import build_verification_code, build_receipt_details
+from app.services.receipt_service import build_verification_code, build_receipt_details, failure_info
 from app.utils.audit import log_action
 from app.utils.bank_codes import resolve_bank_code
 
@@ -70,6 +70,52 @@ async def get_my_wallet(
 ):
     wallet = await get_or_create_wallet(db, current_user.id)
     return wallet
+
+
+async def net_in_out(db: AsyncSession, wallet_id, filters: list) -> tuple[int, int]:
+    """Money in / money out that did not really move.
+    A failed purchase is a debit followed by a refund (category 'reversal'). Counting both would make
+    'in' and 'out' grow with every failure while the customer is no better or worse off. So refunds are
+    not counted as money in, and the debit they cancel is reduced by the amount refunded."""
+    credit_total = (await db.execute(
+        select(func.coalesce(func.sum(WalletTransaction.amount_kobo), 0))
+        .where(*filters, WalletTransaction.type == TxType.CREDIT, WalletTransaction.category != TxCategory.REVERSAL)
+    )).scalar_one()
+
+    debits = (await db.execute(
+        select(WalletTransaction.amount_kobo, WalletTransaction.related_entity_type, WalletTransaction.related_entity_id)
+        .where(*filters, WalletTransaction.type == TxType.DEBIT)
+    )).all()
+    keys = {(t, i) for _, t, i in debits if t and i}
+    refunded: dict = {}
+    if keys:
+        rows = (await db.execute(
+            select(WalletTransaction.related_entity_type, WalletTransaction.related_entity_id, func.sum(WalletTransaction.amount_kobo))
+            .where(WalletTransaction.wallet_id == wallet_id, WalletTransaction.type == TxType.CREDIT,
+                   WalletTransaction.category == TxCategory.REVERSAL,
+                   WalletTransaction.related_entity_id.in_([i for _, i in keys]))
+            .group_by(WalletTransaction.related_entity_type, WalletTransaction.related_entity_id)
+        )).all()
+        refunded = {(t, i): int(a) for t, i, a in rows}
+    debit_total = 0
+    grouped: dict = {}
+    for amount, t, i in debits:
+        if t and i:
+            grouped[(t, i)] = grouped.get((t, i), 0) + int(amount)
+        else:
+            debit_total += int(amount)
+    for key, amount in grouped.items():
+        debit_total += max(amount - refunded.get(key, 0), 0)
+    return int(credit_total), int(debit_total)
+
+
+@router.get("/funding-fee")
+async def funding_fee_info(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """What a customer sees in the Fund sheet: whether a fee applies and the ranges."""
+    from app.services.funding_fees import get_settings as _fee_settings
+    row = await _fee_settings(db)
+    mode = "monnify" if row.pass_monnify_fee else ("ranges" if row.charge_customers else "none")
+    return {"charging": mode != "none", "mode": mode, "tiers": row.tiers if mode == "ranges" else []}
 
 
 class VirtualAccountRequest(BaseModel):
@@ -502,6 +548,7 @@ async def get_transaction_receipt(
         "account_holder_name":  owner.full_name if owner else None,
         "verification_code":    build_verification_code(tx),
         "details":              details,
+        **(await failure_info(db, tx)),
     }
 
 
@@ -543,13 +590,7 @@ async def get_my_wallet_summary(
     if until:
         filters.append(WalletTransaction.created_at < until)
 
-    result = await db.execute(
-        select(
-            func.coalesce(func.sum(WalletTransaction.amount_kobo).filter(WalletTransaction.type == TxType.CREDIT), 0),
-            func.coalesce(func.sum(WalletTransaction.amount_kobo).filter(WalletTransaction.type == TxType.DEBIT), 0),
-        ).where(*filters)
-    )
-    total_in, total_out = result.one()
+    total_in, total_out = await net_in_out(db, wallet.id, filters)
 
     return WalletSummaryResponse(total_in_kobo=total_in, total_out_kobo=total_out, range_label=label)
 

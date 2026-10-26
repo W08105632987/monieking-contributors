@@ -26,6 +26,7 @@ export function OrbitRing({ children, badges = [], spin = true }: { children: Re
       <motion.div
         aria-hidden="true"
         className="absolute inset-[-4%] rounded-full border border-dashed border-emerald-400/25"
+        style={{ willChange: "transform" }}
         animate={spin ? { rotate: 360 } : undefined}
         transition={{ duration: 60, ease: "linear", repeat: Infinity }}
       >
@@ -49,6 +50,7 @@ export function OrbitRing({ children, badges = [], spin = true }: { children: Re
         aria-hidden="true"
         className="absolute inset-[3%] rounded-full"
         style={{
+          willChange: "transform", // own GPU layer: the mask + glow are painted once, then only rotated
           padding: 2,
           background: "conic-gradient(from 200deg, #f59e0b, #10b981 35%, rgba(16,185,129,.1) 60%, #f59e0b)",
           WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
@@ -72,7 +74,7 @@ export function OrbitRing({ children, badges = [], spin = true }: { children: Re
         return (
           <motion.span
             key={i}
-            className="absolute flex items-center justify-center rounded-full border backdrop-blur-sm"
+            className="absolute flex items-center justify-center rounded-full border"
             style={{
               width: `${s}%`,
               height: `${s}%`,
@@ -80,6 +82,7 @@ export function OrbitRing({ children, badges = [], spin = true }: { children: Re
               top: `${50 - r * Math.cos((b.angle * Math.PI) / 180)}%`,
               marginLeft: `${-s / 2}%`,
               marginTop: `${-s / 2}%`,
+              willChange: "transform",
               background: "radial-gradient(circle at 30% 30%, rgba(6,60,38,.95), rgba(2,20,12,.95))",
               borderColor: b.accent ? "rgba(245,158,11,.9)" : "rgba(52,211,153,.55)",
               boxShadow: b.accent ? "0 0 22px rgba(245,158,11,.55)" : "0 0 18px rgba(16,185,129,.4)",

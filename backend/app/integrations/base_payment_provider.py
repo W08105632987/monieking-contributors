@@ -25,6 +25,7 @@ class WebhookEvent:
     status: str          # "PAID" | "FAILED" etc
     provider: str
     raw: dict
+    settlement_kobo: int | None = None   # what the provider will settle to us after ITS fee (None = not stated)
 
 
 @dataclass
