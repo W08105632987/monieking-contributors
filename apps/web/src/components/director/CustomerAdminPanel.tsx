@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { KeyRound, Landmark, Trash2 } from 'lucide-react'
+import { Copy, KeyRound, Landmark, Mail, MessageCircle, Send, Trash2 } from 'lucide-react'
+import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
 import { ActionButton, DirectorModal, Notice, PinField } from './DirectorModal'
 
-type Which = null | 'reset' | 'fund' | 'delete'
+type Which = null | 'reset' | 'password' | 'fund' | 'delete'
+type PwInfo = { password: string; phone: string; email: string | null }
+const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.startsWith('234') ? d : `234${d.replace(/^0/, '')}` }
 const field = 'mt-1 w-full rounded-xl border border-green-200 dark:border-night-500 bg-white dark:bg-night-800 px-3 py-2.5 text-sm text-green-950 dark:text-white'
 
 /** Director-only powers on one customer. Every action needs the director's PIN and is written to the audit log. */
@@ -23,8 +26,10 @@ export function CustomerAdminPanel({ customerId, name }: { customerId: string; n
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [result, setResult] = useState<string | null>(null)
+  const [pw, setPw] = useState<PwInfo | null>(null)
+  const [sent, setSent] = useState<string | null>(null)
 
-  const close = () => { if (busy) return; setWhich(null); setPin(''); setAmount(''); setReason(''); setTyped(''); setAck(false); setMsg(null); setRisk(null) }
+  const close = () => { if (busy) return; setWhich(null); setPw(null); setSent(null); setPin(''); setAmount(''); setReason(''); setTyped(''); setAck(false); setMsg(null); setRisk(null) }
   const base = `/customer-admin/${customerId}`
   const run = async (fn: () => Promise<void>) => {
     if (busy) return
@@ -35,9 +40,15 @@ export function CustomerAdminPanel({ customerId, name }: { customerId: string; n
   const openDelete = () => { setWhich('delete'); run(async () => setRisk((await api.get(`${base}/delete-preview`)).data)) }
   const doReset = () => run(async () => {
     const r = (await api.post(`${base}/reset-password`, { pin })).data
-    setResult(r.sms_sent ? `A temporary password was sent to ${name} by SMS.` : `SMS could not be delivered. Give ${name} this temporary password: ${r.temporary_password}`)
-    close()
+    setPw({ password: r.temporary_password, phone: r.phone_number, email: r.email ?? null })
+    setSent(null); setWhich('password')
   })
+  const copyPw = async () => { try { await navigator.clipboard.writeText(pw!.password); toast.success('Password copied') } catch { toast.error('Could not copy. Select the password and copy it by hand.') } }
+  const sendPw = (channel: 'sms' | 'email') => run(async () => {
+    await api.post(`${base}/send-password`, { channel, temporary_password: pw!.password, pin })
+    setSent(channel === 'sms' ? `Sent to ${name} by SMS.` : `Sent to ${pw!.email}.`)
+  })
+  const waHref = pw ? `https://wa.me/${waNumber(pw.phone)}?text=${encodeURIComponent(`MonieKing: your password was reset. Temporary password: ${pw.password}. Please log in and change it now.`)}` : '#'
   const doFund = () => run(async () => {
     const r = (await api.post(`${base}/fund-wallet`, { amount_naira: Number(amount), reason, pin })).data
     setResult(`Wallet funded. New balance ${formatNaira(r.balance_kobo)}. ${name} was notified.`)
@@ -62,11 +73,32 @@ export function CustomerAdminPanel({ customerId, name }: { customerId: string; n
 
       <DirectorModal open={which === 'reset'} title="Reset password" onClose={close} busy={busy}>
         <div className="space-y-3">
-          <p className="text-sm text-green-800 dark:text-night-100">{name} gets a temporary password by SMS and should change it after logging in.</p>
+          <p className="text-sm text-green-800 dark:text-night-100">{name} gets a new temporary password. You will see it next and choose how to send it: copy it, WhatsApp, SMS or email. They should change it after logging in.</p>
           <PinField value={pin} onChange={setPin} />
           {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
-          <ActionButton busy={busy} disabled={pin.length < 4} onClick={doReset}>Send temporary password</ActionButton>
+          <ActionButton busy={busy} disabled={pin.length < 4} onClick={doReset}>Reset password</ActionButton>
         </div>
+      </DirectorModal>
+
+      <DirectorModal open={which === 'password'} title="New temporary password" onClose={close} busy={busy}>
+        {pw && (
+          <div className="space-y-3">
+            <Notice kind="ok">{name}’s password was reset. The old one no longer works.</Notice>
+            <div className="rounded-2xl bg-green-50 p-4 text-center dark:bg-night-800">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-green-600 dark:text-night-300">Temporary password</p>
+              <p className="mt-1 select-all break-all font-mono text-2xl font-extrabold tracking-wider text-green-950 dark:text-white">{pw.password}</p>
+            </div>
+            <ActionButton tone="ghost" onClick={copyPw}><Copy className="mr-1 inline h-4 w-4" />Copy password</ActionButton>
+            <a href={waHref} target="_blank" rel="noopener noreferrer" className="flex w-full items-center justify-center gap-2 rounded-full bg-[#25D366] px-4 py-3 text-sm font-bold text-white"><MessageCircle className="h-4 w-4" />Send on WhatsApp</a>
+            <ActionButton tone="ghost" busy={busy} onClick={() => sendPw('sms')}><Send className="mr-1 inline h-4 w-4" />Send by SMS to {pw.phone}</ActionButton>
+            {pw.email
+              ? <ActionButton tone="ghost" busy={busy} onClick={() => sendPw('email')}><Mail className="mr-1 inline h-4 w-4" />Send to {pw.email}</ActionButton>
+              : <p className="text-center text-[11px] text-green-600 dark:text-night-300">No verified email on this account, so email is not available.</p>}
+            {sent && <Notice kind="ok">{sent}</Notice>}
+            {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+            <p className="text-center text-[11px] text-green-600 dark:text-night-300">This password is only shown now. Close this window and it is gone.</p>
+          </div>
+        )}
       </DirectorModal>
 
       <DirectorModal open={which === 'fund'} title="Fund wallet manually" onClose={close} busy={busy}>

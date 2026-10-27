@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.card import ContributionCard, ContributionRecord, CardType, CardStatus, ContributionMethod
 from app.models.offline_import import OfflineImportBatch, PendingOfflineCustomer
-from app.models.user import User
+from app.models.user import User, UserRole, UserStatus
 from app.models.withdrawal import Withdrawal, WithdrawalStatus
 from app.models.zone import Zone
 from app.services.bill_config import normalize_phone
+from app.services.offline_rules import card_key, group_by_phone, temp_password, withdrawal_amounts
 
 CARD_DAYS = 372
 
@@ -64,10 +65,10 @@ def build_template(zone_names: list[str]) -> bytes:
              "1. One row per customer card. Columns marked * are required. Delete the two grey example rows first.",
              "2. Zone must match a zone that exists in the app (pick from the dropdown).",
              "3. Phone: 11 digits (08031234567). This links the record when the customer signs up.",
-             "4. Card type: Regular or Food. A customer with both cards gets two rows with the same phone.",
+             "4. Card type: Regular or Food. A customer with several cards (any mix, even the same type) gets one row per card, all with the same phone. If two of their cards are completely identical, write Card 2, Card 3 in Notes so they are not mistaken for a duplicate.",
              "5. Days contributed so far: the days marked on their paper card (0–372).",
              "6. Withdrawals: if they already took money out, fill 'Days already withdrawn' (or 'Amount withdrawn'). Those days show as withdrawn and the balance is correct.",
-             "7. Handled by: Self (they have a phone and use the app) or Officer (an officer in the zone handles their card). Blank = Self.",
+             "7. Handled by: Self (they have a phone and use the app) or Officer (an officer in the zone handles their card). Blank = Self. Officer customers get their account straight away and appear under the zone's officer.",
              "8. Bank details and next of kin are NOT needed — the customer enters them when signing up.",
              "", "The app shows a preview with every problem listed before anything is saved."]
     for i, t in enumerate(lines, 1):
@@ -205,25 +206,34 @@ def read_sheet(data: bytes) -> list[tuple[int, dict]]:
     return out
 
 
+async def waiting_duplicate(db: AsyncSession, v: dict) -> bool:
+    """Is exactly this card already waiting? (Same person, type, rate, days, start date and notes.)
+    A person may have many cards, so only a complete match counts as a duplicate."""
+    P = PendingOfflineCustomer
+    q = select(P.id).where(P.phone_number == v["phone_number"], P.card_type == v["card_type"], P.rate_kobo == v["rate_kobo"],
+                           P.days_contributed == v["days_contributed"], P.days_withdrawn == v["days_withdrawn"], P.claimed_at.is_(None))
+    q = q.where(P.start_date == v["start_date"]) if v.get("start_date") else q.where(P.start_date.is_(None))
+    notes = (v.get("notes") or "").strip().lower()
+    q = q.where(func.lower(func.coalesce(P.notes, "")) == notes)
+    return (await db.execute(q.limit(1))).first() is not None
+
+
 async def preview(db: AsyncSession, data: bytes) -> dict:
     zones = await zone_map(db)
     rows = read_sheet(data)
     if len(rows) > 1000:
         raise ValueError("Please upload at most 1,000 rows at a time")
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple] = set()
     out, ok = [], 0
     for line, raw in rows:
         v = validate_row(raw, zones)
-        if v["phone_number"] and v["card_type"]:
-            key = (v["phone_number"], v["card_type"])
+        if v["phone_number"] and v["card_type"] and not v["errors"]:
+            key = card_key(v)
             if key in seen:
-                v["errors"].append("Same phone and card type appears twice in this file")
+                v["errors"].append("This exact card appears twice in the file. If it is a real second identical card, write 'Card 2' in Notes")
             seen.add(key)
-            exists = (await db.execute(select(PendingOfflineCustomer.id).where(
-                PendingOfflineCustomer.phone_number == v["phone_number"], PendingOfflineCustomer.card_type == v["card_type"],
-                PendingOfflineCustomer.claimed_at.is_(None)))).first()
-            if exists:
-                v["errors"].append("Already waiting from an earlier import")
+            if await waiting_duplicate(db, v):
+                v["errors"].append("An identical card is already waiting from an earlier import. If it is a real second identical card, write 'Card 2' in Notes")
         user = (await db.execute(select(User).where(User.phone_number == v["phone_number"]))).scalar_one_or_none() if v["phone_number"] else None
         v["existing_user"] = user.full_name if user else None
         v["line"] = line
@@ -268,10 +278,20 @@ async def stage_rows(db: AsyncSession, *, rows: list[dict], source: str, filenam
     return {"batch_id": str(batch.id), "staged": len(staged), "linked_now": linked}
 
 
+async def officer_for_zone(db: AsyncSession, zone_id: uuid.UUID) -> User | None:
+    """The officer who covers this zone now (the one assigned longest if there are several)."""
+    return (await db.execute(select(User).where(User.role == UserRole.OFFICER, User.zone_id == zone_id, User.status == UserStatus.ACTIVE)
+                             .order_by(User.created_at).limit(1))).scalars().first()
+
+
 async def _attach(db: AsyncSession, p: PendingOfflineCustomer, user: User) -> ContributionCard:
     from app.services.card_service import recompute_card_completion_status
     if p.zone_id:
         user.zone_id = p.zone_id
+    if p.handled_by == "officer" and not user.managing_officer_id and p.zone_id:
+        officer = await officer_for_zone(db, p.zone_id)
+        if officer:
+            user.managing_officer_id = officer.id
     days, wd, rate = p.days_contributed, p.days_withdrawn, p.rate_kobo
     created = datetime.combine(p.start_date, datetime.min.time(), tzinfo=timezone.utc) if p.start_date else datetime.now(timezone.utc)
     card = ContributionCard(
@@ -284,8 +304,9 @@ async def _attach(db: AsyncSession, p: PendingOfflineCustomer, user: User) -> Co
 
     withdrawal = None
     if wd:
+        requested, charge, net = withdrawal_amounts(rate, wd)   # the normal charge, so it counts as profit
         withdrawal = Withdrawal(
-            customer_id=user.id, card_id=card.id, requested_amount_kobo=wd * rate, charge_kobo=0, net_payable_kobo=wd * rate,
+            customer_id=user.id, card_id=card.id, requested_amount_kobo=requested, charge_kobo=charge, net_payable_kobo=net,
             bank_name="Offline record", account_number="-", account_name=user.full_name, status=WithdrawalStatus.PAID,
             claimed_by_director_id=p.created_by, claimed_at=created, processed_at=created,
         )
@@ -344,3 +365,49 @@ async def undo_batch(db: AsyncSession, batch_id: uuid.UUID) -> dict:
         PendingOfflineCustomer.batch_id == batch_id, PendingOfflineCustomer.claimed_at.is_(None)))
     batch.undone_at = datetime.now(timezone.utc)
     return {"removed": res.rowcount, "already_claimed_kept": claimed}
+
+
+async def create_officer_customers(db: AsyncSession, *, director_id: uuid.UUID, phones: set[str] | None = None) -> dict:
+    """Officer-handled customers who have no account yet get one straight away, in their zone, under that zone's
+    officer, so they show up in the officer's customer list instead of sitting in a waiting list nobody can see.
+    A temporary password is generated for each (the director can hand it over; cash customers may never log in).
+    Returns {created: [...], failed: [...]}. Safe to run again: only people still waiting are touched."""
+    from app.core.security import hash_password
+    from app.services.wallet_service import get_or_create_wallet
+    from app.utils.supabase_admin_client import supabase_admin_request
+
+    P = PendingOfflineCustomer
+    q = select(P).where(P.handled_by == "officer", P.claimed_at.is_(None)).order_by(P.created_at)
+    if phones is not None:
+        if not phones:
+            return {"created": [], "failed": []}
+        q = q.where(P.phone_number.in_(phones))
+    rows = (await db.execute(q)).scalars().all()
+    created, failed = [], []
+    for phone, group in group_by_phone(list(rows)).items():
+        first = group[0]
+        if (await db.execute(select(User.id).where(User.phone_number == phone))).first():
+            continue   # they already have an account; their cards were attached when it was found
+        pw = temp_password()
+        try:
+            resp = await supabase_admin_request(
+                "POST", "/auth/v1/admin/users",
+                json={"email": f"{phone}@monieking.app", "password": pw, "email_confirm": True,
+                      "user_metadata": {"full_name": first.full_name, "phone": phone}},
+                failure_detail="Could not create this customer's account right now.")
+            uid = uuid.UUID(resp.json()["id"])
+            officer = await officer_for_zone(db, first.zone_id)
+            async with db.begin_nested():
+                user = User(id=uid, role=UserRole.CUSTOMER, full_name=first.full_name, phone_number=phone, is_manual_customer=True,
+                            managing_officer_id=officer.id if officer else None, zone_id=first.zone_id, created_by=director_id,
+                            login_password_hash=hash_password(pw))
+                db.add(user)
+                await db.flush()
+                await get_or_create_wallet(db, user.id)
+                cards = await claim_for_user(db, user)
+            zone = await db.get(Zone, first.zone_id)
+            created.append({"full_name": first.full_name, "phone_number": phone, "zone": zone.name if zone else "",
+                            "officer": officer.full_name if officer else None, "cards": cards, "temporary_password": pw})
+        except Exception as e:  # noqa: BLE001 - one bad person must not stop the rest
+            failed.append({"full_name": first.full_name, "phone_number": phone, "reason": str(getattr(e, "detail", None) or e)[:160]})
+    return {"created": created, "failed": failed}

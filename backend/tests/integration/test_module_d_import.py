@@ -122,6 +122,7 @@ async def _run(monkeypatch):
             assert len(recs) == 10 and sum(r.is_withdrawn for r in recs) == 4 and recs[0].is_withdrawn and not recs[9].is_withdrawn
             w = (await db.execute(select(Withdrawal).where(Withdrawal.customer_id == ada.id))).scalar_one()
             assert w.status.value == "paid" and w.requested_amount_kobo == 4 * 50_000
+            assert w.charge_kobo == 50_000 and w.net_payable_kobo == 150_000   # one month touched: one day's rate is the company's profit
             assert ada.zone_id is not None
 
         r = await c.post(f"{base}/batches/{batch_id}/undo")

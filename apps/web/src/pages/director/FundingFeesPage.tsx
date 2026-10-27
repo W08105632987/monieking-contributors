@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -42,10 +42,32 @@ export default function FundingFeesPage() {
   const [charge, setCharge] = useState(false)
   const [pass, setPass] = useState(false)
   const [tiers, setTiers] = useState<FeeTier[]>(DEFAULT_TIERS)
-  useEffect(() => { if (saved) { setCharge(saved.charge_customers); setPass(!!saved.pass_monnify_fee); setTiers(saved.tiers) } }, [saved])
+  // Unsaved edits are kept on this device so they survive leaving the page; they are offered back when you return.
+  const DRAFT_KEY = 'monieking.fundingFeesDraft'
+  const [restored, setRestored] = useState(false)
+  const loaded = useRef(false)
+  useEffect(() => {
+    if (!saved) return
+    let draft: Settings | null = null
+    if (!loaded.current) { try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null') } catch { draft = null } }
+    if (draft && Array.isArray(draft.tiers) && JSON.stringify(draft) !== JSON.stringify({ charge_customers: saved.charge_customers, pass_monnify_fee: !!saved.pass_monnify_fee, tiers: saved.tiers })) {
+      setCharge(!!draft.charge_customers); setPass(!!draft.pass_monnify_fee); setTiers(draft.tiers); setRestored(true)
+    } else { setCharge(saved.charge_customers); setPass(!!saved.pass_monnify_fee); setTiers(saved.tiers) }
+    loaded.current = true
+  }, [saved])
 
   const problems = useMemo(() => validateTiers(tiers), [tiers])
   const dirty = !!saved && (saved.charge_customers !== charge || !!saved.pass_monnify_fee !== pass || JSON.stringify(saved.tiers) !== JSON.stringify(tiers))
+  useEffect(() => {
+    if (!loaded.current) return
+    try { if (dirty) localStorage.setItem(DRAFT_KEY, JSON.stringify({ charge_customers: charge, pass_monnify_fee: pass, tiers })); else localStorage.removeItem(DRAFT_KEY) } catch { /* private mode: no draft */ }
+  }, [dirty, charge, pass, tiers])
+  useEffect(() => {
+    if (!dirty) return
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', h)
+    return () => window.removeEventListener('beforeunload', h)
+  }, [dirty])
 
   const [days, setDays] = useState(30)
   const [from, setFrom] = useState(iso(new Date(Date.now() - 30 * 864e5)))
@@ -57,7 +79,7 @@ export default function FundingFeesPage() {
 
   const save = useMutation({
     mutationFn: () => api.put('/director/funding-fees', { charge_customers: charge, pass_monnify_fee: pass, tiers }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['funding-fees'] }); toast.success(pass ? 'Saved. Customers pay Monnify’s charge and see what remains.' : charge ? 'Saved. Customers are now charged when they fund.' : 'Saved. Customers see the full amount they send.') },
+    onSuccess: () => { try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ } setRestored(false); qc.invalidateQueries({ queryKey: ['funding-fees'] }); toast.success(pass ? 'Saved. Customers pay Monnify’s charge and see what remains.' : charge ? 'Saved. Customers are now charged when they fund.' : 'Saved. Customers see the full amount they send.') },
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
@@ -75,7 +97,7 @@ export default function FundingFeesPage() {
   })
 
   return (
-    <div className="min-h-dvh bg-green-50/40 px-4 pb-28 pt-6 dark:bg-night-800">
+    <div className="min-h-dvh bg-green-50/40 px-4 pb-48 pt-6 dark:bg-night-800">
       <div className="mx-auto max-w-2xl">
         <button onClick={() => nav(-1)} aria-label="Back" className="mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-green-100 dark:bg-night-600"><ArrowLeft className="h-4 w-4 text-green-800 dark:text-white" /></button>
         <h1 className="text-2xl font-extrabold text-green-950 dark:text-white">Wallet funding fee</h1>
@@ -209,10 +231,10 @@ export default function FundingFeesPage() {
 
       <AnimatePresence>
         {dirty && (
-          <motion.div initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }} transition={{ duration: 0.2 }} className="fixed inset-x-0 bottom-0 z-30 border-t border-green-100 bg-white/95 p-3 backdrop-blur dark:border-night-500 dark:bg-night-700/95">
+          <motion.div initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }} transition={{ duration: 0.2 }} style={{ bottom: 'var(--bottom-nav-height, 0px)' }} className="fixed inset-x-0 z-[60] border-t border-green-100 bg-white p-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] dark:border-night-500 dark:bg-night-700">
             <div className="mx-auto flex max-w-2xl items-center gap-3">
-              <p className="flex-1 text-xs font-semibold text-green-800 dark:text-night-100">{charge && !pass && problems.length ? 'Fix the ranges above to save.' : 'You have unsaved changes.'}</p>
-              <button onClick={() => saved && (setCharge(saved.charge_customers), setPass(!!saved.pass_monnify_fee), setTiers(saved.tiers))} className="px-3 py-2 text-xs font-bold text-green-700 dark:text-night-200">Discard</button>
+              <p className="flex-1 text-xs font-semibold text-green-800 dark:text-night-100">{charge && !pass && problems.length ? 'Fix the ranges above to save.' : restored ? 'Unsaved changes from earlier are back. Save them to apply.' : 'You have unsaved changes. They only take effect once you save.'}</p>
+              <button onClick={() => { if (saved) { setCharge(saved.charge_customers); setPass(!!saved.pass_monnify_fee); setTiers(saved.tiers) } setRestored(false) }} className="px-3 py-2 text-xs font-bold text-green-700 dark:text-night-200">Discard</button>
               <button onClick={() => save.mutate()} disabled={save.isPending || (charge && !pass && problems.length > 0)} className="rounded-full bg-green-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40 dark:bg-night-100 dark:text-night-900">{save.isPending ? 'Saving…' : 'Save'}</button>
             </div>
           </motion.div>

@@ -48,6 +48,9 @@ class PinBody(BaseModel):
 
 @router.post("/{user_id}/reset-password")
 async def reset_password(user_id: str, body: PinBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Sets a new temporary password and hands it to the DIRECTOR, who then chooses how to pass it on:
+    copy it, WhatsApp, SMS or email (see /send-password). Nothing is sent to the customer automatically.
+    The password is never written to the audit log."""
     await check_pin(db, director, body.pin)
     user = await _customer(db, user_id)
     pw = _temp_password()
@@ -56,15 +59,41 @@ async def reset_password(user_id: str, body: PinBody, director: DirectorOnly, db
         "PUT", f"/auth/v1/admin/users/{user.id}", json={"password": pw},
         failure_detail="Couldn't reach the login service to reset this password. Please try again.",
     )
-    sms_sent = True
-    try:
-        from app.services.sms_service import send_sms
-        await send_sms(user.phone_number, f"MonieKing: your password was reset by a director. Temporary password: {pw}. Please log in and change it now.")
-    except Exception:
-        sms_sent = False
     await log_action(db, actor_id=director.id, action="customer.password_reset", entity_type="user", entity_id=str(user.id))
-    # The temporary password is shown to the director ONLY when the SMS could not be delivered.
-    return {"message": "Password reset", "sms_sent": sms_sent, "temporary_password": None if sms_sent else pw}
+    return {"message": "Password reset", "temporary_password": pw, "phone_number": user.phone_number,
+            "email": user.email if (user.email and user.email_verified_at) else None, "sms_sent": False}
+
+
+class SendPasswordBody(BaseModel):
+    channel: str = Field(pattern="^(sms|email)$")
+    temporary_password: str = Field(pattern="^[A-Za-z0-9]{8,32}$")
+    pin: str
+
+
+@router.post("/{user_id}/send-password")
+async def send_password(user_id: str, body: SendPasswordBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Send the temporary password the director just generated, by SMS or to the customer's verified email."""
+    await check_pin(db, director, body.pin)
+    user = await _customer(db, user_id)
+    text_msg = f"MonieKing: your password was reset by a director. Temporary password: {body.temporary_password}. Please log in and change it now."
+    if body.channel == "sms":
+        from app.services.sms_service import send_sms
+        try:
+            ok = await send_sms(user.phone_number, text_msg)
+        except Exception:
+            ok = False
+        if ok is False:
+            raise HTTPException(status_code=502, detail="The SMS could not be delivered. Copy the password or use WhatsApp instead.")
+    else:
+        if not (user.email and user.email_verified_at):
+            raise HTTPException(status_code=400, detail="This customer has no verified email address. Use SMS or WhatsApp instead.")
+        from app.integrations.email_sender import send_email
+        ok = await send_email(to=[user.email], subject="Your MonieKing password was reset",
+                              body=text_msg + "\n\nIf you did not expect this, contact MonieKing support.")
+        if not ok:
+            raise HTTPException(status_code=502, detail="The email could not be sent. Copy the password or use WhatsApp instead.")
+    await log_action(db, actor_id=director.id, action="customer.password_sent", entity_type="user", entity_id=str(user.id), new_value={"channel": body.channel})
+    return {"sent": True, "channel": body.channel}
 
 
 class FundBody(BaseModel):

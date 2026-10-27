@@ -43,42 +43,90 @@ async def import_commit(director: DirectorOnly, file: UploadFile = File(...), db
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     await log_action(db, actor_id=director.id, action="offline_import.committed", entity_type="offline_import_batch",
-                     entity_id=out["batch_id"], new_value=out)
+                     entity_id=out["batch_id"], new_value=dict(out))
+    phones = {r.phone_number for r in (await db.execute(select(PendingOfflineCustomer).where(
+        PendingOfflineCustomer.batch_id == uuid.UUID(out["batch_id"]), PendingOfflineCustomer.handled_by == "officer",
+        PendingOfflineCustomer.claimed_at.is_(None)))).scalars().all()}
+    if phones:
+        out = await _finish_officer_accounts(db, director, out, phones)
     await db.commit()
     return out
 
 
-class SingleBody(BaseModel):
-    full_name: str = Field(min_length=2, max_length=200)
-    phone_number: str
-    zone_id: uuid.UUID
+class CardIn(BaseModel):
     card_type: str = "regular"
     rate_naira: int = Field(gt=0)
     days_contributed: int = Field(0, ge=0, le=372)
     days_withdrawn: int = Field(0, ge=0, le=372)
-    handled_by: str = "self"
+    start_date: str | None = None
     notes: str | None = None
+
+
+class SingleBody(BaseModel):
+    """One person with one OR MANY cards (`cards`). The old one-card fields still work."""
+    full_name: str = Field(min_length=2, max_length=200)
+    phone_number: str
+    zone_id: uuid.UUID
+    handled_by: str = "self"
+    cards: list[CardIn] | None = Field(None, min_length=1, max_length=10)
+    card_type: str = "regular"
+    rate_naira: int | None = Field(None, gt=0)
+    days_contributed: int = Field(0, ge=0, le=372)
+    days_withdrawn: int = Field(0, ge=0, le=372)
+    notes: str | None = None
+
+
+async def _finish_officer_accounts(db: AsyncSession, director, out: dict, phones: set[str]) -> dict:
+    """Officer-handled people get a real account in their zone straight away (see offline_import.create_officer_customers)."""
+    acc = await svc.create_officer_customers(db, director_id=director.id, phones=phones)
+    out["created_accounts"] = acc["created"]
+    out["failed_accounts"] = acc["failed"]
+    out["attached"] = bool(out.get("linked_now")) or bool(acc["created"])
+    if acc["created"] or acc["failed"]:
+        await log_action(db, actor_id=director.id, action="offline_import.officer_accounts", entity_type="offline_import_batch",
+                         entity_id=out["batch_id"], new_value={"created": len(acc["created"]), "failed": len(acc["failed"])})
+    return out
 
 
 @router.post("/single")
 async def add_single(body: SingleBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    cards = body.cards or ([CardIn(card_type=body.card_type, rate_naira=body.rate_naira, days_contributed=body.days_contributed,
+                                   days_withdrawn=body.days_withdrawn, notes=body.notes)] if body.rate_naira else [])
+    if not cards:
+        raise HTTPException(status_code=400, detail="Add at least one card with its daily amount")
     zone = await db.get(Zone, body.zone_id)
-    raw = {"Full name": body.full_name, "Phone number": body.phone_number, "Zone": zone.name if zone else "",
-           "Card type": body.card_type, "Daily rate (₦)": body.rate_naira, "Days contributed so far": body.days_contributed,
-           "Days already withdrawn": body.days_withdrawn, "Handled by": body.handled_by, "Notes": body.notes}
-    v = svc.validate_row(raw, await svc.zone_map(db))
-    if v["phone_number"]:
-        dup = (await db.execute(select(PendingOfflineCustomer.id).where(
-            PendingOfflineCustomer.phone_number == v["phone_number"], PendingOfflineCustomer.card_type == v["card_type"],
-            PendingOfflineCustomer.claimed_at.is_(None)))).first()
-        if dup:
-            v["errors"].append("This person is already waiting with that card type")
-    if v["errors"]:
-        raise HTTPException(status_code=400, detail="; ".join(v["errors"]))
-    out = await svc.stage_rows(db, rows=[v], source="single", filename=None, director_id=director.id)
-    await log_action(db, actor_id=director.id, action="offline_import.single", entity_type="offline_import_batch", entity_id=out["batch_id"], new_value={"phone": v["phone_number"]})
+    zones = await svc.zone_map(db)
+    rows, problems = [], []
+    for i, c in enumerate(cards, 1):
+        raw = {"Full name": body.full_name, "Phone number": body.phone_number, "Zone": zone.name if zone else "",
+               "Card type": c.card_type, "Daily rate (₦)": c.rate_naira, "Days contributed so far": c.days_contributed,
+               "Days already withdrawn": c.days_withdrawn, "Card start date": c.start_date, "Handled by": body.handled_by, "Notes": c.notes}
+        v = svc.validate_row(raw, zones)
+        if not v["errors"] and await svc.waiting_duplicate(db, v):
+            v["errors"].append("An identical card is already waiting for this person. If it is a real second identical card, write 'Card 2' in Notes")
+        prefix = f"Card {i}: " if len(cards) > 1 else ""
+        problems += [prefix + e for e in v["errors"]]
+        rows.append(v)
+    if problems:
+        raise HTTPException(status_code=400, detail="; ".join(problems))
+    out = await svc.stage_rows(db, rows=rows, source="single", filename=None, director_id=director.id)
+    await log_action(db, actor_id=director.id, action="offline_import.single", entity_type="offline_import_batch", entity_id=out["batch_id"],
+                     new_value={"phone": rows[0]["phone_number"], "cards": len(rows)})
+    if body.handled_by == "officer":
+        out = await _finish_officer_accounts(db, director, out, {rows[0]["phone_number"]})
+    out["cards"] = len(rows)
     await db.commit()
     return out
+
+
+@router.post("/officer-accounts")
+async def create_officer_accounts(director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Catch-up for officer-handled people added before this existed: give each a real account under their zone's officer."""
+    acc = await svc.create_officer_customers(db, director_id=director.id, phones=None)
+    await log_action(db, actor_id=director.id, action="offline_import.officer_accounts_backfill", entity_type="offline_import_batch",
+                     entity_id="backfill", new_value={"created": len(acc["created"]), "failed": len(acc["failed"])})
+    await db.commit()
+    return {"created_accounts": acc["created"], "failed_accounts": acc["failed"]}
 
 
 @router.get("/waiting")
