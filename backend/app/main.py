@@ -176,6 +176,7 @@ from app.api.v1.routes.maintenance import router as maintenance_router
 from app.api.v1.routes.sms_admin import router as sms_admin_router
 from app.api.v1.routes.director_customers import router as director_customers_router
 from app.api.v1.routes.director_funding_fees import router as director_funding_fees_router
+from app.api.v1.routes.director_accounting import router as director_accounting_router
 from app.api.v1.routes.worker import router as worker_router
 from app.api.v1.routes.manual_services import router as manual_services_router
 from app.api.v1.routes.service_templates import router as service_templates_router
@@ -232,6 +233,7 @@ app.include_router(maintenance_router, prefix=PREFIX)
 app.include_router(sms_admin_router, prefix=PREFIX)
 app.include_router(director_customers_router, prefix=PREFIX)
 app.include_router(director_funding_fees_router, prefix=PREFIX)
+app.include_router(director_accounting_router, prefix=PREFIX)
 app.include_router(webhook_router)
 app.include_router(webhook_router,           prefix=PREFIX)
 

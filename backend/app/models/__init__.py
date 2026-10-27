@@ -57,3 +57,4 @@ __all__ = [
 from app.coop.models import *  # noqa: F401,F403  (cooperative preview, migration 045)
 from app.verification.models import *  # noqa: F401,F403  (Techhub verification, migration 046)
 from app.models.funding_fee import FundingFeeSettings, FundingRecord  # noqa: F401
+from app.models.accounting import CostRate, Expense, ProviderUsage, AccountingSettings  # noqa

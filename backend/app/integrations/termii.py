@@ -52,4 +52,13 @@ async def send_sms(phone_number: str, message: str) -> bool:
         except httpx.HTTPError as e:
             print(f"[termii] SMS send failed: {e}")
             return False
-        return resp.status_code in (200, 201)
+        ok = resp.status_code in (200, 201)
+        if ok:
+            # Accounting: count what Termii bills us for (one unit per message segment).
+            try:
+                from app.services.sms_service import count_segments
+                from app.services.usage_log import record_usage
+                await record_usage("termii.sms", max(1, count_segments(message).get("segments") or 1))
+            except Exception:
+                pass
+        return ok

@@ -142,6 +142,7 @@ const CoopDividendPage    = lazy(() => import('@/features/coop/pages/DividendPag
 const CoopMePage          = lazy(() => import('@/features/coop/pages/MePage'))
 const CoopBankPage        = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.BankPage })))
 const FundingFeesPage = lazy(() => import('@/pages/director/FundingFeesPage'))
+const AccountingPage = lazy(() => import('@/pages/director/AccountingPage'))
 const MaintenanceSwitchPage = lazy(() => import('@/pages/director/MaintenanceSwitchPage'))
 const CoopKinPage         = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.KinPage })))
 const CoopClosePage       = lazy(() => import('@/features/coop/pages/AccountPages').then((m) => ({ default: m.ClosePage })))
@@ -338,6 +339,7 @@ export default function App() {
             <Route path="/coop/dividend"        element={<AuthGuard allowedRoles={['customer']}><CoopDividendPage /></AuthGuard>} />
             <Route path="/coop/me"              element={<AuthGuard allowedRoles={['customer']}><CoopMePage /></AuthGuard>} />
             <Route path="/director/funding-fees" element={<AuthGuard allowedRoles={['director']}><FundingFeesPage /></AuthGuard>} />
+            <Route path="/director/accounting" element={<AuthGuard allowedRoles={['director']}><AccountingPage /></AuthGuard>} />
             <Route path="/director/maintenance" element={<AuthGuard allowedRoles={['director']}><MaintenanceSwitchPage /></AuthGuard>} />
             <Route path="/director/coop"        element={<AuthGuard allowedRoles={['director']}><DirectorCoopPage /></AuthGuard>} />
 
