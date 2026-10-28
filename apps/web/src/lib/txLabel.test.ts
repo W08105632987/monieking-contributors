@@ -10,4 +10,9 @@ describe('txLabel', () => {
     expect(txLabel({ category: 'charge', description: null })).toBe('Service charge')
     expect(txLabel({ category: 'sms_fee', description: 'SMS alert (1 SMS)' })).toBe('SMS alert (1 SMS)')
   })
+
+  it('shows the director\'s reason for a manual debit', () => {
+    expect(txLabel({ category: 'manual_debit', description: 'Manual debit by director: Funded by mistake' })).toBe('Manual debit by director: Funded by mistake')
+    expect(txLabel({ category: 'manual_debit', description: null })).toBe('Wallet debit')
+  })
 })

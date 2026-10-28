@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Copy, Hash, KeyRound, Landmark, Lock, Mail, MessageCircle, Send, Trash2 } from 'lucide-react'
+import { Copy, Hash, KeyRound, Landmark, Lock, Mail, MinusCircle, MessageCircle, Send, Trash2 } from 'lucide-react'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
 import { ActionButton, DirectorModal, Notice, PinField } from './DirectorModal'
 
-type Which = null | 'reset' | 'password' | 'pin' | 'wpw' | 'fund' | 'delete'
+type Which = null | 'reset' | 'password' | 'pin' | 'wpw' | 'fund' | 'debit' | 'delete'
 type PwInfo = { password: string; phone: string; email: string | null }
 const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.startsWith('234') ? d : `234${d.replace(/^0/, '')}` }
 const field = 'mt-1 w-full rounded-xl border border-green-200 dark:border-night-500 bg-white dark:bg-night-800 px-3 py-2.5 text-sm text-green-950 dark:text-white'
@@ -59,6 +59,11 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
     setResult(`Wallet funded. New balance ${formatNaira(r.balance_kobo)}. ${name} was notified.`)
     qc.invalidateQueries(); close()
   })
+  const doDebit = () => run(async () => {
+    const r = (await api.post(`${base}/debit-wallet`, { amount_naira: Number(amount), reason, pin })).data
+    setResult(`Wallet debited. New balance ${formatNaira(r.balance_kobo)}. ${name} was notified.`)
+    qc.invalidateQueries(); close()
+  })
   const doDelete = () => run(async () => {
     const r = (await api.post(`${base}/delete`, { confirm_name: typed, pin, acknowledge_money: ack })).data
     qc.invalidateQueries(); setWhich(null); nav('/director/customers', { replace: true, state: { notice: r.message } })
@@ -78,6 +83,7 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
       {kind === 'customer' && (
         <>
           <button className={row} onClick={() => { setResult(null); setWhich('fund') }}><Landmark className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Fund wallet manually</span></button>
+          <button className={row} onClick={() => { setResult(null); setWhich('debit') }}><MinusCircle className="h-4 w-4 text-amber-600" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Debit wallet manually</span></button>
           <button className={row} onClick={() => { setResult(null); openDelete() }}><Trash2 className="h-4 w-4 text-red-500" /><span className="flex-1 text-sm font-semibold text-red-600">Delete customer</span></button>
         </>
       )}
@@ -138,6 +144,17 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
           <PinField value={pin} onChange={setPin} />
           {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
           <ActionButton busy={busy} disabled={!(Number(amount) > 0) || reason.trim().length < 5 || pin.length < 4} onClick={doFund}>Fund {Number(amount) > 0 ? `₦${Number(amount).toLocaleString()}` : 'wallet'}</ActionButton>
+        </div>
+      </DirectorModal>
+
+      <DirectorModal open={which === 'debit'} title="Debit wallet manually" onClose={close} busy={busy}>
+        <div className="space-y-3">
+          <p className="text-sm text-green-800 dark:text-night-100">Takes money out of {name}'s wallet. It cannot take the wallet below zero. The reason is shown to the customer, recorded in the audit log, and they are notified.</p>
+          <label className="block text-xs font-semibold text-green-700 dark:text-night-200">Amount (₦)<input className={field} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))} /></label>
+          <label className="block text-xs font-semibold text-green-700 dark:text-night-200">Reason (required)<textarea className={field} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Funded by mistake, reversed at the customer's request" /></label>
+          <PinField value={pin} onChange={setPin} />
+          {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+          <ActionButton busy={busy} disabled={!(Number(amount) > 0) || reason.trim().length < 5 || pin.length < 4} onClick={doDebit}>Debit {Number(amount) > 0 ? `₦${Number(amount).toLocaleString()}` : 'wallet'}</ActionButton>
         </div>
       </DirectorModal>
 

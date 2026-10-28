@@ -8,6 +8,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   officer_contribution: 'Cash contribution',
   reversal:             'Reversal',
   sms_fee:              'SMS alerts',
+  manual_debit:         'Wallet debit',
 }
 
 // Money-in/out kinds whose description is long bookkeeping text — keep the list simple.

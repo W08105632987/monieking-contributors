@@ -15,6 +15,7 @@ const TX_CATEGORY_LABEL: Record<string, string> = {
   withdrawal:           'Withdrawal',
   charge:               'Service charge',
   reversal:             'Reversal',
+  manual_debit:         'Wallet debit',
 }
 
 // See the matching helper in customer/TransactionsPage.tsx — same

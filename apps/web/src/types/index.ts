@@ -9,6 +9,7 @@ export type TxType = 'credit' | 'debit'
 export type TxCategory =
   | 'wallet_funding'
   | 'sms_fee'
+  | 'manual_debit'
   | 'contribution'
   | 'withdrawal'
   | 'charge'

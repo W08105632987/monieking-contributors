@@ -20,7 +20,7 @@ from app.models.withdrawal import Withdrawal, WithdrawalStatus
 from app.services import purge_service
 from app.services.notification_service import send_notification
 from app.services.user_service import resolve_user
-from app.services.wallet_service import credit_wallet, get_or_create_wallet
+from app.services.wallet_service import credit_wallet, debit_wallet, get_or_create_wallet
 from app.services.pin_service import check_pin
 from app.utils.audit import log_action
 
@@ -180,6 +180,31 @@ async def fund_wallet(user_id: str, body: FundBody, director: DirectorOnly, db: 
         body=f"₦{body.amount_naira:,.2f} was added to your wallet.", type=NotificationType.INFO, deep_link_url="/wallet",
     )
     return {"message": "Wallet funded", "reference": ref, "balance_kobo": tx.balance_after_kobo}
+
+
+@router.post("/{user_id}/debit-wallet")
+async def debit_wallet_manually(user_id: str, body: FundBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Takes money OUT of a customer's wallet (a correction, a chargeback, money paid out by hand ...).
+    Same guards as manual funding: director PIN, a written reason, audit log, customer notified.
+    It can never take the wallet below zero. Recorded as its own transaction type so it is never
+    mistaken for a service charge or a withdrawal in reports."""
+    await check_pin(db, director, body.pin)
+    user = await _customer(db, user_id)
+    kobo = int(round(body.amount_naira * 100))
+    wallet = await get_or_create_wallet(db, user.id)
+    ref = f"MANUAL-DEBIT-{uuid.uuid4().hex[:12].upper()}"
+    tx = await debit_wallet(
+        db, wallet=wallet, amount_kobo=kobo, category=TxCategory.MANUAL_DEBIT, reference=ref,
+        description=f"Manual debit by director: {body.reason.strip()}", initiated_by=director.id,
+    )
+    await log_action(db, actor_id=director.id, action="wallet.manual_debit", entity_type="user", entity_id=str(user.id),
+                     new_value={"amount_kobo": kobo, "reason": body.reason.strip(), "reference": ref})
+    await send_notification(
+        db, user_id=user.id, title="Wallet debited",
+        body=f"₦{body.amount_naira:,.2f} was deducted from your wallet. Reason: {body.reason.strip()}",
+        type=NotificationType.WARNING, deep_link_url="/wallet",
+    )
+    return {"message": "Wallet debited", "reference": ref, "balance_kobo": tx.balance_after_kobo}
 
 
 async def _risk(db: AsyncSession, user: User) -> dict:

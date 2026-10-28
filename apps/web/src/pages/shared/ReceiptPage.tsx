@@ -31,6 +31,7 @@ const CATEGORY_TITLE: Record<string, string> = {
   officer_contribution: 'Cash Contribution',
   reversal:             'Reversal',
   sms_fee:              'SMS alerts',
+  manual_debit:         'Wallet Debit',
 }
 
 /**

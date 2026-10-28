@@ -29,27 +29,36 @@ router = APIRouter(prefix="/withdrawals", tags=["withdrawals"])
 async def _notify_customers_officer(
     db: AsyncSession, *, customer_id: uuid.UUID, title: str, body: str,
     type: NotificationType, related_entity_id: uuid.UUID,
+    deep_link_url: str | None = None,  # accepted for callers that pass the customer's link; officers get their own
 ) -> None:
     """Whoever CURRENTLY covers this customer's zone gets told when a
     director approves or rejects one of their customers' withdrawals —
     not just the customer themselves. Zone-based like everywhere else in
     this app (disputes, card access): if zone coverage changed since the
-    withdrawal was submitted, this notifies whoever covers it now, not a
-    stale snapshot of who covered it back then."""
-    customer_result = await db.execute(select(User.zone_id).where(User.id == customer_id))
-    zone_id = customer_result.scalar_one_or_none()
-    if not zone_id:
-        return
-    officer_result = await db.execute(
-        select(User).where(User.zone_id == zone_id, User.role == UserRole.OFFICER)
-    )
-    officer = officer_result.scalar_one_or_none()
-    if officer:
-        await send_notification(
-            db, user_id=officer.id, title=title, body=body,
-            type=type, related_entity_id=related_entity_id, deep_link_url="/officer/wallet/transactions",
-        )
+    withdrawal was submitted, this notifies whoever covers it now.
 
+    This is a courtesy message. It must NEVER stop a payout or a rejection,
+    so every failure here is swallowed (inside a savepoint, so the main
+    transaction stays healthy). It previously raised on every call: callers
+    passed deep_link_url, which this function did not accept, so approving
+    or rejecting a withdrawal always failed."""
+    try:
+        async with db.begin_nested():
+            customer_result = await db.execute(select(User.zone_id).where(User.id == customer_id))
+            zone_id = customer_result.scalar_one_or_none()
+            if not zone_id:
+                return
+            officer_result = await db.execute(
+                select(User).where(User.zone_id == zone_id, User.role == UserRole.OFFICER)
+            )
+            for officer in officer_result.scalars().all():
+                await send_notification(
+                    db, user_id=officer.id, title=title, body=body,
+                    type=type, related_entity_id=related_entity_id,
+                    deep_link_url="/officer/wallet/transactions",
+                )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WITHDRAWAL_OFFICER_NOTIFY_FAILED] {exc.__class__.__name__}")
 
 @router.post("", response_model=WithdrawalResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")

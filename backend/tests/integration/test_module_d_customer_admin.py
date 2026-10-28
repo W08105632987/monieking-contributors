@@ -83,6 +83,18 @@ async def _run(monkeypatch):
         r = await c.post(f"{base}/{real_id}/fund-wallet", json={"amount_naira": 10, "reason": "x", "pin": "4821"})
         assert r.status_code == 422
 
+        # manual debit: needs PIN + reason, cannot overdraw, balance drops, then restore for the checks below
+        r = await c.post(f"{base}/{real_id}/debit-wallet", json={"amount_naira": 100, "reason": "Funded by mistake", "pin": "0000"})
+        assert r.status_code in (400, 401, 403)
+        r = await c.post(f"{base}/{real_id}/debit-wallet", json={"amount_naira": 100, "reason": "x", "pin": "4821"})
+        assert r.status_code == 422
+        r = await c.post(f"{base}/{real_id}/debit-wallet", json={"amount_naira": 4_000_000, "reason": "Too much on purpose", "pin": "4821"})
+        assert r.status_code == 400
+        r = await c.post(f"{base}/{real_id}/debit-wallet", json={"amount_naira": 100, "reason": "Funded by mistake", "pin": "4821"})
+        assert r.status_code == 200 and r.json()["balance_kobo"] == 640000
+        r = await c.post(f"{base}/{real_id}/fund-wallet", json={"amount_naira": 100, "reason": "Debit reversed again", "pin": "4821"})
+        assert r.status_code == 200 and r.json()["balance_kobo"] == 650000
+
         # delete preview: real customer with money is archived, not erased
         r = await c.get(f"{base}/{real_id}/delete-preview")
         assert r.status_code == 200 and r.json()["mode"] == "archive" and r.json()["wallet_balance_kobo"] == 650000
