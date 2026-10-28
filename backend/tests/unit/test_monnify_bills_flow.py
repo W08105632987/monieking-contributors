@@ -78,7 +78,9 @@ def test_vend_payload_shape(monkeypatch):
         return {}
     p._request = fake_request
     run(p.vend_bill(product_code="11", customer_id="0801", amount_kobo=123_456, vend_reference="ref-1"))
-    assert sent == {"productCode": "11", "customerId": "0801", "vendAmount": 1234.56, "vendReference": "ref-1"}
+    # both spellings: live Monnify rejected vendAmount alone with "Amount must be greater than zero"
+    assert sent == {"productCode": "11", "customerId": "0801", "amount": 1234.56, "reference": "ref-1",
+                    "vendAmount": 1234.56, "vendReference": "ref-1"}
     run(p.vend_bill(product_code="11", customer_id="0801", amount_kobo=100, vend_reference="r", validation_reference="V"))
     assert sent["validationReference"] == "V"
 

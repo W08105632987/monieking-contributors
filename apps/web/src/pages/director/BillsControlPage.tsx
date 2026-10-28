@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Smartphone } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Smartphone } from 'lucide-react'
 import toast from '@/lib/notify'
 import { useMutation } from '@tanstack/react-query'
 import { api, getErrorMessage } from '@/lib/api'
@@ -84,6 +84,14 @@ export default function BillsControlPage() {
       </header>
 
       <div className="px-4 space-y-4 pb-40">
+        <button onClick={() => nav('/director/bills-pricing')}
+          className="w-full flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-white" style={{ background: 'linear-gradient(135deg,#14532d,#166534)' }}>
+          <span className="flex-1">
+            <span className="block text-sm font-extrabold">Prices & profit</span>
+            <span className="block text-[11px] text-green-100/85">Set what customers pay, see Monnify's commission and your profit</span>
+          </span>
+          <ChevronRight className="w-4 h-4" />
+        </button>
         <p className="text-[11px] font-bold uppercase tracking-wide text-green-700 dark:text-night-200">Services</p>
         <div className={card}>
           <Switch on={cfg.airtime_enabled} onChange={(v) => set('airtime_enabled', v)} label="Airtime" />

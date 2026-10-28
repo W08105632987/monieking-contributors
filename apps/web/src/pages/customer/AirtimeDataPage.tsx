@@ -14,7 +14,7 @@ import { PaymentReceipt, type ReceiptField } from '@/components/receipts/Payment
 import { isPinCancelled } from '@/lib/pin'
 import { PaymentConfirmSheet } from '@/components/payments/PaymentConfirmSheet'
 import { NetworkBadge, ALL_NETWORKS, type NetworkName } from '@/components/NetworkBadge'
-import { bucketDataPlans, BUCKET_META, matchesNetwork, pickAirtimeProduct, type PlanBucket } from '@/lib/billCatalog'
+import { bucketDataPlans, BUCKET_META, matchesNetwork, pickAirtimeProduct, planExtras, type PlanBucket } from '@/lib/billCatalog'
 import { networkBrand } from '@/lib/billerBrand'
 import type { BillPaymentRequest } from '@/types'
 
@@ -154,7 +154,8 @@ export default function AirtimeDataPage() {
   const payMutation = usePayBill(customerId)
 
   const serviceOn = tab === 'airtime' ? cfg.airtime_enabled : cfg.data_enabled
-  const amountOk = typeof amountNaira === 'number' && amountNaira >= cfg.min_airtime_naira && amountNaira <= cfg.max_airtime_naira
+  const minAirtime = Math.max(cfg.min_airtime_naira, Math.ceil((airtimeBiller?.min_amount_kobo ?? 0) / 100))
+  const amountOk = typeof amountNaira === 'number' && amountNaira >= minAirtime && amountNaira <= cfg.max_airtime_naira
   const baseOk = serviceOn && phone.length === 11 && phoneState === 'ok' && !!network && networkOn(network)
   const canPay = tab === 'airtime' ? baseOk && amountOk && !!airtimeBiller : baseOk && !!selectedPlan
 
@@ -199,8 +200,10 @@ export default function AirtimeDataPage() {
     )
   }
 
+  // What the wallet pays: the typed airtime value plus any markup the directors set; plans carry our price.
+  const airtimeMarkup = airtimeBiller?.markup_percent ?? 0
   const payAmountKobo = tab === 'airtime'
-    ? (typeof amountNaira === 'number' ? amountNaira * 100 : 0)
+    ? (typeof amountNaira === 'number' ? Math.round(amountNaira * 100 * (1 + airtimeMarkup / 100)) : 0)
     : (selectedPlan?.price_kobo ?? 0)
 
   const receiptFields: ReceiptField[] = completedRequest ? [
@@ -371,8 +374,11 @@ export default function AirtimeDataPage() {
               className="w-full bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-2xl px-4 py-3.5 outline-none text-green-950 dark:text-white font-semibold"
             />
             <p className={cn('mt-1.5 text-[11px] font-semibold', typeof amountNaira === 'number' && !amountOk ? 'text-red-600 dark:text-red-300' : 'text-green-600 dark:text-night-300')}>
-              Between ₦{cfg.min_airtime_naira.toLocaleString()} and ₦{cfg.max_airtime_naira.toLocaleString()}
+              Between ₦{minAirtime.toLocaleString()} and ₦{cfg.max_airtime_naira.toLocaleString()}
             </p>
+            {airtimeMarkup !== 0 && amountOk && (
+              <p className="mt-1 text-[11px] text-green-600 dark:text-night-300">You pay {formatNaira(payAmountKobo)} for ₦{(amountNaira as number).toLocaleString()} airtime.</p>
+            )}
             {network && !airtimeQ.isLoading && !airtimeBiller && (
               <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300">Airtime isn't available for {network} right now.</p>
             )}
@@ -392,83 +398,66 @@ export default function AirtimeDataPage() {
               </div>
             )}
             <label className="text-green-700 dark:text-night-200 text-xs font-semibold uppercase tracking-wide mb-2 block">Choose a plan</label>
-            {plansError ? (
-              <FallbackError title="Couldn't load data plans" onRetry={() => refetchPlans()} isRetrying={plansFetching} />
-            ) : plansLoading ? (
-              <div className="grid grid-cols-2 gap-2.5">{[1, 2, 3, 4].map(i => <div key={i} className="h-28 bg-white dark:bg-night-700 rounded-2xl animate-pulse" />)}</div>
-            ) : plansForNetwork.length === 0 || !activeBucket ? (
-              <p className="text-green-600 dark:text-night-300 text-sm">{network ? `No ${network} plans available right now.` : 'Choose a network to see plans.'}</p>
-            ) : (
-              <div>
-                {/* Daily / Weekly / Monthly … */}
-                <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 -mx-1 px-1" role="tablist">
-                  {bucketGroups.map(g => {
-                    const on = g.bucket === activeBucket.bucket
-                    return (
-                      <button
-                        key={g.bucket} role="tab" aria-selected={on}
-                        onClick={() => { setBucket(g.bucket); setSelectedPlanId(null) }}
-                        className={cn('relative shrink-0 px-4 py-2 rounded-full text-xs font-bold border transition-colors',
-                          on ? 'border-transparent' : 'bg-white dark:bg-night-700 text-green-800 dark:text-night-100 border-green-100 dark:border-night-500')}
-                        style={on ? { color: theme.on } : undefined}
-                      >
-                        {on && <motion.span layoutId="plan-bucket" className="absolute inset-0 rounded-full" style={{ background: theme.main, boxShadow: `0 6px 18px ${theme.main}66` }} transition={{ type: 'spring', stiffness: 380, damping: 30 }} />}
-                        <span className="relative">{BUCKET_META[g.bucket].label} <span className="opacity-70">· {g.plans.length}</span></span>
-                      </button>
-                    )
-                  })}
-                </div>
-                <p className="text-[11px] text-green-600 dark:text-night-300 mb-3">{BUCKET_META[activeBucket.bucket].hint}</p>
-
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={`${activeBucket.bucket}-${effKind}-${network ?? 'all'}`}
-                    initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -18 }} transition={{ duration: 0.2 }}
-                    className="grid grid-cols-2 gap-2.5"
-                  >
-                    {activeBucket.plans.map(({ plan, info }, i) => {
-                      const on = selectedPlanId === plan.id
+            <div className="rounded-3xl border border-green-100 dark:border-night-500 bg-white dark:bg-night-700 shadow-sm overflow-hidden">
+              {plansError ? (
+                <div className="p-4"><FallbackError title="Couldn't load data plans" onRetry={() => refetchPlans()} isRetrying={plansFetching} /></div>
+              ) : plansLoading ? (
+                <div className="p-3 grid grid-cols-2 gap-2">{[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-[92px] bg-green-50 dark:bg-night-600 rounded-2xl animate-pulse" />)}</div>
+              ) : plansForNetwork.length === 0 || !activeBucket ? (
+                <p className="p-5 text-center text-green-600 dark:text-night-300 text-sm">{network ? `No ${network} plans available right now.` : 'Choose a network to see plans.'}</p>
+              ) : (
+                <>
+                  <div className="px-4 pt-3.5 pb-3" style={{ background: `linear-gradient(180deg, ${theme.main}22, transparent)` }}>
+                    <p className="text-sm font-extrabold text-green-950 dark:text-white">{network} data plans</p>
+                    <p className="text-[11px] text-green-600 dark:text-night-300">{plansForNetwork.length} plans · {BUCKET_META[activeBucket.bucket].hint.toLowerCase()}</p>
+                  </div>
+                  {/* Daily / Weekly / Monthly … */}
+                  <div className="flex gap-1.5 overflow-x-auto px-3 pb-3" role="tablist">
+                    {bucketGroups.map(g => {
+                      const on = g.bucket === activeBucket.bucket
                       return (
-                        <motion.button
-                          key={plan.id}
-                          initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-                          transition={{ delay: Math.min(i, 10) * 0.03, type: 'spring', stiffness: 340, damping: 26 }}
-                          whileTap={{ scale: 0.96 }}
-                          onClick={() => setSelectedPlanId(plan.id)}
-                          aria-pressed={on}
-                          className={cn('relative text-left rounded-2xl border px-3.5 py-3.5 overflow-hidden transition-colors',
-                            on ? 'border-transparent' : 'bg-white dark:bg-night-700 border-green-100 dark:border-night-500')}
-                          style={on ? { background: `linear-gradient(135deg, ${theme.main}, ${theme.main}cc)`, color: theme.on, boxShadow: `0 10px 26px ${theme.main}55` } : undefined}
-                        >
-                          {on && (
-                            <motion.span aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(circle at 80% 0%, rgba(255,255,255,0.35), transparent 60%)' }}
-                              animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }} />
-                          )}
-                          {on && (
-                            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 18 }}
-                              className="absolute top-2 right-2 w-5 h-5 rounded-full bg-white flex items-center justify-center">
-                              <Check className="w-3 h-3 text-green-900" strokeWidth={3.5} />
-                            </motion.span>
-                          )}
-                          <p className={cn('relative text-xl leading-none font-extrabold', on ? '' : 'text-green-950 dark:text-white')}>{info.sizeText ?? plan.product_name}</p>
-                          {info.sizeText && info.sizeText !== plan.product_name && info.validityText == null && (
-                            <p className={cn('relative text-[11px] mt-1 line-clamp-2', on ? 'opacity-80' : 'text-green-600 dark:text-night-300')}>{plan.product_name}</p>
-                          )}
-                          {info.validityText && (
-                            <p className={cn('relative mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold', on ? 'opacity-90' : 'text-green-600 dark:text-night-300')}>
-                              <Clock className="w-3 h-3" /> {info.validityText}
-                            </p>
-                          )}
-                          {plan.price_kobo != null && (
-                            <p className={cn('relative mt-2 text-base font-extrabold', on ? '' : 'text-green-800 dark:text-night-100')}>{formatNaira(plan.price_kobo)}</p>
-                          )}
-                        </motion.button>
+                        <button key={g.bucket} role="tab" aria-selected={on} onClick={() => { setBucket(g.bucket); setSelectedPlanId(null) }}
+                          className={cn('relative shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-bold border transition-colors',
+                            on ? 'border-transparent' : 'bg-white dark:bg-night-700 text-green-800 dark:text-night-100 border-green-100 dark:border-night-500')}
+                          style={on ? { color: theme.on } : undefined}>
+                          {on && <motion.span layoutId="plan-bucket" className="absolute inset-0 rounded-full" style={{ background: theme.main }} transition={{ type: 'spring', stiffness: 380, damping: 30 }} />}
+                          <span className="relative">{BUCKET_META[g.bucket].label} <span className="opacity-70">{g.plans.length}</span></span>
+                        </button>
                       )
                     })}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
-            )}
+                  </div>
+
+                  <AnimatePresence mode="wait">
+                    <motion.div key={`${activeBucket.bucket}-${effKind}-${network ?? 'all'}`}
+                      initial={{ opacity: 0, x: 14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -14 }} transition={{ duration: 0.18 }}
+                      className="grid grid-cols-2 gap-2 px-3 pb-3 max-h-[54dvh] overflow-y-auto">
+                      {activeBucket.plans.map(({ plan, info }) => {
+                        const on = selectedPlanId === plan.id
+                        const extra = planExtras(plan.product_name)
+                        return (
+                          <motion.button key={plan.id} whileTap={{ scale: 0.97 }} onClick={() => setSelectedPlanId(plan.id)} aria-pressed={on}
+                            className="relative flex flex-col text-left rounded-2xl border-2 px-3 py-2.5 min-h-[92px] transition-colors bg-white dark:bg-night-700"
+                            style={on ? { borderColor: theme.main, background: `${theme.main}14`, boxShadow: `0 4px 14px ${theme.main}33` } : { borderColor: 'rgba(120,120,120,0.16)' }}>
+                            {on && (
+                              <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 18 }}
+                                className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: theme.main }}>
+                                <Check className="w-2.5 h-2.5" style={{ color: theme.on }} strokeWidth={4} />
+                              </motion.span>
+                            )}
+                            <span className="text-[15px] leading-tight font-extrabold text-green-950 dark:text-white pr-4 break-words">{info.sizeText ?? plan.product_name}</span>
+                            {info.validityText && (
+                              <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-green-600 dark:text-night-300"><Clock className="w-2.5 h-2.5" />{info.validityText}</span>
+                            )}
+                            {extra && <span className="mt-0.5 text-[10px] leading-snug text-green-500 dark:text-night-400 line-clamp-2">{extra}</span>}
+                            {plan.price_kobo != null && <span className="mt-auto pt-1.5 text-[13px] font-extrabold text-green-800 dark:text-night-100">{formatNaira(plan.price_kobo)}</span>}
+                          </motion.button>
+                        )
+                      })}
+                    </motion.div>
+                  </AnimatePresence>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

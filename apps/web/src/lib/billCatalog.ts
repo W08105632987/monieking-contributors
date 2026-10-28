@@ -28,6 +28,28 @@ export function groupByBiller(rows: Biller[]): BillerGroup[] {
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
+/**
+ * Monnify names electricity billers per product ("Eko Electricity Distribution Prepaid" and
+ * "…Postpaid" are two billers). The customer thinks in providers, so Prepaid/Postpaid is
+ * stripped from the name and the products are gathered under one provider.
+ */
+export function providerName(name: string): string {
+  const cleaned = name.replace(/\b(pre[\s-]?paid|post[\s-]?paid)\b/gi, '').replace(/[\s\-–_]+$/g, '').replace(/\s{2,}/g, ' ').trim()
+  return cleaned || name
+}
+
+export function groupByProvider(rows: Biller[]): BillerGroup[] {
+  const map = new Map<string, BillerGroup>()
+  for (const row of rows) {
+    const display = providerName(row.name)
+    const key = norm(display)
+    const found = map.get(key)
+    if (found) found.products.push(row)
+    else map.set(key, { key, name: display, products: [row] })
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
 export type MeterKind = 'prepaid' | 'postpaid' | 'other'
 
 /** Prepaid/postpaid from the product code or name ("product-ikedc-pre", "IKEDC POSTPAID"). */
@@ -169,4 +191,19 @@ export function tokenToSpeech(token: string): string {
   const groups: string[] = []
   for (let i = 0; i < chars.length; i += 4) groups.push(chars.slice(i, i + 4).join(' '))
   return groups.join(', ')
+}
+
+/** What is left of a plan's name once the size and validity (shown separately) are taken out — e.g. "+ 2GB YouTube Night". */
+export function planExtras(productName: string): string {
+  const out = productName
+    .replace(/\(\s*\d+\s*(?:days?|hours?|hrs?|weeks?|months?)\s*\)/gi, ' ')
+    .replace(/\b(?:valid(?:ity)?\s*(?:for)?|for)\s*\d+\s*(?:days?|hours?|hrs?|weeks?|months?)\b/gi, ' ')
+    .replace(/\b\d+(?:\.\d+)?\s*(?:tb|gb|mb)\b/i, ' ')
+    .replace(/\b\d+\s*(?:days?|hours?|hrs?|weeks?|months?)\b/gi, ' ')
+    .replace(/\b(?:daily|weekly|monthly|quarterly|plan|bundle|data)\b/gi, ' ')
+    .replace(/[_()]+/g, ' ')
+    .replace(/\s*\+\s*/g, ' + ')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s+\-–]+|[\s+\-–]+$/g, '')
+  return out.length >= 3 ? out : ''
 }

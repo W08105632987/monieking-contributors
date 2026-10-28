@@ -556,8 +556,11 @@ export interface Biller {
   name: string
   product_id: string
   product_name: string
-  price_kobo: number | null   // set for fixed-price products (data/education); null means customer enters an amount
+  price_kobo: number | null   // OUR price for fixed-price products (data/TV); null means the customer enters an amount
   requires_validation: boolean
+  markup_percent?: number     // what a typed amount costs over its face value (0 = face value)
+  min_amount_kobo?: number | null
+  max_amount_kobo?: number | null
 }
 
 export interface BillValidationResult {

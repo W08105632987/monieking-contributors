@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +11,9 @@ from app.models.bill_payment import Biller, BillPaymentRequest, BillPaymentStatu
 from app.models.identity_service import InitiatedBy
 from app.schemas.bill_payment import (
     BillerItem, ValidateBillRequest, ValidateBillResponse,
-    PayBillRequest, BillPaymentRequestItem,
+    PayBillRequest, BillPaymentRequestItem, PricingPatch, BulkPricing,
 )
-from app.services import bill_payment_service, bill_config
+from app.services import bill_payment_service, bill_config, bill_pricing, bill_admin
 from app.integrations.monnify_bills import get_bills_provider, MonnifyBillsError
 from pydantic import BaseModel, Field
 
@@ -101,7 +101,65 @@ async def validate_phone(body: ValidatePhoneRequest, user: CustomerOrOfficer, db
 
 @router.get("/billers", response_model=list[BillerItem])
 async def list_billers(category: str = Query(...), db: AsyncSession = Depends(get_db)):
-    return await bill_payment_service.get_billers(db, category=category)
+    rows = await bill_payment_service.get_billers(db, category=category)
+    # price_kobo here is OUR price (what the customer pays), not Monnify's.
+    return [
+        BillerItem(
+            id=b.id, category=b.category.value, name=b.name, product_id=b.product_id, product_name=b.product_name,
+            price_kobo=bill_pricing.customer_unit_price_kobo(b), requires_validation=b.requires_validation,
+            markup_percent=float(b.markup_percent or 0), min_amount_kobo=b.min_amount_kobo, max_amount_kobo=b.max_amount_kobo,
+        )
+        for b in rows
+    ]
+
+
+# ── Director: prices, commission and profit ───────────────────────────────
+
+@router.get("/admin/pricing")
+async def admin_pricing(user: DirectorOnly, category: str | None = None, db: AsyncSession = Depends(get_db)):
+    try:
+        return await bill_admin.list_prices(db, category)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Unknown category.")
+
+
+@router.post("/admin/pricing/bulk")
+async def admin_pricing_bulk(body: BulkPricing, user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    try:
+        changed = await bill_admin.bulk_update(
+            db, category=body.category, name_contains=body.name_contains, clear_overrides=body.clear_overrides,
+            fields=body.model_dump(include={"markup_percent", "commission_percent"}, exclude_none=True),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await db.commit()
+    return {"updated": changed}
+
+
+@router.put("/admin/pricing/{biller_id}")
+async def admin_pricing_update(biller_id: uuid.UUID, body: PricingPatch, user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    fields = {k: getattr(body, k) for k in body.model_fields_set}
+    try:
+        row = await bill_admin.update_price(db, biller_id, fields)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await db.commit()
+    return row
+
+
+@router.get("/admin/profit")
+async def admin_profit(
+    user: DirectorOnly, period: str = Query("today", pattern="^(today|week|month|custom)$"),
+    start: date | None = None, end: date | None = None, db: AsyncSession = Depends(get_db),
+):
+    today = datetime.now(bill_admin.LAGOS).date()
+    try:
+        frm, to, label = bill_admin.range_bounds(period, today, start, end)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    report = await bill_admin.profit_report(db, frm, to)
+    report["label"] = label
+    return report
 
 
 @router.post("/validate", response_model=ValidateBillResponse)

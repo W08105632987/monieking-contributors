@@ -1,7 +1,8 @@
 import uuid
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import String, BigInteger, Boolean, ForeignKey, DateTime, Enum, Text
+from decimal import Decimal
+from sqlalchemy import String, BigInteger, Boolean, ForeignKey, DateTime, Enum, Text, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -51,6 +52,17 @@ class Biller(Base):
     price_kobo:          Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     requires_validation: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active:          Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # ── Pricing (director-controlled; see services/bill_pricing.py) ────────
+    # Monnify's commission on this product, % of the vend amount.
+    commission_percent:  Mapped[Decimal] = mapped_column(Numeric(6, 3), nullable=False, default=Decimal("0"), server_default="0")
+    # What the customer pays over (or under, if negative) Monnify's price.
+    markup_percent:      Mapped[Decimal] = mapped_column(Numeric(6, 3), nullable=False, default=Decimal("0"), server_default="0")
+    # Explicit customer price for FIXED-price products; wins over markup_percent.
+    customer_price_kobo: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Monnify's own limits for variable-amount products (e.g. airtime from ₦100).
+    min_amount_kobo:     Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    max_amount_kobo:     Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     last_synced_at:     Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     created_at:         Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -87,6 +99,11 @@ class BillPaymentRequest(Base):
     token:           Mapped[str | None] = mapped_column(String(60), nullable=True)
 
     amount_charged_kobo: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    # amount_kobo is what the CUSTOMER was charged. These record the rest of the sale:
+    vend_amount_kobo: Mapped[int | None] = mapped_column(BigInteger, nullable=True)   # what Monnify was asked to vend
+    commission_kobo:  Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    markup_kobo:      Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")  # charged − vend
 
     created_at:   Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

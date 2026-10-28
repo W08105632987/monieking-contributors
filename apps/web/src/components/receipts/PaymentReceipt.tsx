@@ -107,87 +107,106 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
           </div>
 
           {/* Scrollable receipt content — this is the exact node captured for PNG/PDF export */}
-          <div className="flex-1 overflow-y-auto px-4 py-6 flex justify-center">
+          <div className="flex-1 overflow-y-auto px-4 py-5 flex justify-center bg-green-50/60 dark:bg-night-900">
             <div
               ref={receiptRef}
-              className="w-full max-w-sm bg-white dark:bg-night-900 rounded-3xl p-6 flex flex-col items-center"
-              style={{ minHeight: '100%', ...(brand ? { backgroundImage: `linear-gradient(180deg, ${rgba(brand.main, 0.18)} 0%, transparent 38%)` } : { aspectRatio: '9 / 16' }) }}
+              className="w-full max-w-sm self-start bg-white dark:bg-night-800 rounded-3xl overflow-hidden shadow-sm border border-green-100 dark:border-night-700"
             >
-              {/* Header — the provider's logo when we know it, otherwise our own mark */}
-              <div className="flex flex-col items-center mb-6">
+              {/* Header band — the provider's colours and logo (or our own mark) */}
+              <div
+                className="px-5 pt-6 pb-5 flex flex-col items-center text-center"
+                style={{ backgroundImage: brand ? `linear-gradient(180deg, ${rgba(brand.main, 0.22)} 0%, ${rgba(brand.main, 0.04)} 100%)` : 'linear-gradient(180deg, rgba(20,83,45,0.10), rgba(20,83,45,0.02))' }}
+              >
                 {brand ? (
-                  <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 320, damping: 20 }} className="mb-2">
-                    <BillerLogo brand={brand} size={64} glow />
+                  <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 320, damping: 20 }}>
+                    <BillerLogo brand={brand} size={60} glow />
                   </motion.div>
                 ) : (
-                  <div className="w-14 h-14 rounded-2xl bg-green-900 flex items-center justify-center mb-2">
+                  <div className="w-14 h-14 rounded-2xl bg-green-900 flex items-center justify-center">
                     <AppLogo size={30} rounded="10px" />
                   </div>
                 )}
-                <span className="text-xs text-green-600 dark:text-night-300 tracking-wide uppercase">Payment Receipt</span>
-              </div>
+                <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-green-600 dark:text-night-300">Payment receipt</p>
 
-              {/* Status band */}
-              <div className={cn('w-full rounded-2xl flex items-center justify-center gap-2 py-2.5 mb-5', meta.bg)}>
-                <StatusIcon className={cn('w-4 h-4', meta.color)} />
-                <span className={cn('text-sm font-semibold', meta.color)}>{meta.label}</span>
-              </div>
-
-              {/* Amount */}
-              <div className="text-center mb-1">
-                <span className="text-3xl font-extrabold text-green-950 dark:text-white">{formatNaira(amountKobo)}</span>
-              </div>
-              <div className="text-sm text-green-600 dark:text-night-300 mb-6">{serviceName}</div>
-
-              {status === 'failed' && failureReason && (
-                <div className="w-full rounded-xl bg-red-50 dark:bg-red-900/20 px-4 py-3 mb-5 text-sm text-red-700 dark:text-red-300">
-                  {failureReason} — you were not charged for this transaction.
+                <div className={cn('mt-2.5 inline-flex items-center gap-1.5 rounded-full px-3 py-1', meta.bg)}>
+                  <StatusIcon className={cn('w-3.5 h-3.5', meta.color)} />
+                  <span className={cn('text-xs font-bold', meta.color)}>{meta.label}</span>
                 </div>
-              )}
 
-              {/* Details */}
-              <div className="w-full space-y-3 mb-6">
-                {fields.map((f) => f.kind === 'token' ? (
-                  <TokenCard key={f.label} token={f.value} label={f.label} brand={brand} />
-                ) : (
-                  <div key={f.label} className={cn('flex items-start justify-between gap-3', f.emphasis && 'flex-col')}>
-                    <span className="text-xs text-green-500 dark:text-night-400 shrink-0">{f.label}</span>
-                    {f.emphasis ? (
-                      <button
-                        onClick={() => { navigator.clipboard.writeText(f.value); toast.success(`${f.label} copied`) }}
-                        className="w-full mt-1 flex items-center justify-between gap-2 rounded-xl bg-green-50 dark:bg-night-700 px-3 py-2.5 font-mono text-base font-bold text-green-950 dark:text-white"
-                      >
-                        {f.value}
-                        <Copy className="w-4 h-4 text-green-500 dark:text-night-300 shrink-0" />
-                      </button>
-                    ) : (
-                      <span className="text-sm font-medium text-green-900 dark:text-night-100 text-right break-words">{f.value}</span>
-                    )}
-                  </div>
-                ))}
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-xs text-green-500 dark:text-night-400 shrink-0">Date</span>
-                  <span className="text-sm font-medium text-green-900 dark:text-night-100">{timestamp}</span>
-                </div>
-                {paidBy && (
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-xs text-green-500 dark:text-night-400 shrink-0">Processed by</span>
-                    <span className="text-sm font-medium text-green-900 dark:text-night-100 text-right">{paidBy}</span>
+                <p className="mt-3 font-extrabold leading-none text-green-950 dark:text-white" style={{ fontSize: 'clamp(1.75rem, 9vw, 2.25rem)' }}>{formatNaira(amountKobo)}</p>
+                <p className="mt-2 px-2 text-[13px] leading-snug text-green-700 dark:text-night-200 break-words">{serviceName}</p>
+              </div>
+
+              <div className="px-5 pb-5">
+                {status === 'failed' && failureReason && (
+                  <div className="mt-4 rounded-xl bg-red-50 dark:bg-red-900/20 px-3.5 py-3 text-[13px] leading-snug text-red-700 dark:text-red-300 break-words">
+                    {failureReason} — you were not charged for this transaction.
                   </div>
                 )}
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-xs text-green-500 dark:text-night-400 shrink-0">Reference</span>
-                  <button onClick={copyReference} className="flex items-center gap-1.5 text-sm font-medium text-green-900 dark:text-night-100">
-                    {reference}
-                    <Copy className="w-3.5 h-3.5 text-green-400" />
-                  </button>
-                </div>
-              </div>
+                {status === 'pending' && (
+                  <div className="mt-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 px-3.5 py-3 text-[13px] leading-snug text-amber-700 dark:text-amber-300">
+                    This payment is still being confirmed. You will not be charged twice, and any failed payment is refunded automatically.
+                  </div>
+                )}
 
-              {/* Footer */}
-              <div className="mt-auto pt-4 border-t border-green-50 dark:border-night-700 w-full text-center">
-                <p className="text-xs text-green-400 dark:text-night-500">Powered by MonieKing</p>
-                <p className="text-xs text-green-400 dark:text-night-500">Need help? Chat us on WhatsApp</p>
+                {/* Special blocks first: tokens / PINs */}
+                {fields.some((f) => f.kind === 'token') && (
+                  <div className="mt-4 space-y-3">
+                    {fields.filter((f) => f.kind === 'token').map((f) => (
+                      <TokenCard key={f.label} token={f.value} label={f.label} brand={brand} />
+                    ))}
+                  </div>
+                )}
+
+                {/* Ticket tear line */}
+                <div className="my-5 border-t-2 border-dashed border-green-100 dark:border-night-600" />
+
+                {/* Details — label left, value right, long values wrap instead of overflowing */}
+                <dl className="space-y-3.5">
+                  {fields.filter((f) => f.kind !== 'token').map((f) => (
+                    <div key={f.label} className="flex items-start justify-between gap-4">
+                      <dt className="w-[38%] shrink-0 text-[12px] leading-5 text-green-500 dark:text-night-400">{f.label}</dt>
+                      <dd className="min-w-0 flex-1 text-right">
+                        {f.emphasis ? (
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(f.value); toast.success(`${f.label} copied`) }}
+                            className="inline-flex max-w-full items-center justify-end gap-1.5 font-mono text-[13px] font-bold leading-5 text-green-950 dark:text-white break-all"
+                          >
+                            <span className="break-all">{f.value}</span>
+                            <Copy className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                          </button>
+                        ) : (
+                          <span className="text-[13px] font-semibold leading-5 text-green-950 dark:text-night-100 break-words">{f.value}</span>
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                  <div className="flex items-start justify-between gap-4">
+                    <dt className="w-[38%] shrink-0 text-[12px] leading-5 text-green-500 dark:text-night-400">Date</dt>
+                    <dd className="min-w-0 flex-1 text-right text-[13px] font-semibold leading-5 text-green-950 dark:text-night-100">{timestamp}</dd>
+                  </div>
+                  {paidBy && (
+                    <div className="flex items-start justify-between gap-4">
+                      <dt className="w-[38%] shrink-0 text-[12px] leading-5 text-green-500 dark:text-night-400">Processed by</dt>
+                      <dd className="min-w-0 flex-1 text-right text-[13px] font-semibold leading-5 text-green-950 dark:text-night-100 break-words">{paidBy}</dd>
+                    </div>
+                  )}
+                  <div className="flex items-start justify-between gap-4">
+                    <dt className="w-[38%] shrink-0 text-[12px] leading-5 text-green-500 dark:text-night-400">Reference</dt>
+                    <dd className="min-w-0 flex-1 text-right">
+                      <button onClick={copyReference} className="inline-flex max-w-full items-center justify-end gap-1.5 text-[12px] font-semibold leading-5 text-green-950 dark:text-night-100">
+                        <span className="break-all text-right font-mono">{reference}</span>
+                        <Copy className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                      </button>
+                    </dd>
+                  </div>
+                </dl>
+
+                {/* Footer */}
+                <div className="mt-6 pt-4 border-t border-green-50 dark:border-night-700 text-center">
+                  <p className="text-[11px] font-semibold text-green-600 dark:text-night-300">Powered by MonieKing</p>
+                  <p className="mt-0.5 text-[11px] text-green-400 dark:text-night-500">Need help? Chat us on WhatsApp</p>
+                </div>
               </div>
             </div>
           </div>

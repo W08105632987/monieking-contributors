@@ -15,7 +15,7 @@ from app.models.wallet import TxCategory, WalletTransaction
 from app.services.wallet_service import get_or_create_wallet, debit_wallet, credit_wallet
 from app.integrations.monnify_bills import get_bills_provider, MonnifyBillsError, vend_outcome
 from app.utils.audit import log_action
-from app.services import bill_config
+from app.services import bill_config, bill_pricing
 
 logger = logging.getLogger(__name__)
 
@@ -196,13 +196,16 @@ async def fetch_catalogue(provider=None) -> dict:
                 if key in rows:
                     continue   # same pair under two categories: first one wins (unique constraint)
                 product_name = str(product_row.get("name") or product_row.get("productName") or product_code)[:160]
-                price_kobo = _price_to_kobo(product_row.get("amount") or product_row.get("price"))
+                price_type = str(product_row.get("priceType") or "").upper()
+                price_kobo = None if price_type == "OPEN" else _price_to_kobo(product_row.get("amount") or product_row.get("price"))
                 category = _classify(internal_category, product_name, price_kobo)
                 rows[key] = {
                     "category": category,
                     "biller_name": biller_name,
                     "product_name": product_name,
                     "price_kobo": price_kobo,
+                    "min_amount_kobo": _price_to_kobo(product_row.get("minAmount")),
+                    "max_amount_kobo": _price_to_kobo(product_row.get("maxAmount")),
                     "requires_validation": (
                         bool(product_row.get("requireValidationRef") or product_row.get("requiresValidation"))
                         or category in VALIDATION_REQUIRED_CATEGORIES
@@ -229,12 +232,17 @@ async def _write_catalogue(db: AsyncSession, rows: dict, deactivate_missing: boo
             biller.name = r["biller_name"]
             biller.product_name = r["product_name"]
             biller.price_kobo = r["price_kobo"]
+            biller.min_amount_kobo = r.get("min_amount_kobo")
+            biller.max_amount_kobo = r.get("max_amount_kobo")
             biller.requires_validation = r["requires_validation"]
+            # commission_percent / markup_percent / customer_price_kobo are the director's — never touched here.
             biller.last_synced_at = now
         else:
             db.add(Biller(
                 monnify_biller_id=biller_code, category=r["category"], name=r["biller_name"],
                 product_id=product_code, product_name=r["product_name"], price_kobo=r["price_kobo"],
+                min_amount_kobo=r.get("min_amount_kobo"), max_amount_kobo=r.get("max_amount_kobo"),
+                commission_percent=bill_pricing.default_commission_percent(r["category"], r["biller_name"]),
                 requires_validation=r["requires_validation"], is_active=True,
             ))
         synced += 1
@@ -520,12 +528,15 @@ async def pay_bill(
     # — we never trust whatever the client sent. For variable-amount
     # billers (airtime, electricity) the customer's typed amount is the
     # only source of truth, so it's required here.
-    if biller.price_kobo is not None:
-        resolved_amount_kobo = biller.price_kobo * quantity
-    else:
-        if not amount_kobo or amount_kobo <= 0:
-            raise ValueError("An amount is required for this bill.")
-        resolved_amount_kobo = amount_kobo
+    sale = bill_pricing.quote(biller, amount_kobo=amount_kobo, quantity=quantity)
+    resolved_amount_kobo = sale.charge_kobo          # what the customer's wallet pays
+    # Monnify's own limits for variable-amount products (airtime from ₦100, electricity from ₦1,000 ...)
+    if not bill_pricing.is_fixed(biller):
+        low, high = getattr(biller, "min_amount_kobo", None), getattr(biller, "max_amount_kobo", None)
+        if low and sale.vend_kobo < low:
+            raise ValueError(f"The minimum for this product is ₦{low / 100:,.0f}.")
+        if high and sale.vend_kobo > high:
+            raise ValueError(f"The maximum for this product is ₦{high / 100:,.0f}.")
 
     provider = get_bills_provider()
     # Server-side validation: authoritative, ignores any client-supplied
@@ -545,6 +556,9 @@ async def pay_bill(
         biller_id=biller_id,
         customer_reference=_mask(customer_reference),
         amount_kobo=resolved_amount_kobo,
+        vend_amount_kobo=sale.vend_kobo,
+        commission_kobo=sale.commission_kobo,
+        markup_kobo=sale.markup_kobo,
         validation_reference=vend_validation_reference,
         validated_account_name=validated_name,
         status=BillPaymentStatus.PENDING,
@@ -575,7 +589,7 @@ async def pay_bill(
         result = await provider.vend_bill(
             product_code=biller.product_id,
             customer_id=customer_reference,
-            amount_kobo=resolved_amount_kobo,
+            amount_kobo=sale.vend_kobo,                  # Monnify is asked for the face value, not our price
             vend_reference=str(request.id),
             validation_reference=vend_validation_reference,
         )

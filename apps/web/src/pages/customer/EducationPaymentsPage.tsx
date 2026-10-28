@@ -10,7 +10,7 @@ import { useWallet } from '@/hooks/useWallet'
 import { useBillers, usePayBill } from '@/hooks/useBillPayments'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { PaymentReceipt, type ReceiptField } from '@/components/receipts/PaymentReceipt'
-import { BillerPicker } from '@/components/billers/BillerPicker'
+import { ProviderSheet } from '@/components/billers/ProviderSheet'
 import { BillerLogo } from '@/components/billers/BillerLogo'
 import { PlanSheet } from '@/components/billers/PlanSheet'
 import { groupByBiller, type BillerGroup } from '@/lib/billCatalog'
@@ -100,11 +100,17 @@ export default function EducationPaymentsPage() {
         {isError ? (
           <FallbackError title="Couldn't load products" onRetry={() => refetch()} isRetrying={isFetching} />
         ) : isLoading ? (
-          <div className="grid grid-cols-3 gap-2.5 mb-5">{[1, 2, 3].map(i => <div key={i} className="h-28 bg-white dark:bg-night-700 rounded-2xl animate-pulse" />)}</div>
+          <div className="h-16 bg-white dark:bg-night-700 rounded-2xl animate-pulse mb-5" />
         ) : groups.length === 0 ? (
-          <p className="text-green-500 dark:text-night-300 text-sm">No education products available right now.</p>
+          <div className="rounded-2xl bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 px-4 py-5 mb-5 text-center">
+            <GraduationCap className="w-8 h-8 mx-auto text-green-400 mb-2" />
+            <p className="text-sm font-bold text-green-950 dark:text-white">Not available yet</p>
+            <p className="text-xs text-green-600 dark:text-night-300 mt-1">JAMB and WAEC PINs are being set up. Please check back soon.</p>
+          </div>
         ) : (
-          <div className="mb-5"><BillerPicker groups={groups} selectedKey={groupKey} onSelect={chooseGroup} /></div>
+          <div className="mb-5">
+            <ProviderSheet title="Select exam body" placeholder="Choose JAMB, WAEC…" groups={groups} selectedKey={groupKey} onSelect={chooseGroup} fallbackIcon={<GraduationCap className="w-5 h-5" />} />
+          </div>
         )}
 
         <AnimatePresence mode="wait">

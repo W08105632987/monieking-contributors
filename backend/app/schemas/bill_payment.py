@@ -11,9 +11,27 @@ class BillerItem(BaseModel):
     product_name: str
     price_kobo: int | None = None   # set for fixed-price products (data/education); null means customer enters an amount
     requires_validation: bool
+    markup_percent: float = 0          # lets the app preview what a typed amount will cost
+    min_amount_kobo: int | None = None
+    max_amount_kobo: int | None = None
 
     class Config:
         from_attributes = True
+
+
+class PricingPatch(BaseModel):
+    markup_percent: float | None = None
+    commission_percent: float | None = None
+    customer_price_kobo: int | None = None   # null clears the override (only if sent explicitly)
+    is_active: bool | None = None
+
+
+class BulkPricing(BaseModel):
+    category: str | None = None
+    name_contains: str | None = Field(None, max_length=60)
+    markup_percent: float | None = None
+    commission_percent: float | None = None
+    clear_overrides: bool = False
 
 
 class ValidateBillRequest(BaseModel):

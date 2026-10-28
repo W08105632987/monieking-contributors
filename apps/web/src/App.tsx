@@ -117,6 +117,7 @@ const DirectorZonal = lazy(() => import('@/pages/director/ZonalCustomersPage'))
 const DirectorSetPin = lazy(() => import('@/pages/director/SetPinPage'))
 const DirectorSeasonal = lazy(() => import('@/pages/director/SeasonalThemesPage'))
 const DirectorBillsControl = lazy(() => import('@/pages/director/BillsControlPage'))
+const DirectorBillsPricing = lazy(() => import('@/pages/director/BillsPricingPage'))
 const ServiceHistoryPage        = lazy(() => import('@/pages/customer/ServiceHistoryPage'))
 const ServiceRequestFormPage    = lazy(() => import('@/pages/customer/ServiceRequestFormPage'))
 const ServicesPage              = lazy(() => import('@/pages/customer/ServicesPage'))
@@ -380,6 +381,7 @@ export default function App() {
             <Route path="/director/set-pin" element={<AuthGuard allowedRoles={['director']}><DirectorSetPin /></AuthGuard>} />
             <Route path="/director/seasonal" element={<AuthGuard allowedRoles={['director']}><DirectorSeasonal /></AuthGuard>} />
             <Route path="/director/bills-control" element={<AuthGuard allowedRoles={['director']}><DirectorBillsControl /></AuthGuard>} />
+            <Route path="/director/bills-pricing" element={<AuthGuard allowedRoles={['director']}><DirectorBillsPricing /></AuthGuard>} />
             <Route path="/director/provider-services" element={<AuthGuard allowedRoles={['director']}><DirectorProviderServices /></AuthGuard>} />
             <Route path="/director/identity-services" element={<AuthGuard allowedRoles={['director']}><DirectorIdentityServices /></AuthGuard>} />
             <Route path="/director/service-builder" element={<AuthGuard allowedRoles={['director']}><DirectorServiceBuilder /></AuthGuard>} />

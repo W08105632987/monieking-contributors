@@ -309,10 +309,16 @@ class MonnifyBillsProvider:
         Only send validationReference when the validation step said it is
         required (Monnify: do not send one when requireValidationRef=false).
         """
+        naira = round(amount_kobo / 100, 2)   # Naira (decimal), not kobo — e.g. 5000.00
+        # Monnify's docs say vendAmount/vendReference, but the live API answered our vendAmount with
+        # "Amount must be greater than zero" — it reads `amount`/`reference` (as Monnify's own client
+        # libraries send). The server ignores fields it doesn't know, so we send both spellings.
         payload = {
             "productCode": product_code,
             "customerId": customer_id,
-            "vendAmount": round(amount_kobo / 100, 2),   # Naira (decimal), not kobo — e.g. 5000.00
+            "amount": naira,
+            "reference": vend_reference,
+            "vendAmount": naira,
             "vendReference": vend_reference,
         }
         if validation_reference:

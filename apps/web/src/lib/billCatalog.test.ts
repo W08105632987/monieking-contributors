@@ -95,3 +95,32 @@ describe('tokens', () => {
     expect(tokenToSpeech('123456')).toBe('1 2 3 4, 5 6')
   })
 })
+
+import { providerName, groupByProvider, planExtras } from './billCatalog'
+
+describe('provider grouping (Monnify names each DISCO per product)', () => {
+  it('strips prepaid/postpaid so one provider holds both', () => {
+    expect(providerName('Eko Electricity Distribution Prepaid')).toBe('Eko Electricity Distribution')
+    expect(providerName('Eko Electricity Distribution Postpaid')).toBe('Eko Electricity Distribution')
+    expect(providerName('BEDC')).toBe('BEDC')
+    expect(providerName('Port Harcourt Electricity Distribution Pre-paid')).toBe('Port Harcourt Electricity Distribution')
+  })
+  it('gathers the prepaid and postpaid billers under one provider', () => {
+    const mk = (name: string, product_id: string) => ({ id: product_id, category: 'electricity', name, product_id, product_name: name, price_kobo: null, requires_validation: true }) as never
+    const groups = groupByProvider([
+      mk('Eko Electricity Distribution Prepaid', 'product-ekedc-pre'), mk('Eko Electricity Distribution Postpaid', 'product-ekedc-post'),
+      mk('Ikeja Electricity Distribution Prepaid', 'product-ikedc-pre'),
+    ])
+    expect(groups.map(g => g.name)).toEqual(['Eko Electricity Distribution', 'Ikeja Electricity Distribution'])
+    expect(groups[0].products).toHaveLength(2)
+  })
+})
+
+describe('planExtras', () => {
+  it('keeps only what size and validity do not already show', () => {
+    expect(planExtras('2GB 30 Days')).toBe('')
+    expect(planExtras('1GB Weekly Plan Valid For 7 Days')).toBe('')
+    expect(planExtras('60GB + 2GB Youtube Night + 200MB (YT, IG & Tiktok) Monthly Plan Valid For 30Days')).toContain('Youtube Night')
+    expect(planExtras('ROUTER Unlimited 60MBPS 30 Days')).toContain('ROUTER')
+  })
+})
