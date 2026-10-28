@@ -29,6 +29,7 @@ class SlipBuy(BaseModel):
 class SettingsPatch(BaseModel):
     enabled: bool | None = None
     retention_hours: int | None = None
+    retention_never: bool | None = None
     nin_auth_url: str | None = None
     lookup_tier: dict[str, str] | None = None
     fees: dict[str, int] | None = None
@@ -37,7 +38,7 @@ class SettingsPatch(BaseModel):
 
 def _settings_view(cfg) -> dict:
     return {
-        "enabled": cfg.enabled, "retention_hours": cfg.retention_hours, "nin_auth_url": cfg.nin_auth_url,
+        "enabled": cfg.enabled, "retention_hours": cfg.retention_hours, "retention_never": cfg.retention_never, "nin_auth_url": cfg.nin_auth_url,
         "lookup_tier": cfg.lookup_tier, "fees": cfg.fees,
         "slips": {f"{k}.{t}": v for (k, t), v in cfg.slips.items()},
         "missing_fees": cfg.missing_fees(),
@@ -48,7 +49,7 @@ def _public_settings(cfg) -> dict:
     """What customers/officers need to render the screens. Only prices that are
     actually set are listed, so an unpriced slip never shows a button."""
     return {
-        "enabled": cfg.enabled, "retention_hours": cfg.retention_hours,
+        "enabled": cfg.enabled, "retention_hours": cfg.retention_hours, "retention_never": cfg.retention_never,
         "nin_auth_url": cfg.nin_auth_url or None,
         "fees": {m: v for m, v in cfg.fees.items() if v > 0},
         "slips": {f"{k}.{t}": v for (k, t), v in cfg.slips.items() if v > 0},

@@ -237,13 +237,17 @@ async def create_customer(
     # ── Step 1: Create Supabase auth account (generates the UUID auth.users needs) ──
     from app.utils.supabase_admin_client import supabase_admin_request
 
+    # The password is always the default (phone number + MK), whatever the form sent: the customer is told to
+    # change it the first time they log in with it (see must_change_password).
+    from app.services.default_password import default_password
+    initial_password = default_password(body.phone_number)
     customer_email = f"{body.phone_number}@monieking.app"
     resp = await supabase_admin_request(
         "POST",
         "/auth/v1/admin/users",
         json={
             "email": customer_email,
-            "password": body.password,
+            "password": initial_password,
             "email_confirm": True,
             "user_metadata": {"full_name": body.full_name, "phone": body.phone_number},
         },
@@ -276,7 +280,8 @@ async def create_customer(
         # the customer is created zone-less until a director assigns one.
         zone_id=                  current_user.zone_id if user_role == "officer" else None,
         created_by=               current_user.id,
-        login_password_hash=      hash_password(body.password),
+        login_password_hash=      hash_password(initial_password),
+        must_change_password=     True,
         withdrawal_password_hash= hash_withdrawal_password(body.withdrawal_password) if body.withdrawal_password else None,
     )
     db.add(customer)

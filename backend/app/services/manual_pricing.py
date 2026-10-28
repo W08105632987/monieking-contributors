@@ -141,6 +141,7 @@ CATEGORY_ALIASES: dict[str, str] = {
     "bvn_retrieval_phone": "bvn_retrieval",
     "bvn_retrieval_crm": "bvn_retrieval",
     "bvn_self_service_delinking": "nin_delinking",
+    "nin_personalisation": "nin_personalization",   # same service, British spelling
 }
 
 # The static "From ₦X" labels the backend used to serve for every card. Several

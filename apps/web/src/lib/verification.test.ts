@@ -117,3 +117,11 @@ describe('copy', () => {
     expect(isNinKind('vnin')).toBe(false)
   })
 })
+
+describe('keep forever', () => {
+  it('words the consent without an hours limit', () => {
+    expect(consentText('nin', 24, true)).toMatch(/not deleted/)
+    expect(consentText('nin', 24, true)).not.toMatch(/hours/)
+    expect(consentText('nin', 24)).toMatch(/24 hours/)
+  })
+})

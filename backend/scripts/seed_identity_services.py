@@ -150,7 +150,7 @@ SERVICES = [
 # Codes removed: stale redundant endpoints combined or deprecated
 STALE_CODES_TO_REMOVE = [
     "airtime_data", "bill_payments", "bvn_retrieval_phone", "bvn_retrieval_crm",
-    "ipe_clearance", "bvn_self_service_delinking", "nin_personalisation"
+    "bvn_self_service_delinking", "nin_personalisation"   # ipe_clearance is a real service again (Techhub-backed, see seed_provider_services.py)
 ]
 
 

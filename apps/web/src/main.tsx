@@ -15,6 +15,7 @@ import { DialogHost } from '@/components/ui/DialogHost'
 import { PinHost } from '@/components/ui/PinHost'
 import { NoticeHost } from '@/components/ui/NoticeHost'
 import { KycGateHost } from '@/components/ui/KycGateHost'
+import { ChangeDefaultPasswordHost } from '@/components/ui/ChangeDefaultPasswordHost'
 import { DownloadHost } from '@/components/ui/DownloadHost'
 import { initSessionLifecycle } from '@/lib/sessionLifecycle'
 
@@ -38,6 +39,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <SeasonalLayer />
           <NoticeHost />
           <KycGateHost />
+          <ChangeDefaultPasswordHost />
         </BrowserRouter>
         </MotionConfig>
       </QueryClientProvider>

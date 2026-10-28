@@ -27,6 +27,9 @@ from app.services import service_template_store as store
 from app.services.service_template_parity import parity_report
 from app.services.settings_service import get_config_value, invalidate_config_cache, set_config_value
 from app.utils.audit import log_action
+from app.models.settings import SystemConfig
+from app.services.price_sync import table_changes, table_from_rules
+from app.services.service_dedupe import find_existing
 
 router = APIRouter(prefix="/service-templates", tags=["service-templates"])
 
@@ -40,6 +43,37 @@ async def _live_codes(db: AsyncSession) -> list[str]:
     except Exception:
         return []
     return sorted({str(c) for c in data}) if isinstance(data, list) else []
+
+
+PRICING_KEY = "manual_services_pricing"
+
+
+async def _sync_map_from_version(db: AsyncSession, tpl: ServiceTemplate, ver: ServiceTemplateVersion, user_id) -> bool:
+    """A new template version was published from the Service Builder. Copy its prices into the price table the
+    Identity Services page shows, so the two never disagree (the charge reads one or the other)."""
+    cat = tpl.service_code
+    if cat not in mp.PRICE_MAP:
+        return False
+    raw = await get_config_value(db, PRICING_KEY)
+    current = mp.merge_price_map(raw).get(cat, {})
+    changes = table_changes(current, table_from_rules(cat, ver.schema, ver.price_rules, current))
+    if not changes:
+        return False
+    try:
+        stored = json.loads(raw) if raw else {}
+    except Exception:
+        stored = {}
+    if not isinstance(stored, dict):
+        stored = {}
+    stored.setdefault(cat, {}).update(changes)
+    cfg = await db.get(SystemConfig, PRICING_KEY)
+    if cfg is None:
+        db.add(SystemConfig(key=PRICING_KEY, value=json.dumps(stored), description="Manual services child pricing tiers", updated_by=user_id))
+    else:
+        cfg.value = json.dumps(stored)
+        cfg.updated_at = datetime.now(timezone.utc)
+        cfg.updated_by = user_id
+    return True
 
 
 class LiveBody(BaseModel):
@@ -141,6 +175,11 @@ async def create_service(body: CreateBody, current_user: DirectorOnly, db: Async
     taken = set((await db.scalars(select(ServiceTemplate.service_code))).all())
     taken |= set((await db.scalars(select(IdentityService.code))).all())
     taken |= set(mp.PRICE_MAP) | set(mp.CATEGORY_ALIASES)
+    known = [(t.service_code, t.title) for t in (await db.scalars(select(ServiceTemplate))).all()]
+    known += [(r.code, r.name) for r in (await db.scalars(select(IdentityService))).all()]
+    clash = find_existing(body.title, known)
+    if clash:
+        raise HTTPException(status_code=409, detail=f"“{clash[1]}” already exists in the catalog. Edit that service instead of creating a second one.")
     built = create.build_new_service(body.title, body.description, body.category, body.price_kobo, taken, body.code)
     if built["errors"]:
         raise HTTPException(status_code=422, detail={"message": built["errors"][0], "errors": built["errors"]})
@@ -214,6 +253,10 @@ async def set_template_enabled(
     old = tpl.is_enabled
     tpl.is_enabled = body.is_enabled
     tpl.updated_by = current_user.id
+    # the catalog card follows the same switch, so no screen shows a service the other has turned off
+    for row in (await db.scalars(select(IdentityService))).all():
+        if mp.resolve_category(row.code) == service_code:
+            row.is_active = body.is_enabled
     await log_action(
         db, actor_id=current_user.id, action="service_template.enabled_changed",
         entity_type="service_template", entity_id=str(tpl.id),
@@ -334,8 +377,11 @@ async def _run_publish(db: AsyncSession, tpl: ServiceTemplate, user_id, **kw) ->
             "code": "stale_version", "current_version": e.current_version,
             "message": "Someone else published a newer version. Reload the builder and redo your change.",
         })
+    synced = await _sync_map_from_version(db, tpl, ver, user_id)
     await db.commit()
-    return {"service_code": tpl.service_code, "version": ver.version, "version_id": str(ver.id)}
+    if synced:
+        invalidate_config_cache(PRICING_KEY)
+    return {"service_code": tpl.service_code, "version": ver.version, "version_id": str(ver.id), "prices_synced": synced}
 
 
 @router.post("/{code}/admin/preview")

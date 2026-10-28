@@ -13,7 +13,8 @@ from app.models.user import User, UserRole, UserStatus
 from app.models.withdrawal import Withdrawal, WithdrawalStatus
 from app.models.zone import Zone
 from app.services.bill_config import normalize_phone
-from app.services.offline_rules import card_key, group_by_phone, temp_password, withdrawal_amounts
+from app.services.default_password import default_password
+from app.services.offline_rules import card_key, group_by_phone, withdrawal_amounts
 
 CARD_DAYS = 372
 
@@ -388,7 +389,7 @@ async def create_officer_customers(db: AsyncSession, *, director_id: uuid.UUID, 
         first = group[0]
         if (await db.execute(select(User.id).where(User.phone_number == phone))).first():
             continue   # they already have an account; their cards were attached when it was found
-        pw = temp_password()
+        pw = default_password(phone)   # phone + MK; the person must change it at first login
         try:
             resp = await supabase_admin_request(
                 "POST", "/auth/v1/admin/users",
@@ -400,7 +401,7 @@ async def create_officer_customers(db: AsyncSession, *, director_id: uuid.UUID, 
             async with db.begin_nested():
                 user = User(id=uid, role=UserRole.CUSTOMER, full_name=first.full_name, phone_number=phone, is_manual_customer=True,
                             managing_officer_id=officer.id if officer else None, zone_id=first.zone_id, created_by=director_id,
-                            login_password_hash=hash_password(pw))
+                            login_password_hash=hash_password(pw), must_change_password=True)
                 db.add(user)
                 await db.flush()
                 await get_or_create_wallet(db, user.id)

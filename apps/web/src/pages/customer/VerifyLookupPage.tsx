@@ -270,7 +270,7 @@ export default function VerifyLookupPage() {
             <button onClick={() => setConsent(c => !c)} className="flex items-start gap-2 rounded-2xl p-3 mt-5 bg-green-100 dark:bg-night-600 text-left w-full">
               <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5 text-green-700 dark:text-night-100" />
               <span className="text-[11px] leading-relaxed text-green-800 dark:text-night-100">
-                {consent ? '☑' : '☐'} {consentText(kind, retention)}
+                {consent ? '☑' : '☐'} {consentText(kind, retention, !!status.data?.retention_never)}
               </span>
             </button>
 

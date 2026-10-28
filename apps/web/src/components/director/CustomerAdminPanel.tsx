@@ -1,19 +1,19 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Copy, KeyRound, Landmark, Mail, MessageCircle, Send, Trash2 } from 'lucide-react'
+import { Copy, Hash, KeyRound, Landmark, Lock, Mail, MessageCircle, Send, Trash2 } from 'lucide-react'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
 import { ActionButton, DirectorModal, Notice, PinField } from './DirectorModal'
 
-type Which = null | 'reset' | 'password' | 'fund' | 'delete'
+type Which = null | 'reset' | 'password' | 'pin' | 'wpw' | 'fund' | 'delete'
 type PwInfo = { password: string; phone: string; email: string | null }
 const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.startsWith('234') ? d : `234${d.replace(/^0/, '')}` }
 const field = 'mt-1 w-full rounded-xl border border-green-200 dark:border-night-500 bg-white dark:bg-night-800 px-3 py-2.5 text-sm text-green-950 dark:text-white'
 
 /** Director-only powers on one customer. Every action needs the director's PIN and is written to the audit log. */
-export function CustomerAdminPanel({ customerId, name }: { customerId: string; name: string }) {
+export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { customerId: string; name: string; kind?: 'customer' | 'officer' }) {
   const nav = useNavigate()
   const qc = useQueryClient()
   const [which, setWhich] = useState<Which>(null)
@@ -49,6 +49,11 @@ export function CustomerAdminPanel({ customerId, name }: { customerId: string; n
     setSent(channel === 'sms' ? `Sent to ${name} by SMS.` : `Sent to ${pw!.email}.`)
   })
   const waHref = pw ? `https://wa.me/${waNumber(pw.phone)}?text=${encodeURIComponent(`MonieKing: your password was reset. Temporary password: ${pw.password}. Please log in and change it now.`)}` : '#'
+  const doClear = (what: 'reset-payment-pin' | 'reset-withdrawal-password') => run(async () => {
+    const r = (await api.post(`${base}/${what}`, { pin })).data
+    setResult(r.message)
+    close()
+  })
   const doFund = () => run(async () => {
     const r = (await api.post(`${base}/fund-wallet`, { amount_naira: Number(amount), reason, pin })).data
     setResult(`Wallet funded. New balance ${formatNaira(r.balance_kobo)}. ${name} was notified.`)
@@ -68,12 +73,18 @@ export function CustomerAdminPanel({ customerId, name }: { customerId: string; n
       <p className="pb-1 pt-4 text-xs font-bold uppercase tracking-widest text-green-500 dark:text-night-200">Director controls</p>
       {result && <div className="mb-2"><Notice kind="ok">{result}</Notice></div>}
       <button className={row} onClick={() => { setResult(null); setWhich('reset') }}><KeyRound className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Reset password</span></button>
-      <button className={row} onClick={() => { setResult(null); setWhich('fund') }}><Landmark className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Fund wallet manually</span></button>
-      <button className={row} onClick={() => { setResult(null); openDelete() }}><Trash2 className="h-4 w-4 text-red-500" /><span className="flex-1 text-sm font-semibold text-red-600">Delete customer</span></button>
+      <button className={row} onClick={() => { setResult(null); setWhich('pin') }}><Hash className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Reset payment PIN</span></button>
+      <button className={row} onClick={() => { setResult(null); setWhich('wpw') }}><Lock className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Reset withdrawal password</span></button>
+      {kind === 'customer' && (
+        <>
+          <button className={row} onClick={() => { setResult(null); setWhich('fund') }}><Landmark className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Fund wallet manually</span></button>
+          <button className={row} onClick={() => { setResult(null); openDelete() }}><Trash2 className="h-4 w-4 text-red-500" /><span className="flex-1 text-sm font-semibold text-red-600">Delete customer</span></button>
+        </>
+      )}
 
       <DirectorModal open={which === 'reset'} title="Reset password" onClose={close} busy={busy}>
         <div className="space-y-3">
-          <p className="text-sm text-green-800 dark:text-night-100">{name} gets a new temporary password. You will see it next and choose how to send it: copy it, WhatsApp, SMS or email. They should change it after logging in.</p>
+          <p className="text-sm text-green-800 dark:text-night-100">{name}'s password becomes their phone number followed by MK. You will see it next and choose how to send it: copy it, WhatsApp, SMS or email. The app makes them choose their own password every time they log in until they do.</p>
           <PinField value={pin} onChange={setPin} />
           {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
           <ActionButton busy={busy} disabled={pin.length < 4} onClick={doReset}>Reset password</ActionButton>
@@ -85,7 +96,7 @@ export function CustomerAdminPanel({ customerId, name }: { customerId: string; n
           <div className="space-y-3">
             <Notice kind="ok">{name}’s password was reset. The old one no longer works.</Notice>
             <div className="rounded-2xl bg-green-50 p-4 text-center dark:bg-night-800">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-green-600 dark:text-night-300">Temporary password</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-green-600 dark:text-night-300">Default password</p>
               <p className="mt-1 select-all break-all font-mono text-2xl font-extrabold tracking-wider text-green-950 dark:text-white">{pw.password}</p>
             </div>
             <ActionButton tone="ghost" onClick={copyPw}><Copy className="mr-1 inline h-4 w-4" />Copy password</ActionButton>
@@ -99,6 +110,24 @@ export function CustomerAdminPanel({ customerId, name }: { customerId: string; n
             <p className="text-center text-[11px] text-green-600 dark:text-night-300">This password is only shown now. Close this window and it is gone.</p>
           </div>
         )}
+      </DirectorModal>
+
+      <DirectorModal open={which === 'pin'} title="Reset payment PIN" onClose={close} busy={busy}>
+        <div className="space-y-3">
+          <p className="text-sm text-green-800 dark:text-night-100">Clears {name}'s payment PIN. They are asked to set a new 4-digit PIN in the app before their next payment, and are notified. A PIN lockout is lifted too.</p>
+          <PinField value={pin} onChange={setPin} />
+          {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+          <ActionButton busy={busy} disabled={pin.length < 4} onClick={() => doClear('reset-payment-pin')}>Reset payment PIN</ActionButton>
+        </div>
+      </DirectorModal>
+
+      <DirectorModal open={which === 'wpw'} title="Reset withdrawal password" onClose={close} busy={busy}>
+        <div className="space-y-3">
+          <p className="text-sm text-green-800 dark:text-night-100">Clears {name}'s withdrawal password. They set a new one in the app before their next withdrawal, and are notified. A lockout is lifted too.</p>
+          <PinField value={pin} onChange={setPin} />
+          {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+          <ActionButton busy={busy} disabled={pin.length < 4} onClick={() => doClear('reset-withdrawal-password')}>Reset withdrawal password</ActionButton>
+        </div>
       </DirectorModal>
 
       <DirectorModal open={which === 'fund'} title="Fund wallet manually" onClose={close} busy={busy}>

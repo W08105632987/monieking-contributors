@@ -259,6 +259,20 @@ def test_validation_rules():
     assert ok[C.K_RETENTION] == "48" and ok["verification.slip.nin.premium"] == "50000"
 
 
+def test_keep_forever_setting():
+    cur = S.parse({})
+    assert cur.retention_never is False
+    out = S.validate_update(cur, {"retention_never": True})
+    assert out[C.K_RETENTION_NEVER] == "true"
+    assert S.parse({C.K_RETENTION_NEVER: "true", C.K_RETENTION: "48"}).retention_never is True
+    assert S.parse({C.K_RETENTION_NEVER: "false"}).retention_never is False
+    # the hours value is still validated and remembered, so switching "never" off goes back to it
+    assert S.parse({C.K_RETENTION_NEVER: "true", C.K_RETENTION: "48"}).retention_hours == 48
+    with pytest.raises(S.SettingsError):
+        S.validate_update(cur, {"retention_never": "yes"})
+    assert C.K_RETENTION_NEVER in S.all_keys()
+
+
 def test_garbled_stored_values_fall_back_safely():
     s = S.parse({C.K_RETENTION: "abc", C.K_FEE + "nin": "-5", C.K_ENABLED: "TRUE", C.K_LOOKUP_TIER + "bvn": "regular"})
     assert s.retention_hours == 24 and s.fee_for("nin") == 0 and s.enabled and s.lookup_tier["bvn"] == "standard"

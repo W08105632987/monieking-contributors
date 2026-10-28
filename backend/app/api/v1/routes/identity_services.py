@@ -145,6 +145,14 @@ async def update_active(
         raise HTTPException(status_code=404, detail="Service not found")
     old = service.is_active
     service.is_active = body.is_active
+    # One switch: if this service runs on a template (the Service Builder), the template's switch is what
+    # customers actually see, so it must change together with this one.
+    from app.models.service_template import ServiceTemplate
+    from app.services.manual_pricing import resolve_category
+    tpl = await db.scalar(select(ServiceTemplate).where(ServiceTemplate.service_code == resolve_category(service.code)))
+    if tpl is not None and tpl.archived_at is None:
+        tpl.is_enabled = body.is_active
+        tpl.updated_by = director.id
     await db.flush()
     await log_action(
         db, actor_id=director.id, action="identity_service.activation_changed",

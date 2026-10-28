@@ -71,6 +71,37 @@ async def _live_template_codes(db: AsyncSession) -> set[str]:
     return {str(c) for c in data} if isinstance(data, list) else set()
 
 
+async def _push_prices_to_templates(db: AsyncSession, before: dict, after: dict, user_id, categories) -> list[str]:
+    """The Identity Services page just changed prices in the price table. Publish the same prices into each
+    service's template (the Service Builder's rules) so the two screens, and the charge, always agree.
+    Returns the services whose template could not be updated (the table edit itself is still saved)."""
+    import logging
+    from app.services import service_template_store as store
+    from app.services.price_sync import apply_table_changes, table_changes
+    failed: list[str] = []
+    for cat in categories:
+        changes = table_changes(before.get(cat, {}), after.get(cat, {}))
+        if not changes:
+            continue
+        tpl = await db.scalar(select(ServiceTemplate).where(ServiceTemplate.service_code == cat))
+        if not tpl or tpl.archived_at is not None or not tpl.current_version_id:
+            continue
+        ver = await db.get(ServiceTemplateVersion, tpl.current_version_id)
+        if not ver:
+            continue
+        rules = apply_table_changes(cat, ver.price_rules, changes)
+        if rules == ver.price_rules:
+            continue
+        try:
+            await store.publish_version(db, tpl, schema=ver.schema, price_rules=rules, user_id=user_id,
+                                        note="Price changed on the Identity Services page",
+                                        acknowledge_warnings=True, confirm_price_change=True)
+        except (store.PublishRejected, store.PublishNeedsConfirmation, store.PublishConflict) as e:
+            logging.getLogger(__name__).warning("price sync to template %s skipped: %s", cat, e)
+            failed.append(cat)
+    return failed
+
+
 async def _get_template(
     db: AsyncSession, category: str,
 ) -> tuple[ServiceTemplate, ServiceTemplateVersion] | None:
@@ -591,13 +622,17 @@ async def update_manual_services_pricing(
     incoming_labels = body.get("cover_labels")
 
     current_pricing = await _get_current_price_map(db)
+    sync_failed: list[str] = []
     if incoming_pricing and isinstance(incoming_pricing, dict):
+        import copy as _copy
+        before_pricing = _copy.deepcopy(current_pricing)
         try:
             clean = normalize_pricing_update(incoming_pricing)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
         for cat, sub in clean.items():
             current_pricing.setdefault(cat, {}).update(sub)
+        sync_failed = await _push_prices_to_templates(db, before_pricing, current_pricing, current_user.id, list(clean))
 
         cfg = await db.get(SystemConfig, "manual_services_pricing")
         if not cfg:
@@ -641,4 +676,5 @@ async def update_manual_services_pricing(
         "pricing": current_pricing,
         "cover_labels": effective_cover_labels(current_pricing, stored_labels),
         "message": "Pricing tiers and cover card labels updated successfully.",
+        "template_sync_failed": sync_failed,
     }

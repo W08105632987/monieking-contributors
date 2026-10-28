@@ -9,6 +9,7 @@ import { formatDate, formatDateTime, cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { CustomerStatsPanel } from '@/components/dashboard/CustomerStatsPanel'
 import { OfficerContributionCard } from '@/components/dashboard/OfficerContributionCard'
+import { CustomerAdminPanel } from '@/components/director/CustomerAdminPanel'
 import type { User, Zone, ZoneAssignmentHistory } from '@/types'
 
 export default function OfficerDetailPage() {
@@ -146,6 +147,9 @@ export default function OfficerDetailPage() {
             title={`Customer statistics — ${currentZone.name}`}
           />
         )}
+
+        {/* Director controls: reset login password, payment PIN, withdrawal password */}
+        <CustomerAdminPanel customerId={officer.id} name={officer.full_name} kind="officer" />
 
         {/* Coverage history */}
         <button

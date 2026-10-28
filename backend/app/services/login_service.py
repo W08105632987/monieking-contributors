@@ -149,3 +149,15 @@ async def refresh_grant(refresh_token: str) -> dict:
         failure_detail="Your session could not be refreshed. Please log in again.",
     )
     return resp.json()
+
+
+async def verify_login_password(phone_number: str, password: str) -> None:
+    """Checks someone's CURRENT login password (used before changing it). Goes through the same cleaned-up Supabase
+    call as login, so a stray quote or slash in the environment URL cannot crash it. Does not touch the login
+    lockout counters. Raises 401 for a wrong password and a clear 5xx message when the login service is unreachable."""
+    try:
+        await password_grant(phone_to_email_alias(phone_number), password)
+    except HTTPException as e:
+        if isinstance(e.detail, dict) and e.detail.get("code") == "WRONG_PASSWORD":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+        raise

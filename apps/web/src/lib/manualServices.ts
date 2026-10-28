@@ -27,6 +27,7 @@ export const SERVICE_KEY_ALIASES: Record<string, string> = {
   bvn_retrieval_phone: 'bvn_retrieval',
   bvn_retrieval_crm: 'bvn_retrieval',
   bvn_self_service_delinking: 'nin_delinking',
+  nin_personalisation: 'nin_personalization',   // same service, British spelling
 }
 
 export function resolveManualKey(code: string): string {

@@ -51,6 +51,7 @@ export interface User {
   bvn_last4?: string | null
   nin_last4?: string | null
   sms_alerts_enabled?: boolean
+  must_change_password?: boolean
   sms_accrued_kobo?: number
   onboarding_completed?: boolean
   state_of_residence?: string | null

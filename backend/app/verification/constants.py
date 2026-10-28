@@ -42,6 +42,7 @@ FIELD_NAMES = {
 # system_config keys (all director-editable through the settings page).
 K_ENABLED = "verification.techhub_enabled"
 K_RETENTION = "verification.retention_hours"
+K_RETENTION_NEVER = "verification.retention_never"   # "true" = results are kept forever
 K_NIN_AUTH_URL = "verification.nin_auth_url"
 K_LOOKUP_TIER = "verification.lookup_tier."          # + kind
 K_FEE = "verification.fee."                          # + nin | phone | demographic | bvn

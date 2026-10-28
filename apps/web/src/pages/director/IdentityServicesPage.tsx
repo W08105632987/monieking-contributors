@@ -10,6 +10,7 @@ import type { IdentityService, IdentityServiceCategory } from '@/types'
 import { CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_ORDER } from '@/lib/identityServices'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { resolveManualKey } from '@/lib/manualServices'
+import { dedupeServices } from '@/lib/serviceCatalog'
 import { ENROLLMENT_BANKS } from '@/components/manual-services/constants'
 
 // Human names for the price tiers the backend charges. The TIERS THEMSELVES come from the
@@ -413,6 +414,7 @@ function ServiceRow({
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ['manual-services-pricing'] })
             qc.invalidateQueries({ queryKey: ['identity-services'] })
+            qc.invalidateQueries({ queryKey: ['service-templates'] })   // the Service Builder now holds the same prices
           }}
         />
       )}
@@ -449,9 +451,16 @@ export default function IdentityServicesPage() {
   })
   const liveCodes = templates.filter((t) => t.live).map((t) => t.service_code)
 
-  const grouped = CATEGORY_ORDER.map((cat) => ({
+  // Airtime, data and bills have their own control screen (Bills control). Listing them here gave a second switch that
+  // did nothing, so they are not shown on this page.
+  const OWN_CONTROL = new Set(['airtime', 'bills'])
+  const visible = services.filter((s) => !OWN_CONTROL.has(s.category))
+  // The same service listed twice (different code or spelling) is shown once; extra copies are hidden everywhere.
+  const unique = dedupeServices(visible, templates)
+  const hiddenDuplicates = visible.length - unique.length
+  const grouped = CATEGORY_ORDER.filter((cat) => !OWN_CONTROL.has(cat)).map((cat) => ({
     category: cat,
-    services: services.filter((s) => s.category === cat),
+    services: unique.filter((s) => s.category === cat),
   })).filter((g) => g.services.length > 0)
 
   return (
@@ -469,8 +478,15 @@ export default function IdentityServicesPage() {
       <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         <p className="text-green-500 dark:text-night-300 text-sm mb-4">
           Control card display prices (alphanumeric text like &ldquo;From ₦7,000&rdquo;) and configure inner child tier
-          prices for each service. Toggle any service on or off at any time.
+          prices for each service. Toggle any service on or off at any time. Prices and the on/off switch here are the same
+          ones in the Service Builder: change either place and both update. Airtime, data and bills are controlled from Bills control.
         </p>
+        {hiddenDuplicates > 0 && (
+          <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+            {hiddenDuplicates} duplicate service{hiddenDuplicates > 1 ? 's are' : ' is'} hidden from this page and from customers.
+            To remove them for good, ask Antigravity to run <code>python -m scripts.consolidate_duplicate_services</code> (it reports first, then <code>--apply</code> tidies up).
+          </p>
+        )}
 
         {isError ? (
           <FallbackError

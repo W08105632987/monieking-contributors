@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Eye, EyeOff, KeyRound } from 'lucide-react'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
+import { useAuthStore } from '@/store/auth.store'
 
 /**
  * Lives inside the Security card now (see Profile pages), as a row
@@ -16,6 +17,8 @@ export function ChangePasswordSection({ isLast = false }: { isLast?: boolean }) 
   const [showCurrent, setShowCurrent] = useState(false)
   const [showNext, setShowNext] = useState(false)
   const [loading, setLoading] = useState(false)
+  const user = useAuthStore((st) => st.user)
+  const setUser = useAuthStore((st) => st.setUser)
 
   const submit = async () => {
     if (next.length < 8) return toast.error('New password must be at least 8 characters')
@@ -23,6 +26,7 @@ export function ChangePasswordSection({ isLast = false }: { isLast?: boolean }) 
     try {
       await api.post('/auth/change-password', { current_password: current, new_password: next })
       toast.success('Password updated')
+      if (user?.must_change_password) setUser({ ...user, must_change_password: false })
       setCurrent(''); setNext(''); setOpen(false)
     } catch (e) {
       toast.error(getErrorMessage(e))

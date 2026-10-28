@@ -235,22 +235,16 @@ async def verify_payment_pin(request: Request, body: dict, current_user: Current
 @limiter.limit("5/minute")
 async def reset_payment_pin(request: Request, body: dict, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
     """Forgot the PIN: prove it is you with the login password, then choose a new PIN."""
-    import httpx
     from app.services import pin_service
+    from app.services.login_service import verify_login_password
     pin = str(body.get("pin", ""))
     pin_service.validate_new_pin(pin)
-    from app.utils.supabase_admin_client import SUPABASE_TIMEOUT
     try:
-        async with httpx.AsyncClient(timeout=SUPABASE_TIMEOUT) as client:
-            resp = await client.post(
-                f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password",
-                headers={"apikey": settings.SUPABASE_SERVICE_ROLE_KEY, "Content-Type": "application/json"},
-                json={"email": f"{current_user.phone_number}@monieking.app", "password": str(body.get("login_password", ""))},
-            )
-    except (httpx.TimeoutException, httpx.ConnectError):
-        raise HTTPException(status_code=503, detail="Could not reach the login service. Please try again.")
-    if resp.status_code != 200:
-        raise HTTPException(status_code=401, detail="Your login password is incorrect")
+        await verify_login_password(current_user.phone_number, str(body.get("login_password", "")))
+    except HTTPException as e:
+        if e.status_code == 401:
+            raise HTTPException(status_code=401, detail="Your login password is incorrect")
+        raise
     await pin_service.set_pin(db, current_user.id, pin)
     await db.commit()
     from app.core.dependencies import invalidate_user_cache as _inv
@@ -441,66 +435,87 @@ async def change_login_password(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    import httpx
+    from app.services.default_password import check_new_password
+    from app.services.login_service import verify_login_password
+    from app.utils.supabase_admin_client import supabase_admin_request
 
-    current_password = body.get("current_password", "")
-    new_password      = body.get("new_password", "")
-    if len(new_password) < 8:
-        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    current_password = str(body.get("current_password", ""))
+    new_password     = str(body.get("new_password", ""))
+    problem = check_new_password(current_user.phone_number, new_password)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+    if new_password == current_password:
+        raise HTTPException(status_code=400, detail="Your new password must be different from the current one")
 
-    email = f"{current_user.phone_number}@monieking.app"
-
-    from app.utils.supabase_admin_client import supabase_admin_request, SUPABASE_TIMEOUT
-
-    # Verify the current password by attempting a real sign-in — this is
-    # the only reliable way to check it, since Supabase Auth (not our DB)
-    # owns the login password. This one isn't routed through
-    # supabase_admin_request because a non-200 here means "wrong
-    # password" (a normal, expected outcome), not a service failure —
-    # but it still needs the same explicit timeout + exception handling
-    # so a slow/unreachable Supabase doesn't look like a silent crash.
     try:
-        async with httpx.AsyncClient(timeout=SUPABASE_TIMEOUT) as client:
-            verify_resp = await client.post(
-                f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password",
-                headers={"apikey": settings.SUPABASE_SERVICE_ROLE_KEY, "Content-Type": "application/json"},
-                json={"email": email, "password": current_password},
-            )
-    except httpx.TimeoutException:
-        raise HTTPException(
-            status_code=504,
-            detail="This is taking longer than expected. Please try again.",
+        # Same server-side call login uses. A wrong password is a 401; an unreachable login service is a clear 5xx.
+        await verify_login_password(current_user.phone_number, current_password)
+        await supabase_admin_request(
+            "PUT",
+            f"/auth/v1/admin/users/{current_user.id}",
+            json={"password": new_password},
+            failure_detail="Your current password was verified, but we couldn't finish updating it. Please try again.",
         )
-    except httpx.ConnectError:
-        raise HTTPException(
-            status_code=503,
-            detail="Could not reach the authentication service. Check your connection and try again.",
-        )
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001 - never an anonymous "Internal server error" on a security screen
+        print(f"[CHANGE_PASSWORD_ERROR] {type(e).__name__}: {str(e)[:200]}", flush=True)
+        raise HTTPException(status_code=502, detail="We couldn't change your password right now. Please try again in a moment.")
 
-    if verify_resp.status_code != 200:
-        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    await _after_password_change(db, current_user.id)
+    return {"message": "Password updated"}
 
-    await supabase_admin_request(
-        "PUT",
-        f"/auth/v1/admin/users/{current_user.id}",
-        json={"password": new_password},
-        failure_detail="Your current password was verified, but we couldn't finish updating it. Please try again.",
-    )
 
-    # Always a genuine change (this endpoint requires knowing the current
-    # password, so it's never first-time setup) — worth an immediate
-    # alert same as the withdrawal password and bank details above.
+async def _after_password_change(db: AsyncSession, user_id) -> None:
+    """The person chose their own password: clear the 'must change' flag, refresh caches, tell them."""
+    user = await db.get(User, user_id)
+    if user is not None and user.must_change_password:
+        user.must_change_password = False
+    from app.core.dependencies import invalidate_user_cache
     from app.services.notification_service import send_notification
     from app.models.notification import NotificationType
     await send_notification(
-        db, user_id=current_user.id,
+        db, user_id=user_id,
         title="Login password changed",
         body="Your login password was just changed. If this wasn't you, contact your officer or a director immediately.",
         type=NotificationType.INFO,
     )
     await db.flush()
+    await invalidate_user_cache(str(user_id))
 
-    return {"message": "Password updated"}
+
+@router.post("/set-new-password")
+@limiter.limit("5/minute")
+async def set_new_password_after_default(
+    request: Request,
+    body: dict,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """For someone signed in with a password MonieKing set for them (the phone-number + MK default): choose their own.
+    No current password is asked for because they just signed in with it. Only works while the account is flagged."""
+    from app.services.default_password import check_new_password
+    from app.utils.supabase_admin_client import supabase_admin_request
+
+    user = await db.get(User, current_user.id)
+    if user is None or not user.must_change_password:
+        raise HTTPException(status_code=400, detail="Your password does not need changing. Use Settings > Change login password.")
+    new_password = str(body.get("new_password", ""))
+    problem = check_new_password(user.phone_number, new_password)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+    try:
+        await supabase_admin_request(
+            "PUT", f"/auth/v1/admin/users/{user.id}", json={"password": new_password},
+            failure_detail="We couldn't save your new password. Please try again.",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        print(f"[SET_NEW_PASSWORD_ERROR] {type(e).__name__}: {str(e)[:200]}", flush=True)
+        raise HTTPException(status_code=502, detail="We couldn't save your new password right now. Please try again.")
+    await _after_password_change(db, user.id)
+    return {"message": "Password updated", "must_change_password": False}
 
 
 # ── Cookie-session login (Phase 1 of the httpOnly cookie migration) ────

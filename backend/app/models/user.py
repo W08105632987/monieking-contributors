@@ -133,6 +133,10 @@ class User(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
+    # True while the account uses a password MonieKing set (director reset, or registered by an officer/director):
+    # the app keeps asking for a new password at every login until the person chooses their own. Migration 057.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+
     # Hashed passwords
     login_password_hash:      Mapped[str | None] = mapped_column(Text)
     withdrawal_password_hash: Mapped[str | None] = mapped_column(Text)

@@ -74,7 +74,7 @@ async def _run(monkeypatch):
         r = await c.post(f"{base}/{real_id}/reset-password", json={"pin": "0000"})
         assert r.status_code in (400, 401, 403)
         r = await c.post(f"{base}/{real_id}/reset-password", json={"pin": "4821"})
-        assert r.status_code == 200 and r.json()["sms_sent"] is True and r.json()["temporary_password"] is None
+        assert r.status_code == 200 and r.json()["sms_sent"] is False and r.json()["temporary_password"].endswith("MK")
         assert ("PUT", f"/auth/v1/admin/users/{real_id}") in calls
 
         # manual funding

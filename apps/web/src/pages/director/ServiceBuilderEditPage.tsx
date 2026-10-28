@@ -75,6 +75,9 @@ export default function ServiceBuilderEditPage() {
     qc.invalidateQueries({ queryKey: ['service-template-admin', code] })
     qc.invalidateQueries({ queryKey: ['service-templates'] })
     qc.invalidateQueries({ queryKey: ['service-template', code] })   // customers' copy of the form
+    qc.invalidateQueries({ queryKey: ['manual-services-pricing'] })  // a publish also updates the Identity Services price table
+    qc.invalidateQueries({ queryKey: ['identity-services'] })
+    qc.invalidateQueries({ queryKey: ['manual-services-quote'] })
   }
 
   if (isError) {

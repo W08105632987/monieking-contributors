@@ -16,7 +16,7 @@ const input = 'w-full mt-1 rounded-xl border-2 border-green-100 dark:border-nigh
 const FEE_LABELS: Record<string, string> = { nin: 'NIN: by NIN', phone: 'NIN: by phone', demographic: 'NIN: by name & date of birth', bvn: 'BVN: by BVN' }
 
 interface Server {
-  enabled: boolean; retention_hours: number; nin_auth_url: string
+  enabled: boolean; retention_hours: number; retention_never?: boolean; nin_auth_url: string
   lookup_tier: Record<VerifyKind, SlipTier>
   fees: Record<string, number>; slips: Record<string, number>; missing_fees: string[]
   services: Record<VerifyKind, { available: boolean; reason: string | null; retry_at: string | null }>
@@ -33,6 +33,7 @@ export default function VerificationSettingsPage() {
 
   const [enabled, setEnabled] = useState(false)
   const [retention, setRetention] = useState('24')
+  const [keepForever, setKeepForever] = useState(false)
   const [authUrl, setAuthUrl] = useState('')
   const [tiers, setTiers] = useState<Record<string, string>>({ nin: 'regular', bvn: 'standard' })
   const [fees, setFees] = useState<Record<string, string>>({})
@@ -42,7 +43,7 @@ export default function VerificationSettingsPage() {
   useEffect(() => {
     const d = q.data
     if (!d || loaded) return
-    setEnabled(d.enabled); setRetention(String(d.retention_hours)); setAuthUrl(d.nin_auth_url ?? '')
+    setEnabled(d.enabled); setRetention(String(d.retention_hours)); setKeepForever(!!d.retention_never); setAuthUrl(d.nin_auth_url ?? '')
     setTiers({ ...d.lookup_tier })
     setFees(Object.fromEntries(Object.entries(d.fees).map(([k, v]) => [k, toNaira(v)])))
     setSlips(Object.fromEntries(Object.entries(d.slips).map(([k, v]) => [k, toNaira(v)])))
@@ -52,7 +53,8 @@ export default function VerificationSettingsPage() {
   const save = useMutation({
     mutationFn: () => adminPutSettings({
       enabled,
-      retention_hours: Number(retention),
+      retention_hours: Number(retention) || 24,
+      retention_never: keepForever,
       nin_auth_url: authUrl.trim(),
       lookup_tier: tiers,
       fees: Object.fromEntries(Object.keys(FEE_LABELS).map(k => [k, toKobo(fees[k] ?? '')])),
@@ -154,7 +156,11 @@ export default function VerificationSettingsPage() {
               </div>
               <div className="mt-2">
                 <span className="text-green-900 dark:text-white text-sm">How long results are kept (hours, 1 to 168)</span>
-                <input inputMode="numeric" value={retention} onChange={e => setRetention(e.target.value.replace(/\D/g, ''))} className={input} />
+                <input inputMode="numeric" value={retention} disabled={keepForever} onChange={e => setRetention(e.target.value.replace(/\D/g, ''))} className={`${input} disabled:opacity-40`} />
+                <label className="mt-2 flex items-start gap-2 text-xs text-green-800 dark:text-night-100">
+                  <input type="checkbox" className="mt-0.5" checked={keepForever} onChange={e => setKeepForever(e.target.checked)} />
+                  <span><b>Never delete.</b> Keep every NIN and BVN result in the system forever. Results already wiped cannot be brought back. Stored results stay encrypted.</span>
+                </label>
               </div>
               <div className="mt-2">
                 <span className="text-green-900 dark:text-white text-sm">Official NIN-Auth link (https). Empty hides the button.</span>
@@ -164,7 +170,7 @@ export default function VerificationSettingsPage() {
 
             <button
               onClick={() => save.mutate()}
-              disabled={save.isPending || !retention}
+              disabled={save.isPending || (!keepForever && !retention)}
               className="w-full font-bold text-sm rounded-full py-3.5 bg-amber-400 dark:bg-night-100 text-green-900 dark:text-night-900 disabled:opacity-40"
             >
               {save.isPending ? 'Saving…' : 'Save'}

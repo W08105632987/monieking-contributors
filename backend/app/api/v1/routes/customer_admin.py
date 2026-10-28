@@ -34,6 +34,14 @@ async def _customer(db: AsyncSession, user_id: str) -> User:
     return user
 
 
+async def _person(db: AsyncSession, user_id: str) -> User:
+    """A customer OR an officer: the people a director may reset passwords, PINs and withdrawal passwords for."""
+    user = await resolve_user(db, user_id)
+    if not user or user.role not in (UserRole.CUSTOMER, UserRole.OFFICER):
+        raise HTTPException(status_code=404, detail="Person not found")
+    return user
+
+
 def _temp_password(n: int = 12) -> str:
     alphabet = string.ascii_letters + string.digits
     while True:
@@ -52,21 +60,31 @@ async def reset_password(user_id: str, body: PinBody, director: DirectorOnly, db
     copy it, WhatsApp, SMS or email (see /send-password). Nothing is sent to the customer automatically.
     The password is never written to the audit log."""
     await check_pin(db, director, body.pin)
-    user = await _customer(db, user_id)
-    pw = _temp_password()
+    user = await _person(db, user_id)
+    from app.services.default_password import default_password
+    from app.core.security import hash_password
+    from app.core.dependencies import invalidate_user_cache
+    pw = default_password(user.phone_number)   # phone + MK; they are asked to change it at every login until they do
     from app.utils.supabase_admin_client import supabase_admin_request
     await supabase_admin_request(
         "PUT", f"/auth/v1/admin/users/{user.id}", json={"password": pw},
         failure_detail="Couldn't reach the login service to reset this password. Please try again.",
     )
-    await log_action(db, actor_id=director.id, action="customer.password_reset", entity_type="user", entity_id=str(user.id))
-    return {"message": "Password reset", "temporary_password": pw, "phone_number": user.phone_number,
+    user.login_password_hash = hash_password(pw)
+    user.must_change_password = True
+    user.login_failed_attempts = 0       # a reset also lifts a login lockout
+    user.login_locked_until = None
+    await log_action(db, actor_id=director.id, action="user.password_reset", entity_type="user", entity_id=str(user.id),
+                     new_value={"role": user.role.value})
+    await db.flush()
+    await invalidate_user_cache(str(user.id))
+    return {"message": "Password reset", "temporary_password": pw, "phone_number": user.phone_number, "role": user.role.value,
             "email": user.email if (user.email and user.email_verified_at) else None, "sms_sent": False}
 
 
 class SendPasswordBody(BaseModel):
     channel: str = Field(pattern="^(sms|email)$")
-    temporary_password: str = Field(pattern="^[A-Za-z0-9]{8,32}$")
+    temporary_password: str = Field(pattern="^[A-Za-z0-9]{8,32}$")   # the default (phone + MK) fits this
     pin: str
 
 
@@ -74,7 +92,7 @@ class SendPasswordBody(BaseModel):
 async def send_password(user_id: str, body: SendPasswordBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
     """Send the temporary password the director just generated, by SMS or to the customer's verified email."""
     await check_pin(db, director, body.pin)
-    user = await _customer(db, user_id)
+    user = await _person(db, user_id)
     text_msg = f"MonieKing: your password was reset by a director. Temporary password: {body.temporary_password}. Please log in and change it now."
     if body.channel == "sms":
         from app.services.sms_service import send_sms
@@ -92,8 +110,50 @@ async def send_password(user_id: str, body: SendPasswordBody, director: Director
                               body=text_msg + "\n\nIf you did not expect this, contact MonieKing support.")
         if not ok:
             raise HTTPException(status_code=502, detail="The email could not be sent. Copy the password or use WhatsApp instead.")
-    await log_action(db, actor_id=director.id, action="customer.password_sent", entity_type="user", entity_id=str(user.id), new_value={"channel": body.channel})
+    await log_action(db, actor_id=director.id, action="user.password_sent", entity_type="user", entity_id=str(user.id), new_value={"channel": body.channel})
     return {"sent": True, "channel": body.channel}
+
+
+class ResetKind(BaseModel):
+    pin: str
+
+
+@router.post("/{user_id}/reset-payment-pin")
+async def reset_payment_pin(user_id: str, body: ResetKind, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Clears the person's payment PIN (and any PIN lockout). They set a new one themselves the next time they open the app."""
+    await check_pin(db, director, body.pin)
+    user = await _person(db, user_id)
+    from app.core.dependencies import invalidate_user_cache
+    user.payment_pin_hash = None
+    user.pin_failed_attempts = 0
+    user.pin_locked_until = None
+    await log_action(db, actor_id=director.id, action="user.payment_pin_reset", entity_type="user", entity_id=str(user.id),
+                     new_value={"role": user.role.value})
+    await send_notification(db, user_id=user.id, title="Payment PIN reset",
+                            body="A director reset your payment PIN. Open the app and set a new 4-digit PIN before your next payment.",
+                            type=NotificationType.INFO)
+    await db.flush()
+    await invalidate_user_cache(str(user.id))
+    return {"message": "Payment PIN reset. They will be asked to set a new one."}
+
+
+@router.post("/{user_id}/reset-withdrawal-password")
+async def reset_withdrawal_password(user_id: str, body: ResetKind, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Clears the person's withdrawal password (and any lockout). They set a new one themselves in the app."""
+    await check_pin(db, director, body.pin)
+    user = await _person(db, user_id)
+    from app.core.dependencies import invalidate_user_cache
+    user.withdrawal_password_hash = None
+    user.withdrawal_password_failed_attempts = 0
+    user.withdrawal_password_locked_until = None
+    await log_action(db, actor_id=director.id, action="user.withdrawal_password_reset", entity_type="user", entity_id=str(user.id),
+                     new_value={"role": user.role.value})
+    await send_notification(db, user_id=user.id, title="Withdrawal password reset",
+                            body="A director reset your withdrawal password. Open the app and set a new one before your next withdrawal.",
+                            type=NotificationType.INFO)
+    await db.flush()
+    await invalidate_user_cache(str(user.id))
+    return {"message": "Withdrawal password reset. They will be asked to set a new one."}
 
 
 class FundBody(BaseModel):

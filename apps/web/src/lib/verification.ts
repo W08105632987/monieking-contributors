@@ -55,6 +55,7 @@ export const TIERS: Record<VerifyKind, SlipTier[]> = { nin: ['regular', 'standar
 export interface VerifyStatus {
   enabled: boolean
   retention_hours: number
+  retention_never?: boolean
   nin_auth_url: string | null
   fees: Partial<Record<VerifyMethod, number>>
   slips: Record<string, number>          // "nin.regular" -> kobo, only priced ones
@@ -143,8 +144,9 @@ export function availability(s: VerifyStatus | undefined, kind: VerifyKind): Ava
 
 export const hoursText = (h: number) => (h === 1 ? '1 hour' : `${h} hours`)
 
-export function consentText(kind: VerifyKind, hours: number): string {
-  return CONSENT_TEXT[kind].replace('{hours}', String(hours))
+export function consentText(kind: VerifyKind, hours: number, never = false): string {
+  const t = CONSENT_TEXT[kind]
+  return never ? t.replace('kept for {hours} hours', 'stored securely and not deleted') : t.replace('{hours}', String(hours))
 }
 
 export function newRequestId(): string {
