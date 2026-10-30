@@ -423,10 +423,41 @@ async def _validate_for_vend(provider, biller: Biller, customer_reference: str) 
     return (ref if required else None), name
 
 
+_TOKEN_KEYS = ("token", "tokenCode", "tokenValue", "meterToken", "electricityToken", "pin", "stsToken")
+_TOKEN_TEXT = re.compile(r"(?i)token\s*(?:no\.?|number|code)?\s*[:=\-]?\s*((?:\d[\s-]?){10,30})")
+
+
+def _find_token(node, depth: int = 0) -> str | None:
+    """Look for a token anywhere in a provider response — the field name and nesting differ between providers."""
+    if depth > 4:
+        return None
+    if isinstance(node, dict):
+        for key in _TOKEN_KEYS:
+            value = node.get(key)
+            if value is not None and not isinstance(value, (dict, list)) and str(value).strip():
+                return str(value).strip()
+        for value in node.values():
+            if isinstance(value, (dict, list)):
+                found = _find_token(value, depth + 1)
+                if found:
+                    return found
+        for key in ("description", "message", "responseMessage", "narration", "vendDescription"):
+            value = node.get(key)
+            if isinstance(value, str):
+                match = _TOKEN_TEXT.search(value)
+                if match:
+                    return match.group(1).strip()
+    elif isinstance(node, list):
+        for item in node:
+            found = _find_token(item, depth + 1)
+            if found:
+                return found
+    return None
+
+
 def _extract_token(result: dict) -> str | None:
-    instruction = result.get("vendInstruction") if isinstance(result.get("vendInstruction"), dict) else {}
-    token = result.get("token") or result.get("tokenCode") or instruction.get("token")
-    return str(token)[:60] if token else None
+    token = _find_token(result)
+    return token[:60] if token else None
 
 
 def _mark_completed(request: BillPaymentRequest, result: dict) -> None:
@@ -651,4 +682,34 @@ async def resolve_pending_bill(db: AsyncSession, request_id: uuid.UUID) -> BillP
         logger.exception("[bills] could not settle pending request %s", request.id)
         await db.rollback()
         await db.refresh(request)
+    return request
+
+
+async def backfill_missing_token(db: AsyncSession, request: BillPaymentRequest) -> BillPaymentRequest:
+    """
+    A COMPLETED electricity purchase whose token was never saved (the provider
+    sent it in a shape we did not read, or only after the first response):
+    ask the provider again and store the token. Only the token is written —
+    status and money are never touched here. Safe to call repeatedly; it does
+    nothing once a token is stored or for non-electricity products.
+    """
+    if request.status != BillPaymentStatus.COMPLETED or request.token:
+        return request
+    biller = await db.get(Biller, request.biller_id)
+    if not biller or biller.category != BillerCategory.ELECTRICITY:
+        return request
+
+    provider = get_bills_provider()
+    for reference in [r for r in (request.monnify_transaction_reference, str(request.id)) if r]:
+        try:
+            result = await provider.requery_bill(reference)
+        except MonnifyBillsError as e:
+            logger.info("[bills] token requery of %s by %s failed: %s", request.id, reference, e.message)
+            continue
+        token = _extract_token(result) if isinstance(result, dict) else None
+        if token:
+            request.token = token
+            await db.commit()
+            logger.info("[bills] recovered missing token for request %s", request.id)
+            return request
     return request

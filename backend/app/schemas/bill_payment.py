@@ -62,6 +62,7 @@ class BillPaymentRequestItem(BaseModel):
     biller_id: uuid.UUID
     biller_name: str
     biller_category: str
+    biller_product_name: str | None = None
     customer_id: uuid.UUID
     initiated_by: str
     officer_id: uuid.UUID | None = None

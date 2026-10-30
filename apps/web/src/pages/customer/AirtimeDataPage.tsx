@@ -7,7 +7,7 @@ import { ArrowLeft, Smartphone, CheckCircle2, AlertCircle, Loader2, Info, Check,
 import { formatNaira, cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api'
 import { useWallet } from '@/hooks/useWallet'
-import { useBillers, usePayBill, useBillsConfig, usePhoneCheck, DEFAULT_BILLS_CONFIG } from '@/hooks/useBillPayments'
+import { useBillers, usePayBill, useBillsConfig, usePhoneCheck, DEFAULT_BILLS_CONFIG, useBillRequest } from '@/hooks/useBillPayments'
 import { NETWORK_THEME, NEUTRAL_THEME } from '@/lib/networkTheme'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { PaymentReceipt, type ReceiptField } from '@/components/receipts/PaymentReceipt'
@@ -205,6 +205,10 @@ export default function AirtimeDataPage() {
   const payAmountKobo = tab === 'airtime'
     ? (typeof amountNaira === 'number' ? Math.round(amountNaira * 100 * (1 + airtimeMarkup / 100)) : 0)
     : (selectedPlan?.price_kobo ?? 0)
+
+  // Keeps the receipt in step with the payment: "Processing" turns into the final result on its own.
+  const { data: liveRequest } = useBillRequest(completedRequest?.id, completedRequest)
+  const receiptRequest = liveRequest ?? completedRequest
 
   const receiptFields: ReceiptField[] = completedRequest ? [
     { label: 'Network', value: network ?? '—' },
@@ -491,17 +495,17 @@ export default function AirtimeDataPage() {
         ]}
       />
 
-      {completedRequest && (
+      {completedRequest && receiptRequest && (
         <PaymentReceipt
           open={!!completedRequest}
           onClose={() => { setCompletedRequest(null); navigate(-1) }}
-          status={completedRequest.status === 'completed' ? 'completed' : completedRequest.status === 'failed' ? 'failed' : 'pending'}
-          amountKobo={completedRequest.amount_charged_kobo ?? completedRequest.amount_kobo}
+          status={receiptRequest.status === 'completed' ? 'completed' : receiptRequest.status === 'failed' ? 'failed' : 'pending'}
+          amountKobo={receiptRequest.amount_charged_kobo ?? receiptRequest.amount_kobo}
           serviceName={`${network ?? ''} ${tab === 'airtime' ? 'Airtime' : 'Data'}`.trim()}
-          reference={completedRequest.monnify_transaction_reference ?? completedRequest.id}
-          timestamp={new Date(completedRequest.created_at).toLocaleString()}
+          reference={receiptRequest.monnify_transaction_reference ?? receiptRequest.id}
+          timestamp={new Date(receiptRequest.created_at).toLocaleString()}
           fields={receiptFields}
-          failureReason={completedRequest.failure_reason ?? undefined}
+          failureReason={receiptRequest.failure_reason ?? undefined}
           brand={network ? networkBrand(network, theme.main, theme.on) : null}
         />
       )}

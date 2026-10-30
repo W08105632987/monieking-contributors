@@ -53,6 +53,7 @@ export default function ServiceHistoryPage() {
   const target = (i: HistoryItem): string | null => {
     if (i.source === 'identity') return `/services/requests/${i.id}`
     if (i.source === 'manual') return `/customer/manual-services/requests/${i.id}`
+    if (i.source === 'bill') return `/bill-payments/${i.id}/receipt`
     if (i.source === 'verification' && i.openable) {
       return customerId ? `/officer/customers/${customerId}/verify/${i.category}/${i.id}` : `/customer/verify/${i.category}/${i.id}`
     }

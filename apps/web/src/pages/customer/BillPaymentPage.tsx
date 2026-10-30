@@ -7,7 +7,7 @@ import { getErrorMessage } from '@/lib/api'
 import { useWallet } from '@/hooks/useWallet'
 import { AnimatePresence, motion } from 'framer-motion'
 import { isPinCancelled } from '@/lib/pin'
-import { useBillsConfig, DEFAULT_BILLS_CONFIG, useBillers, useValidateBill, usePayBill } from '@/hooks/useBillPayments'
+import { useBillsConfig, DEFAULT_BILLS_CONFIG, useBillers, useValidateBill, usePayBill, useBillRequest } from '@/hooks/useBillPayments'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { PaymentReceipt, type ReceiptField } from '@/components/receipts/PaymentReceipt'
 import { PaymentConfirmSheet } from '@/components/payments/PaymentConfirmSheet'
@@ -122,13 +122,18 @@ export default function BillPaymentPage() {
     )
   }
 
+  // The receipt follows the payment: if the provider was slow it shows "Processing", then flips to the
+  // result (with the electricity token) by itself instead of staying stuck on the first answer.
+  const { data: liveRequest } = useBillRequest(completedRequest?.id, completedRequest)
+  const receiptRequest = liveRequest ?? completedRequest
+
   const typeLabel = isCable ? selectedBiller?.product_name : (selectedBiller ? METER_LABEL[meterKind(selectedBiller)] : '')
-  const receiptFields: ReceiptField[] = completedRequest ? [
+  const receiptFields: ReceiptField[] = receiptRequest ? [
     { label: isCable ? 'Provider' : 'Distribution company', value: group?.name ?? '' },
     ...(typeLabel ? [{ label: isCable ? 'Plan' : 'Meter type', value: typeLabel }] : []),
     { label: refLabel, value: customerReference },
     ...(validated?.validated_account_name ? [{ label: 'Account name', value: validated.validated_account_name }] : []),
-    ...(completedRequest.token ? [{ label: isCable ? 'Reference code' : 'Electricity token', value: completedRequest.token, kind: 'token' as const }] : []),
+    ...(receiptRequest.token ? [{ label: isCable ? 'Reference code' : 'Electricity token', value: receiptRequest.token, kind: 'token' as const }] : []),
   ] : []
 
   const stepNo = (n: number) => (isCable ? n : n + 1)
@@ -303,15 +308,15 @@ export default function BillPaymentPage() {
         ]}
       />
 
-      {completedRequest && (
+      {completedRequest && receiptRequest && (
         <PaymentReceipt
           open={!!completedRequest} onClose={() => { setCompletedRequest(null); navigate(-1) }}
-          status={completedRequest.status === 'completed' ? 'completed' : completedRequest.status === 'failed' ? 'failed' : 'pending'}
-          amountKobo={completedRequest.amount_charged_kobo ?? completedRequest.amount_kobo}
+          status={receiptRequest.status === 'completed' ? 'completed' : receiptRequest.status === 'failed' ? 'failed' : 'pending'}
+          amountKobo={receiptRequest.amount_charged_kobo ?? receiptRequest.amount_kobo}
           serviceName={`${group?.name ?? 'Bill payment'}${!isCable && selectedBiller ? ` — ${METER_LABEL[meterKind(selectedBiller)]}` : ''}`}
-          reference={completedRequest.monnify_transaction_reference ?? completedRequest.id}
-          timestamp={new Date(completedRequest.created_at).toLocaleString()}
-          fields={receiptFields} failureReason={completedRequest.failure_reason ?? undefined} brand={group ? brand : null}
+          reference={receiptRequest.monnify_transaction_reference ?? receiptRequest.id}
+          timestamp={new Date(receiptRequest.created_at).toLocaleString()}
+          fields={receiptFields} failureReason={receiptRequest.failure_reason ?? undefined} brand={group ? brand : null}
         />
       )}
     </div>
