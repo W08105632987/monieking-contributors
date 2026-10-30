@@ -192,6 +192,11 @@ class FileUploadRequest(BaseModel):
     file_base64: str = Field(..., description="Base64 encoded data (data:image/jpeg;base64,...)")
 
 
+async def _presigned(payload):
+    from app.utils.private_files import presign
+    return await presign(payload)
+
+
 def _serialize(req: ManualServiceRequest) -> dict:
     return {
         "id":              str(req.id),
@@ -240,14 +245,24 @@ async def upload_document(
     storage_filename = f"manual_{current_user.id}_{uuid.uuid4().hex}.{ext}"
 
     # No silent fallback any more. The old code stored the ENTIRE base64 file in the database when storage failed.
+    from app.utils import private_files
+    if private_files.private_enabled():
+        # ID documents go to the PRIVATE bucket; the stored value is a reference that opens nothing on its own.
+        await private_files.ensure_bucket()
+        bucket = private_files.PRIVATE_BUCKET
+    else:
+        bucket = "avatars"
     await supabase_admin_request(
         "POST",
-        f"/storage/v1/object/avatars/{storage_filename}",
+        f"/storage/v1/object/{bucket}/{storage_filename}",
         content=file_bytes,
         extra_headers={"Content-Type": content_type, "x-upsert": "false"},
         failure_detail="Could not upload file — please try again",
     )
-    url = f"{settings.SUPABASE_URL}/storage/v1/object/public/avatars/{storage_filename}"
+    if bucket == "avatars":
+        url = f"{settings.SUPABASE_URL}/storage/v1/object/public/avatars/{storage_filename}"
+    else:
+        url = private_files.reference_for(storage_filename)
 
     return {"url": url, "filename": body.filename}
 
@@ -286,7 +301,8 @@ async def submit_service_request(
     prepared_form: dict | None = None
     service_type = body.service_type
     enrollment_bank = body.enrollment_bank
-    uploaded_files = body.uploaded_files
+    from app.utils.upload_guard import validate_file_urls
+    uploaded_files = validate_file_urls(body.uploaded_files, max_data_bytes=5 * 1024 * 1024)
 
     if live:
         tpl, ver = found
@@ -315,7 +331,7 @@ async def submit_service_request(
         prepared_form = {**prepared.form_data, **carried}
         service_type = prepared.service_type
         enrollment_bank = prepared.enrollment_bank
-        uploaded_files = prepared.uploaded_files
+        uploaded_files = validate_file_urls(prepared.uploaded_files, max_data_bytes=5 * 1024 * 1024)
         template_version_id = ver.id
     else:
         if not _has_content(body.form_data) and not body.uploaded_files:
@@ -411,7 +427,7 @@ async def submit_service_request(
             pass
 
     return {
-        "request": _serialize(req),
+        "request": await _presigned(_serialize(req)),
         "id": str(req.id),
         "message": "Your service request has been submitted and is awaiting a service worker.",
         "price_kobo": price_kobo,
@@ -444,7 +460,7 @@ async def list_my_requests(
 
     offset = (page - 1) * page_size
     rows = (await db.scalars(q.offset(offset).limit(page_size))).all()
-    return {"data": [_serialize(r) for r in rows], "total": total, "page": page, "page_size": page_size}
+    return {"data": await _presigned([_serialize(r) for r in rows]), "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/my-requests/{request_id}")
@@ -469,7 +485,7 @@ async def get_my_request(
     if not (is_owner or is_submitter_officer or is_director):
         raise HTTPException(status_code=403, detail="Access denied.")
 
-    out = _serialize(req)
+    out = await _presigned(_serialize(req))
     from app.models.wallet import WalletTransaction
     from app.services.refund_service import refund_reference
     out["refunded_kobo"] = await db.scalar(
@@ -507,7 +523,7 @@ async def list_officer_requests(
 
     offset = (page - 1) * page_size
     rows = (await db.scalars(q.offset(offset).limit(page_size))).all()
-    return {"data": [_serialize(r) for r in rows], "total": total, "page": page, "page_size": page_size}
+    return {"data": await _presigned([_serialize(r) for r in rows]), "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/validate-referral/{code}")

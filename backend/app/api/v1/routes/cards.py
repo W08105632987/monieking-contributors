@@ -36,6 +36,8 @@ async def create_contribution_card(
     db: AsyncSession = Depends(get_db),
 ):
     from app.services.kyc_gate import require_kyc
+    if current_user.role not in (UserRole.CUSTOMER, UserRole.OFFICER):
+        raise HTTPException(status_code=403, detail="Access denied")
     if current_user.role == UserRole.CUSTOMER:
         require_kyc(current_user)   # customers must finish KYC before moving money
     owner_id = current_user.id
@@ -316,6 +318,9 @@ async def post_card_contribution(
     db: AsyncSession = Depends(get_db),
 ):
     from app.services.kyc_gate import require_kyc
+    # Only customers (own card) and officers (cash for a customer in their zone) pay into cards.
+    if current_user.role not in (UserRole.CUSTOMER, UserRole.OFFICER):
+        raise HTTPException(status_code=403, detail="Access denied")
     if current_user.role == UserRole.CUSTOMER:
         require_kyc(current_user)   # customers must finish KYC before moving money
     # A double-tap, a slow network causing the client to retry, or a
@@ -453,6 +458,8 @@ async def _authorize_card_action(db: AsyncSession, current_user: User, card: Con
     """Shared access check for card actions the owner or their managing
     officer can both trigger (convert, manual close)."""
     require_card_viewer(current_user)
+    if current_user.role not in (UserRole.CUSTOMER, UserRole.OFFICER):
+        raise HTTPException(status_code=403, detail="Only the card owner or their officer can do this")
     if current_user.role == UserRole.CUSTOMER and card.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="You do not own this card")
     if current_user.role == UserRole.OFFICER:

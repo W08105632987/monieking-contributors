@@ -90,7 +90,7 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
 
       <DirectorModal open={which === 'reset'} title="Reset password" onClose={close} busy={busy}>
         <div className="space-y-3">
-          <p className="text-sm text-green-800 dark:text-night-100">{name}'s password becomes their phone number followed by MK. You will see it next and choose how to send it: copy it, WhatsApp, SMS or email. The app makes them choose their own password every time they log in until they do.</p>
+          <p className="text-sm text-green-800 dark:text-night-100">{name} gets a new random one-time password. You will see it next, once, and choose how to send it: copy it, WhatsApp, SMS or email. The app makes them choose their own password every time they log in until they do.</p>
           <PinField value={pin} onChange={setPin} />
           {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
           <ActionButton busy={busy} disabled={pin.length < 4} onClick={doReset}>Reset password</ActionButton>

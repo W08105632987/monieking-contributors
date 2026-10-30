@@ -38,20 +38,18 @@ class TrackEventRequest(BaseModel):
 
 @router.post("/track", status_code=202)
 @limiter.limit("120/minute")
-async def track(request: Request, body: TrackEventRequest, db: AsyncSession = Depends(get_db)):
+async def track(request: Request, body: TrackEventRequest):
     """202 regardless of outcome — the frontend tracker never checks
     this response for success/failure (it's fired with sendBeacon on
     page unload half the time, which can't read a response at all), so
     there's nothing to gain from a more specific status code here, and
     a tracking failure must never look like a real error to whoever's
-    using the app."""
-    try:
-        await svc.track_event(
-            db, event_type=body.event_type, path=body.path, label=body.label,
-            session_id=body.session_id, user_id=body.user_id, role=body.role, referrer=body.referrer,
-        )
-    except Exception:
-        pass   # see docstring — tracking must never be able to break the app it's watching
+    using the app. Events are queued and written in batches (no database
+    connection is used by this request at all)."""
+    svc.enqueue_event(
+        event_type=body.event_type, path=body.path, label=body.label,
+        session_id=body.session_id, user_id=body.user_id, role=body.role, referrer=body.referrer,
+    )
     return {"ok": True}
 
 

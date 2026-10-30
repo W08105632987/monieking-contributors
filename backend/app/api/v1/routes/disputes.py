@@ -45,6 +45,15 @@ from app.services.notification_service import send_notification
 from app.services.dispute_sla_sweep import sweep_dispute_sla
 from app.services.settings_service import get_config_int as _get_config_int
 
+
+def _safe_attachment(url):
+    """Attachment links are shown and clicked by staff: only our storage or small harmless data files (finding S-13)."""
+    if not url:
+        return None
+    from app.utils.upload_guard import validate_file_url
+    return validate_file_url(url, max_data_bytes=8 * 1024 * 1024)
+
+
 router = APIRouter(prefix="/disputes", tags=["disputes"])
 
 
@@ -543,7 +552,7 @@ async def add_message(
         sender_id=current_user.id,
         message=body.message,
         is_internal=is_internal,
-        attachment_url=getattr(body, "attachment_url", None),
+        attachment_url=_safe_attachment(getattr(body, "attachment_url", None)),
         attachment_name=getattr(body, "attachment_name", None),
         attachment_size=getattr(body, "attachment_size", None),
     ))
@@ -807,7 +816,7 @@ async def create_manual_service_dispute(
         dispute_id=dispute.id,
         sender_id=customer.id,
         message=body.message,
-        attachment_url=body.attachment_url,
+        attachment_url=_safe_attachment(body.attachment_url),
         attachment_name=body.attachment_name,
         attachment_size=body.attachment_size,
     ))
@@ -913,7 +922,7 @@ async def create_worker_manual_service_dispute(
         dispute_id=dispute.id,
         sender_id=current_user.id,
         message=body.message,
-        attachment_url=body.attachment_url,
+        attachment_url=_safe_attachment(body.attachment_url),
         attachment_name=body.attachment_name,
         attachment_size=body.attachment_size,
     ))

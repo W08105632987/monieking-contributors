@@ -102,7 +102,9 @@ async def list_banks(current_user: CurrentUser):
 
 
 @router.get("/resolve-bank-account")
+@limiter.limit("30/minute")
 async def resolve_bank_account(
+    request: Request,
     current_user: CurrentUser,
     bank_code: str,
     account_number: str,
@@ -207,7 +209,12 @@ async def list_users(
     return await build_user_responses(db, list(result.scalars().all()))
 
 
-@router.post("/customers", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+class CustomerCreatedResponse(UserResponse):
+    """The new customer plus the one-time password to hand to them. Shown ONCE; it is never stored in plain text."""
+    temporary_password: str | None = None
+
+
+@router.post("/customers", response_model=CustomerCreatedResponse, status_code=status.HTTP_201_CREATED)
 async def create_customer(
     body: RegisterCustomerRequest,
     current_user: CurrentUser,
@@ -242,8 +249,8 @@ async def create_customer(
 
     # The password is always the default (phone number + MK), whatever the form sent: the customer is told to
     # change it the first time they log in with it (see must_change_password).
-    from app.services.default_password import default_password
-    initial_password = default_password(body.phone_number)
+    from app.services.default_password import new_temporary_password
+    initial_password = new_temporary_password()   # random; shown once to the officer in the response (finding S-14)
     customer_email = f"{body.phone_number}@monieking.app"
     resp = await supabase_admin_request(
         "POST",
@@ -322,7 +329,8 @@ async def create_customer(
         new_value={"full_name": customer.full_name, "phone_number": customer.phone_number},
         ip_address=request.client.host if request and request.client else None,
     )
-    return await build_user_response(db, customer)
+    created = await build_user_response(db, customer)
+    return CustomerCreatedResponse(**created.model_dump(), temporary_password=initial_password)
 
 
 @router.post("/officers", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -357,11 +365,9 @@ async def create_officer(
         created_by=   director.id,
         status=       UserStatus.ACTIVE,
         login_password_hash=      hash_password(body.password),
-        # Same default convention as customer accounts (phone number +
-        # "MK") — without this, withdrawal_password_hash stays NULL
-        # forever and the officer can never withdraw at all, since there
-        # was no way to set one after account creation either.
-        withdrawal_password_hash= hash_password(f"{body.phone_number}MK"),
+        # No placeholder withdrawal password (it used to be phone number + "MK", which anyone could guess).
+        # The officer sets their own the first time they need one (POST /auth/set-withdrawal-password).
+        withdrawal_password_hash= None,
     )
     db.add(officer)
     await db.flush()

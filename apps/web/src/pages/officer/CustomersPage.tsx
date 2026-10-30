@@ -359,6 +359,8 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
     account_name: '', next_of_kin_name: '', next_of_kin_phone: '',
   })
   const [loading, setLoading] = useState(false)
+  // The one-time password is shown ONCE, right after registering. The officer hands it to the customer.
+  const [created, setCreated] = useState<{ name: string; phone: string; password: string } | null>(null)
 
   const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }))
 
@@ -369,9 +371,9 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
     }
     setLoading(true)
     try {
-      await api.post('/users/customers', {
+      const { data } = await api.post<{ temporary_password?: string | null }>('/users/customers', {
         ...form,
-        password:            `${form.phone_number}MK`,   // the server sets this default anyway
+        password:            'x',   // ignored: the server generates a random one-time password
         // The backend requires this on every registration (self-signup
         // included) — it was never being sent here at all, which is
         // exactly the "field required" 422 you were hitting. An
@@ -380,9 +382,13 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
         // setting up the customer's initial password below.
         accepted_terms: true,
       })
-      showFeedback.success('Customer registered', `${form.full_name} has been added to your zone.`)
       qc.invalidateQueries({ queryKey: ['officer-customers'] })
-      onClose()
+      if (data?.temporary_password) {
+        setCreated({ name: form.full_name, phone: form.phone_number, password: data.temporary_password })
+      } else {
+        showFeedback.success('Customer registered', `${form.full_name} has been added to your zone.`)
+        onClose()
+      }
     } catch (err) {
       showFeedback.error('Registration failed', getErrorMessage(err))
     } finally {
@@ -418,7 +424,23 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <div className="px-5 pt-4 pb-10">
+      {created && (
+        <div className="px-5 pt-8 pb-10 text-center">
+          <p className="text-green-900 dark:text-white font-extrabold text-lg">{created.name} is registered ✓</p>
+          <p className="text-green-600 dark:text-night-200 text-sm mt-1">Give them this one-time login password now. It will not be shown again.</p>
+          <div className="mt-5 rounded-2xl border border-green-200 dark:border-night-500 bg-green-50 dark:bg-night-600 py-5">
+            <p className="text-[11px] uppercase tracking-wide text-green-600 dark:text-night-200">Phone {created.phone}</p>
+            <p className="mt-1 font-mono text-3xl font-extrabold tracking-widest text-green-900 dark:text-white select-all">{created.password}</p>
+          </div>
+          <button
+            onClick={() => { navigator.clipboard?.writeText(created.password); toast.success('Password copied') }}
+            className="mt-4 w-full rounded-full border border-green-300 py-3 text-sm font-bold text-green-800 dark:text-white active:scale-95"
+          >Copy password</button>
+          <button onClick={onClose} className="mt-3 w-full rounded-full bg-green-900 py-4 text-sm font-bold text-white active:scale-95">Done</button>
+        </div>
+      )}
+
+      <div className={created ? 'hidden' : 'px-5 pt-4 pb-10'}>
         <div className="space-y-4 mb-6">
           {fields.map(({ key, label, placeholder, icon: Icon }) => (
             <div key={key}>
@@ -443,7 +465,7 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
         <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-3 mb-5">
           <p className="text-amber-700 dark:text-amber-300 text-xs font-semibold">ℹ️ Note</p>
           <p className="text-amber-600 dark:text-amber-300 text-xs mt-0.5 leading-relaxed">
-            The customer's default login password is their phone number followed by MK (for example 08012345678MK). The app asks them to choose their own password the first time they log in, and every time after until they do. They set their own payment PIN and withdrawal password after they first log in.
+            After you register the customer you will see a one-time login password. Give it to them: it is shown only once. The app asks them to choose their own password the first time they log in. They set their own payment PIN and withdrawal password after they first log in.
           </p>
         </div>
 

@@ -61,10 +61,10 @@ async def reset_password(user_id: str, body: PinBody, director: DirectorOnly, db
     The password is never written to the audit log."""
     await check_pin(db, director, body.pin)
     user = await _person(db, user_id)
-    from app.services.default_password import default_password
+    from app.services.default_password import new_temporary_password
     from app.core.security import hash_password
     from app.core.dependencies import invalidate_user_cache
-    pw = default_password(user.phone_number)   # phone + MK; they are asked to change it at every login until they do
+    pw = new_temporary_password()   # random; they are asked to change it at every login until they do
     from app.utils.supabase_admin_client import supabase_admin_request
     await supabase_admin_request(
         "PUT", f"/auth/v1/admin/users/{user.id}", json={"password": pw},

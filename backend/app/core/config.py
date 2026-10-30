@@ -25,8 +25,10 @@ class Settings(BaseSettings):
     # Connection pool PER WORKER. Total = workers x (size + overflow); keep it under your database pooler limit.
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 5
-    # Refuse request bodies larger than this (bytes). Uploads are base64 JSON, so 8 MB covers a 5 MB file.
-    MAX_REQUEST_BODY_BYTES: int = 8 * 1024 * 1024
+    # Refuse request bodies larger than this (bytes). Uploads are base64 JSON, so 12 MB covers an 8 MB file.
+    # Store uploaded ID documents in a PRIVATE bucket and hand out short-lived links (see utils/private_files.py).
+    PRIVATE_DOCUMENTS: bool = False
+    MAX_REQUEST_BODY_BYTES: int = 12 * 1024 * 1024
 
     # ── Supabase ──────────────────────────────────────────────────
     SUPABASE_URL: str = ""
