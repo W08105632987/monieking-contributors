@@ -5,7 +5,7 @@ import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 
-/** The password the app suggests for people who did not choose their own: phone number followed by MK. */
+/** The OLD default (phone number followed by MK). No longer given to anyone, but still refused as a new password. */
 export const defaultPasswordFor = (phone: string) => `${phone.replace(/\D/g, '')}MK`
 
 /**

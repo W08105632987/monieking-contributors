@@ -15,6 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.utils.upload_guard import validate_file_url
+from app.utils.private_files import presign
 from app.core.dependencies import ServiceWorkerOnly, DirectorOnly, DirectorOrAdmin, get_current_user
 from app.core.security import hash_password
 from app.models.user import User, UserRole, UserStatus
@@ -130,7 +132,9 @@ def _serialize_job(
         "service_category": job.service_category,
         "service_type": job.service_type,
         "form_data": display_form_data,
-        "uploaded_files": job.uploaded_files or [],
+        # Before a worker claims a job, customer details are masked - the customer's ID documents must be too.
+        "uploaded_files": [] if mask_sensitive else (job.uploaded_files or []),
+        "uploaded_files_count": len(job.uploaded_files or []),
         "price_kobo": job.price_kobo,
         "status": job.status.value if hasattr(job.status, "value") else job.status,
         "claimed_by_id": str(job.claimed_by_id) if job.claimed_by_id else None,
@@ -174,13 +178,14 @@ async def create_service_worker(
     current_user: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
 ):
-    """Director creates a new Service Worker with default password = {phone}MK."""
+    """Director creates a new Service Worker with a random temporary password."""
     # Check for duplicate phone
     existing = await db.scalar(select(User).where(User.phone_number == body.phone_number))
     if existing:
         raise HTTPException(status_code=409, detail="A user with this phone number already exists.")
 
-    default_password = f"{body.phone_number}MK"
+    from app.services.default_password import new_temporary_password
+    default_password = new_temporary_password()   # random, shown once to the director (finding S-14)
     import secrets
     import string
 
@@ -336,6 +341,8 @@ async def get_referred_jobs(
         d = _serialize_job(job, include_customer=True, mask_sensitive=False)
         d["referral_expires_at"] = item["referral_expires_at"]
         serialized.append(d)
+    from app.utils.private_files import presign
+    await presign(serialized)
     return {"data": serialized}
 
 
@@ -356,6 +363,8 @@ async def get_my_jobs(
     for job in result["data"]:
         await db.refresh(job, ["customer"])
         serialized.append(_serialize_job(job, include_customer=True, mask_sensitive=False))
+    from app.utils.private_files import presign
+    await presign(serialized)
     return {"data": serialized, "total": result["total"], "page": result["page"], "page_size": result["page_size"]}
 
 
@@ -375,7 +384,7 @@ async def get_active_job(
     if not job:
         return {"job": None}
     await db.refresh(job, ["customer"])
-    return {"job": _serialize_job(job, include_customer=True, mask_sensitive=False)}
+    return {"job": await presign(_serialize_job(job, include_customer=True, mask_sensitive=False))}
 
 
 @router.post("/jobs/{job_id}/claim")
@@ -409,7 +418,7 @@ async def claim_job(
         raise HTTPException(status_code=400, detail=err_msg)
 
     await db.refresh(job, ["customer"])
-    return {"job": _serialize_job(job, include_customer=True, mask_sensitive=False), "message": "Job claimed successfully. SLA timer started."}
+    return {"job": await presign(_serialize_job(job, include_customer=True, mask_sensitive=False)), "message": "Job claimed successfully. SLA timer started."}
 
 
 @router.post("/jobs/{job_id}/resolve")
@@ -430,13 +439,13 @@ async def resolve_job(
             worker_response=response_text,
             worker_remarks=body.worker_remarks,
             worker_additional_info=body.worker_additional_info,
-            worker_result_file_url=body.worker_result_file_url,
+            worker_result_file_url=(validate_file_url(body.worker_result_file_url, allow_data=False) if body.worker_result_file_url else None),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     return {
-        "job": _serialize_job(job, include_customer=False, mask_sensitive=False),
+        "job": await presign(_serialize_job(job, include_customer=False, mask_sensitive=False)),
         "commission_earned_kobo": job.worker_commission_kobo,
         "message": f"Job resolved as {job.status.value}.",
     }
@@ -518,7 +527,7 @@ async def get_earnings_history(
     ) or 0
     rows = (await db.scalars(q.offset(offset).limit(page_size))).all()
     return {
-        "data": [_serialize_job(j, include_customer=False) for j in rows],
+        "data": await presign([_serialize_job(j, include_customer=False) for j in rows]),
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -788,6 +797,7 @@ async def list_all_jobs(
         d["commission_held_kobo"] = job.worker_commission_kobo if (getattr(job, "commission_status", None) == CommissionStatus.HELD) else 0
 
         serialized.append(d)
+    await presign(serialized)
     return {"data": serialized, "total": total, "page": page, "page_size": page_size}
 
 
@@ -799,5 +809,7 @@ async def reclaim_expired(
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger SLA reclamation (Worker, Director, Admin). Also runs in background."""
+    if current_user.role not in (UserRole.SERVICE_WORKER, UserRole.DIRECTOR, UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Access denied")
     reclaimed = await job_pool_service.reclaim_expired_jobs(db)
     return {"reclaimed": reclaimed}

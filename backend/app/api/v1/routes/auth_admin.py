@@ -33,13 +33,13 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.config import get_settings
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password, verify_password, verify_password_async
 from app.core.cookies import set_session_cookies
 from app.core.redis_client import get_redis
 from app.core.limiter import limiter
 from app.models.user import User, UserRole, UserStatus
 from app.services.login_service import (
-    phone_to_email_alias, check_not_locked, record_failure, record_success, password_grant,
+    phone_to_email_alias, check_not_locked, record_failure, record_success, begin_attempt, abort_attempt, password_grant,
 )
 from app.services.user_service import build_user_response
 from app.integrations.termii import send_sms
@@ -89,12 +89,17 @@ async def admin_login(
         raise HTTPException(status_code=403, detail="Account is suspended")
 
     check_not_locked(user)
+    attempt = await begin_attempt(db, user)   # atomic: parallel guesses are each counted (S-01)
 
     try:
         session = await password_grant(phone_to_email_alias(body.phone_number), body.password)
     except HTTPException as e:
         if isinstance(e.detail, dict) and e.detail.get("code") == "WRONG_PASSWORD":
-            await record_failure(db, user)  # always raises
+            await record_failure(db, user, attempt)  # always raises
+        await abort_attempt(db, user)
+        raise
+    except Exception:
+        await abort_attempt(db, user)
         raise
     await record_success(db, user)
 
@@ -144,8 +149,10 @@ async def admin_verify_otp(
     if not raw:
         raise HTTPException(status_code=401, detail="This login attempt has expired. Please log in again.")
 
-    attempts = int(await redis.get(attempts_key) or 0)
-    if attempts >= MAX_OTP_ATTEMPTS:
+    # Atomic INCR *before* checking the code: parallel guesses each get their own number, so firing many
+    # requests at once can no longer be counted as one (finding S-01).
+    attempts = int(await redis.incr(attempts_key))
+    if attempts > MAX_OTP_ATTEMPTS:
         await redis.delete(session_key, attempts_key)
         raise HTTPException(status_code=401, detail="Too many wrong codes. Please log in again.")
 
@@ -153,16 +160,15 @@ async def admin_verify_otp(
     result = await db.execute(select(User).where(User.id == uuid.UUID(pending["user_id"])))
     user = result.scalar_one_or_none()
 
-    otp_valid = (
+    otp_valid = bool(
         user is not None
         and user.two_factor_otp_hash
         and user.two_factor_otp_expires_at
         and user.two_factor_otp_expires_at > datetime.now(timezone.utc)
-        and verify_password(body.otp, user.two_factor_otp_hash)
+        and await verify_password_async(body.otp, user.two_factor_otp_hash)
     )
 
     if not otp_valid:
-        await redis.incr(attempts_key)
         raise HTTPException(status_code=401, detail={
             "code": "WRONG_OTP", "message": "Incorrect or expired code.",
         })

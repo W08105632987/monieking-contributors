@@ -9,6 +9,8 @@ from sqlalchemy import select
 from sqlalchemy import func
 
 from app.core.database import get_db
+from app.core.limiter import limiter
+from app.core.access import forbid_other_people_for_service_worker
 from app.core.dependencies import CurrentUser, DirectorOnly, DirectorOrAdmin, invalidate_user_cache
 from app.core.security import hash_password, hash_withdrawal_password
 from app.core.config import get_settings
@@ -100,7 +102,9 @@ async def list_banks(current_user: CurrentUser):
 
 
 @router.get("/resolve-bank-account")
+@limiter.limit("30/minute")
 async def resolve_bank_account(
+    request: Request,
     current_user: CurrentUser,
     bank_code: str,
     account_number: str,
@@ -145,6 +149,7 @@ async def get_user_by_id(
     # 012_zone_coverage.sql for why: whoever currently covers a
     # customer's zone is who can act on them, which changes as directors
     # reassign zone coverage day to day.
+    forbid_other_people_for_service_worker(current_user, target.id)
     if user_role == "customer" and target.id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     if user_role == "officer" and target.id != current_user.id:
@@ -204,7 +209,12 @@ async def list_users(
     return await build_user_responses(db, list(result.scalars().all()))
 
 
-@router.post("/customers", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+class CustomerCreatedResponse(UserResponse):
+    """The new customer plus the one-time password to hand to them. Shown ONCE; it is never stored in plain text."""
+    temporary_password: str | None = None
+
+
+@router.post("/customers", response_model=CustomerCreatedResponse, status_code=status.HTTP_201_CREATED)
 async def create_customer(
     body: RegisterCustomerRequest,
     current_user: CurrentUser,
@@ -239,8 +249,8 @@ async def create_customer(
 
     # The password is always the default (phone number + MK), whatever the form sent: the customer is told to
     # change it the first time they log in with it (see must_change_password).
-    from app.services.default_password import default_password
-    initial_password = default_password(body.phone_number)
+    from app.services.default_password import new_temporary_password
+    initial_password = new_temporary_password()   # random; shown once to the officer in the response (finding S-14)
     customer_email = f"{body.phone_number}@monieking.app"
     resp = await supabase_admin_request(
         "POST",
@@ -319,7 +329,8 @@ async def create_customer(
         new_value={"full_name": customer.full_name, "phone_number": customer.phone_number},
         ip_address=request.client.host if request and request.client else None,
     )
-    return await build_user_response(db, customer)
+    created = await build_user_response(db, customer)
+    return CustomerCreatedResponse(**created.model_dump(), temporary_password=initial_password)
 
 
 @router.post("/officers", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -354,11 +365,9 @@ async def create_officer(
         created_by=   director.id,
         status=       UserStatus.ACTIVE,
         login_password_hash=      hash_password(body.password),
-        # Same default convention as customer accounts (phone number +
-        # "MK") — without this, withdrawal_password_hash stays NULL
-        # forever and the officer can never withdraw at all, since there
-        # was no way to set one after account creation either.
-        withdrawal_password_hash= hash_password(f"{body.phone_number}MK"),
+        # No placeholder withdrawal password (it used to be phone number + "MK", which anyone could guess).
+        # The officer sets their own the first time they need one (POST /auth/set-withdrawal-password).
+        withdrawal_password_hash= None,
     )
     db.add(officer)
     await db.flush()
@@ -491,69 +500,34 @@ async def delete_user(
     if director.id == user.id:
         raise HTTPException(status_code=400, detail="You can't delete your own account")
 
-    from app.models.card import ContributionRecord, ContributionCard
-    from app.models.withdrawal import Withdrawal
-    from app.models.wallet import WalletTransaction
-    from app.models.audit import AuditLog
-    from app.models.notification import Broadcast
+    # SECURITY (finding S-11): this endpoint used to let an admin delete a DIRECTOR or another admin. Only people who
+    # work with customers can be removed here; top-level accounts are never deletable through the API.
+    if user.role in (UserRole.DIRECTOR, UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Director and admin accounts cannot be deleted from here.")
 
-    has_contributions = (await db.execute(
-        select(func.count(ContributionRecord.id)).where(ContributionRecord.contributed_by == user.id)
-    )).scalar_one()
-    has_withdrawals = (await db.execute(
-        select(func.count(Withdrawal.id)).where(Withdrawal.customer_id == user.id)
-    )).scalar_one()
-    has_wallet_activity = (await db.execute(
-        select(func.count(WalletTransaction.id)).where(WalletTransaction.initiated_by == user.id)
-    )).scalar_one()
-    has_audit_history = (await db.execute(
-        select(func.count(AuditLog.id)).where(AuditLog.actor_id == user.id)
-    )).scalar_one()
-    has_broadcasts = (await db.execute(
-        select(func.count(Broadcast.id)).where(Broadcast.sent_by == user.id)
-    )).scalar_one()
+    from app.models.wallet import Wallet
+    from app.models.withdrawal import Withdrawal, WithdrawalStatus
+    wallet_kobo = (await db.execute(select(func.coalesce(func.sum(Wallet.balance_kobo), 0)).where(Wallet.owner_id == user.id))).scalar_one()
+    open_withdrawals = (await db.execute(select(func.count(Withdrawal.id)).where(
+        Withdrawal.customer_id == user.id, Withdrawal.status.in_([WithdrawalStatus.PENDING, WithdrawalStatus.CLAIMED])))).scalar_one()
+    if open_withdrawals:
+        raise HTTPException(status_code=409, detail="This person has unpaid withdrawals. Settle or reject them first.")
+    if int(wallet_kobo or 0) > 0:
+        raise HTTPException(status_code=409, detail="This account still holds money in its wallet. Pay it out or clear it first.")
 
-    if has_contributions or has_withdrawals or has_wallet_activity or has_audit_history or has_broadcasts:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "This account has real activity (contributions, withdrawals, or other "
-                "history) and can't be deleted — that history has to stay intact. "
-                "Suspend the account instead to lock them out until it's resolved."
-            ),
-        )
-
-    user_name = user.full_name
-    user_phone = user.phone_number
-
-    # Wallet, contribution_cards, notifications, and webauthn_credentials
-    # all cascade automatically on the users row delete (see
-    # 001_initial_schema.sql and 006_v6_features.sql) — nothing else to
-    # clean up manually here.
-
-    # Delete the Supabase Auth login first — if this fails, we haven't
-    # touched the local database yet, so nothing is left half-deleted.
-    from app.utils.supabase_admin_client import supabase_admin_request
-
-    await supabase_admin_request(
-        "DELETE",
-        f"/auth/v1/admin/users/{user.id}",
-        ok_statuses=(200, 204),
-        not_found_ok=True,  # the auth user may already be gone — that's fine
-        failure_detail="Could not delete the login account — please try again",
+    name = user.full_name
+    from app.services.erasure_service import erase_account
+    result, report = await erase_account(
+        db, user, director_id=director.id, hard_preferred=True,
+        ip_address=request.client.host if request and request.client else None,
     )
-
-    await log_action(
-        db, actor_id=director.id, action="user.deleted",
-        entity_type="user", entity_id=str(user.id),
-        old_value={"full_name": user_name, "phone_number": user_phone},
-        ip_address=request.client.host if request else None,
-    )
-
-    await db.delete(user)
-    await db.flush()
-
-    return {"message": f"{user_name} has been permanently deleted"}
+    await db.commit()
+    return {
+        "message": f"{name} has been permanently {result}",
+        "result": result,
+        "verified_clean": report["verified_clean"],
+        "report": report,
+    }
 
 
 @router.get("/{user_id}/overview")
@@ -654,7 +628,9 @@ async def update_my_location(
 
 
 @router.post("/me/avatar", response_model=UserResponse)
+@limiter.limit("10/minute")
 async def upload_avatar(
+    request: Request,
     body: dict,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
@@ -665,28 +641,12 @@ async def upload_avatar(
     006), and stores the resulting public URL. Overwrites any previous
     avatar for this user (same filename, upsert).
     """
-    import base64
-    import httpx
+    from app.utils.upload_guard import decode_upload, IMAGE_ONLY
 
-    data_url = body.get("image_base64", "")
-    if not data_url or "base64," not in data_url:
-        raise HTTPException(status_code=400, detail="No image provided")
-
-    header, encoded = data_url.split("base64,", 1)
-    content_type = "image/jpeg"
-    if "image/png" in header:
-        content_type = "image/png"
-    elif "image/webp" in header:
-        content_type = "image/webp"
-    ext = content_type.split("/")[1]
-
-    try:
-        image_bytes = base64.b64decode(encoded)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid image data")
-
-    if len(image_bytes) > 3 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Image too large — please use one under 3MB")
+    # Real file type from the bytes themselves, size checked before decoding (finding S-09).
+    image_bytes, content_type, ext = decode_upload(
+        body.get("image_base64", ""), max_bytes=3 * 1024 * 1024, allowed=IMAGE_ONLY,
+    )
 
     filename = f"{current_user.id}.{ext}"
     from app.utils.supabase_admin_client import supabase_admin_request
@@ -858,6 +818,7 @@ async def update_sms_alerts(
         raise HTTPException(status_code=404, detail="User not found")
 
     user_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    forbid_other_people_for_service_worker(current_user, target.id)
     if user_role == "customer" and target.id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     if user_role == "officer":

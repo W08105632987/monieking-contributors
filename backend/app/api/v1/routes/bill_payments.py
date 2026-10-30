@@ -242,6 +242,16 @@ async def get_request(request_id: uuid.UUID, user: CustomerOrOfficer, db: AsyncS
                 logger.exception("Could not resolve pending bill payment %s", request.id)
                 await db.rollback()
                 request = await db.get(BillPaymentRequest, request_id) or request
+
+    # A paid electricity purchase must always show its token. If it was not saved
+    # at purchase time, fetch it from the provider now (token only — no money moves).
+    if request.status == BillPaymentStatus.COMPLETED and not request.token:
+        try:
+            request = await bill_payment_service.backfill_missing_token(db, request)
+        except Exception:
+            logger.exception("Could not recover the token for bill payment %s", request.id)
+            await db.rollback()
+            request = await db.get(BillPaymentRequest, request_id) or request
     return await _to_item(db, request)
 
 
@@ -251,6 +261,7 @@ async def _to_item(db: AsyncSession, request: BillPaymentRequest) -> BillPayment
         id=request.id, biller_id=request.biller_id,
         biller_name=biller.name if biller else "Unknown biller",
         biller_category=biller.category.value if biller else "unknown",
+        biller_product_name=biller.product_name if biller else None,
         customer_id=request.customer_id, initiated_by=request.initiated_by.value,
         officer_id=request.officer_id, customer_reference=request.customer_reference,
         amount_kobo=request.amount_kobo, validated_account_name=request.validated_account_name,

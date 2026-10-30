@@ -574,6 +574,7 @@ export interface BillPaymentRequest {
   biller_id: string
   biller_name: string
   biller_category: BillerCategory
+  biller_product_name?: string | null
   customer_id: string
   initiated_by: IdentityRequestInitiatedBy
   officer_id: string | null

@@ -164,7 +164,8 @@ async def job_status(db: AsyncSession) -> list[dict]:
 
 def job_secret_ok(header_value: Optional[str]) -> bool:
     secret = os.environ.get("COOP_JOB_SECRET", "")
-    return bool(secret) and header_value == secret
+    import hmac
+    return bool(secret) and bool(header_value) and hmac.compare_digest(str(header_value).encode(), secret.encode())
 
 
 # ── go-live ───────────────────────────────────────────────────────────────

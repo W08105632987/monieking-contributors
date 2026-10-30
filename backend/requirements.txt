@@ -1,7 +1,7 @@
 # ── Web framework ─────────────────────────────────────────────────
-fastapi==0.109.0
+fastapi==0.115.14
 uvicorn[standard]==0.27.0
-python-multipart==0.0.7
+python-multipart==0.0.32
 
 # ── Database ──────────────────────────────────────────────────────
 sqlalchemy==2.0.25
@@ -10,11 +10,10 @@ asyncpg==0.29.0
 psycopg2-binary==2.9.10
 
 # ── Auth & Security ───────────────────────────────────────────────
-python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.3.0
-PyJWT==2.8.0
-cryptography==42.0.0
+PyJWT==2.15.1
+cryptography==50.0.2
 
 # ── Supabase ──────────────────────────────────────────────────────
 supabase==2.3.0
@@ -35,9 +34,9 @@ redis==5.0.1
 webauthn==1.11.1
 
 # ── Utilities ─────────────────────────────────────────────────────
-python-dotenv==1.0.0
+python-dotenv==1.2.4
 structlog==24.1.0
-sentry-sdk[fastapi]==1.40.0
+sentry-sdk[fastapi]==1.45.1
 aiosmtplib==3.0.1
 slowapi==0.1.9
 
@@ -55,8 +54,8 @@ httpx==0.24.1
 reportlab==4.2.5
 
 # Techhub verification (migration 046): pull the portrait out of the provider PDF.
-pypdf==4.3.1
-Pillow==10.4.0
+pypdf==6.21.4
+Pillow==13.0.0
 
 # Web Push (VAPID) — real OS-level push notifications, no Firebase/APNs
 # account needed. py-vapid signs with our own key pair; pywebpush sends

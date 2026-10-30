@@ -61,10 +61,10 @@ async def reset_password(user_id: str, body: PinBody, director: DirectorOnly, db
     The password is never written to the audit log."""
     await check_pin(db, director, body.pin)
     user = await _person(db, user_id)
-    from app.services.default_password import default_password
+    from app.services.default_password import new_temporary_password
     from app.core.security import hash_password
     from app.core.dependencies import invalidate_user_cache
-    pw = default_password(user.phone_number)   # phone + MK; they are asked to change it at every login until they do
+    pw = new_temporary_password()   # random; they are asked to change it at every login until they do
     from app.utils.supabase_admin_client import supabase_admin_request
     await supabase_admin_request(
         "PUT", f"/auth/v1/admin/users/{user.id}", json={"password": pw},
@@ -228,7 +228,7 @@ async def _risk(db: AsyncSession, user: User) -> dict:
         "explain": (
             "This account will be erased completely and the phone number can be used again."
             if hard else
-            "This customer has money or open requests. The account is closed, personal details are wiped and the phone number is freed, but the money records stay for your books."
+            "This customer has money history. Every personal detail is erased from the whole system — name, phone, bank details, photos, documents, devices, messages and the login — and the phone number can be used again. Only anonymous money records stay, for your books."
         ),
     }
 
@@ -256,41 +256,18 @@ async def delete_customer(user_id: str, body: DeleteBody, director: DirectorOnly
     money = risk["wallet_balance_kobo"] + risk["card_balance_kobo"]
     if money > 0 and not user.is_test and not body.acknowledge_money:
         raise HTTPException(status_code=409, detail="This customer still holds money. Tick the acknowledgement to continue.")
-    uid, name, phone = user.id, user.full_name, user.phone_number
-
-    if risk["mode"] == "delete":
-        plan = await purge_service.build_plan(db, [uid])
-        if plan.conflicts:
-            raise HTTPException(status_code=409, detail="This account is tied to other real records, so it can only be archived.")
-        try:
-            await purge_service.purge(db, test_user_ids=[uid], director_id=director.id)
-        except ValueError as e:
-            await db.rollback()
-            raise HTTPException(status_code=409, detail=str(e))
-        result = "deleted"
-    else:
-        user.full_name = "Deleted customer"
-        user.phone_number = f"x{uuid.uuid4().hex[:15]}"
-        for col in ("bank_name", "bank_code", "account_number", "account_name", "face_image_url", "next_of_kin_name",
-                    "next_of_kin_phone", "avatar_url", "location_latitude", "location_longitude", "detected_state",
-                    "state_of_residence"):
-            setattr(user, col, None)
-        user.status = UserStatus.SUSPENDED
-        user.deleted_at = datetime.now(timezone.utc)
-        user.withdrawal_password_hash = None
-        await db.execute(text("UPDATE pending_offline_customers SET claimed_at = now() WHERE phone_number = :p AND claimed_at IS NULL"), {"p": phone})
-        await db.flush()
-        result = "archived"
-
-    from app.utils.supabase_admin_client import supabase_admin_request
-    await supabase_admin_request(
-        "DELETE", f"/auth/v1/admin/users/{uid}", ok_statuses=(200, 204), not_found_ok=True,
-        failure_detail="Could not remove the login. Nothing was changed — please try again.",
-    )
-    await log_action(db, actor_id=director.id, action=f"customer.{result}", entity_type="user", entity_id=str(uid),
-                     old_value={"full_name": name, "phone_number": phone, "wallet_kobo": risk["wallet_balance_kobo"], "card_kobo": risk["card_balance_kobo"]})
+    name = user.full_name
+    from app.services.erasure_service import erase_account
+    # One engine for every delete: removes the person from every table, files and login, keeps only anonymous money
+    # records, then re-scans the database and tells the director whether anything still mentions them.
+    result, report = await erase_account(db, user, director_id=director.id, hard_preferred=(risk["mode"] == "delete"))
     await db.commit()
-    return {"message": f"{name} was {result}", "result": result}
+    return {
+        "message": f"{name} was {result}" + ("" if report["verified_clean"] else " — a few leftovers need a look, see details"),
+        "result": result,
+        "verified_clean": report["verified_clean"],
+        "report": report,
+    }
 
 
 # ── Identity services: delete with a warning ───────────────────────

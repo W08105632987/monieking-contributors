@@ -28,6 +28,75 @@ async def track_event(
     await db.commit()
 
 
+# ───────────────────────── batched writing (performance finding P-04) ─────────────────────────
+# Every page view used to open a database connection, write one row and commit. At launch scale that is tens of
+# thousands of tiny writes fighting real customers (logins, payments) for a handful of connections. Events now go
+# into a bounded in-memory queue and a background task writes them 200 at a time. If the queue is full the event
+# is dropped: a lost page-view is invisible, a slow login is not.
+import asyncio
+import logging
+
+_log = logging.getLogger(__name__)
+_queue: "asyncio.Queue[dict]" = asyncio.Queue(maxsize=20000)
+_flusher: "asyncio.Task | None" = None
+BATCH_SIZE = 200
+BATCH_WAIT_SECONDS = 2.0
+
+
+def enqueue_event(*, event_type: str, path: str, label: str | None, session_id: str,
+                  user_id: uuid.UUID | None, role: str | None, referrer: str | None) -> bool:
+    """Queue one event. Never blocks, never raises. Returns False if it was dropped."""
+    global _flusher
+    try:
+        _queue.put_nowait(dict(
+            event_type=event_type, path=path[:2000], label=(label or None) and label[:500],
+            session_id=session_id[:64], user_id=user_id, role=(role or None) and role[:30],
+            referrer=(referrer or None) and referrer[:500],
+        ))
+        if _flusher is None or _flusher.done():
+            _flusher = asyncio.get_running_loop().create_task(_flush_forever())
+        return True
+    except Exception:  # noqa: BLE001 - full queue or no running loop: drop, never fail the caller
+        return False
+
+
+async def _write_batch(batch: list[dict]) -> None:
+    from app.core.database import AsyncSessionLocal
+    try:
+        async with AsyncSessionLocal() as db:
+            db.add_all([AnalyticsEvent(**b) for b in batch])
+            await db.commit()
+        return
+    except Exception:  # noqa: BLE001 - e.g. one forged user_id; retry one by one so the good events survive
+        pass
+    for b in batch:
+        try:
+            async with AsyncSessionLocal() as db:
+                db.add(AnalyticsEvent(**b))
+                await db.commit()
+        except Exception:  # noqa: BLE001
+            _log.debug("analytics event dropped", exc_info=True)
+
+
+async def _flush_forever() -> None:
+    loop = asyncio.get_running_loop()
+    while True:
+        batch = [await _queue.get()]
+        deadline = loop.time() + BATCH_WAIT_SECONDS
+        while len(batch) < BATCH_SIZE:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            try:
+                batch.append(await asyncio.wait_for(_queue.get(), remaining))
+            except asyncio.TimeoutError:
+                break
+        try:
+            await _write_batch(batch)
+        except Exception:  # noqa: BLE001
+            _log.warning("analytics batch failed", exc_info=True)
+
+
 _LAGOS = timezone(timedelta(hours=1))   # Nigeria has no daylight saving
 
 

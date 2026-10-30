@@ -43,10 +43,11 @@ function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
     if (newPwd !== confirm) { toast.error('Passwords do not match'); return }
     setLoading(true)
     try {
-      if (!isFirstTimeSetup) {
-        await api.post('/auth/verify-withdrawal-password', { withdrawal_password: current })
-      }
-      await api.post('/auth/set-withdrawal-password', { withdrawal_password: newPwd })
+      // The server itself now checks the current password when changing (it used to rely on this screen only).
+      await api.post('/auth/set-withdrawal-password', {
+        withdrawal_password: newPwd,
+        ...(isFirstTimeSetup ? {} : { current_withdrawal_password: current }),
+      })
       if (user) setUser({ ...user, has_withdrawal_password: true })
       toast.success(isFirstTimeSetup ? 'Withdrawal password set' : 'Withdrawal password updated')
       onClose()

@@ -10,13 +10,14 @@ from datetime import datetime, timezone
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.limiter import limiter
 from app.core.dependencies import CurrentUser, CustomerOrOfficer, DirectorOrAdmin
 from app.core.security import generate_reference
 from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus
@@ -191,6 +192,11 @@ class FileUploadRequest(BaseModel):
     file_base64: str = Field(..., description="Base64 encoded data (data:image/jpeg;base64,...)")
 
 
+async def _presigned(payload):
+    from app.utils.private_files import presign
+    return await presign(payload)
+
+
 def _serialize(req: ManualServiceRequest) -> dict:
     return {
         "id":              str(req.id),
@@ -220,7 +226,9 @@ def _serialize(req: ManualServiceRequest) -> dict:
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.post("/upload")
+@limiter.limit("20/minute")
 async def upload_document(
+    request: Request,
     body: FileUploadRequest,
     current_user: CurrentUser,
 ):
@@ -228,46 +236,33 @@ async def upload_document(
     Upload a document (ID, photo, CAC certificate, affidavit, screenshot)
     to Supabase Storage and return the public URL.
     """
-    import base64
-    data_url = body.file_base64
-    if not data_url or "base64," not in data_url:
-        raise HTTPException(status_code=400, detail="Invalid file data")
+    from app.utils.upload_guard import decode_upload, IMAGES_AND_PDF
 
-    header, encoded = data_url.split("base64,", 1)
-    content_type = "image/jpeg"
-    ext = "jpg"
-    if "png" in header:
-        content_type = "image/png"
-        ext = "png"
-    elif "webp" in header:
-        content_type = "image/webp"
-        ext = "webp"
-    elif "pdf" in header:
-        content_type = "application/pdf"
-        ext = "pdf"
+    # Real file type from the bytes, size checked before decoding, never a client-claimed type (finding S-09).
+    file_bytes, content_type, ext = decode_upload(body.file_base64, max_bytes=5 * 1024 * 1024, allowed=IMAGES_AND_PDF)
 
-    try:
-        file_bytes = base64.b64decode(encoded)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Could not decode file data")
+    # 128 random bits: the address of a person's ID document cannot be guessed (it was 32 bits before).
+    storage_filename = f"manual_{current_user.id}_{uuid.uuid4().hex}.{ext}"
 
-    if len(file_bytes) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 5MB)")
-
-    storage_filename = f"manual_{current_user.id}_{uuid.uuid4().hex[:8]}.{ext}"
-
-    try:
-        await supabase_admin_request(
-            "POST",
-            f"/storage/v1/object/avatars/{storage_filename}",
-            content=file_bytes,
-            extra_headers={"Content-Type": content_type, "x-upsert": "true"},
-            failure_detail="Could not upload file — please try again",
-        )
+    # No silent fallback any more. The old code stored the ENTIRE base64 file in the database when storage failed.
+    from app.utils import private_files
+    if private_files.private_enabled():
+        # ID documents go to the PRIVATE bucket; the stored value is a reference that opens nothing on its own.
+        await private_files.ensure_bucket()
+        bucket = private_files.PRIVATE_BUCKET
+    else:
+        bucket = "avatars"
+    await supabase_admin_request(
+        "POST",
+        f"/storage/v1/object/{bucket}/{storage_filename}",
+        content=file_bytes,
+        extra_headers={"Content-Type": content_type, "x-upsert": "false"},
+        failure_detail="Could not upload file — please try again",
+    )
+    if bucket == "avatars":
         url = f"{settings.SUPABASE_URL}/storage/v1/object/public/avatars/{storage_filename}"
-    except Exception:
-        # Fallback to serving the data url if storage request fails
-        url = data_url
+    else:
+        url = private_files.reference_for(storage_filename)
 
     return {"url": url, "filename": body.filename}
 
@@ -306,7 +301,8 @@ async def submit_service_request(
     prepared_form: dict | None = None
     service_type = body.service_type
     enrollment_bank = body.enrollment_bank
-    uploaded_files = body.uploaded_files
+    from app.utils.upload_guard import validate_file_urls
+    uploaded_files = validate_file_urls(body.uploaded_files, max_data_bytes=5 * 1024 * 1024)
 
     if live:
         tpl, ver = found
@@ -335,7 +331,7 @@ async def submit_service_request(
         prepared_form = {**prepared.form_data, **carried}
         service_type = prepared.service_type
         enrollment_bank = prepared.enrollment_bank
-        uploaded_files = prepared.uploaded_files
+        uploaded_files = validate_file_urls(prepared.uploaded_files, max_data_bytes=5 * 1024 * 1024)
         template_version_id = ver.id
     else:
         if not _has_content(body.form_data) and not body.uploaded_files:
@@ -431,7 +427,7 @@ async def submit_service_request(
             pass
 
     return {
-        "request": _serialize(req),
+        "request": await _presigned(_serialize(req)),
         "id": str(req.id),
         "message": "Your service request has been submitted and is awaiting a service worker.",
         "price_kobo": price_kobo,
@@ -464,7 +460,7 @@ async def list_my_requests(
 
     offset = (page - 1) * page_size
     rows = (await db.scalars(q.offset(offset).limit(page_size))).all()
-    return {"data": [_serialize(r) for r in rows], "total": total, "page": page, "page_size": page_size}
+    return {"data": await _presigned([_serialize(r) for r in rows]), "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/my-requests/{request_id}")
@@ -489,7 +485,7 @@ async def get_my_request(
     if not (is_owner or is_submitter_officer or is_director):
         raise HTTPException(status_code=403, detail="Access denied.")
 
-    out = _serialize(req)
+    out = await _presigned(_serialize(req))
     from app.models.wallet import WalletTransaction
     from app.services.refund_service import refund_reference
     out["refunded_kobo"] = await db.scalar(
@@ -527,7 +523,7 @@ async def list_officer_requests(
 
     offset = (page - 1) * page_size
     rows = (await db.scalars(q.offset(offset).limit(page_size))).all()
-    return {"data": [_serialize(r) for r in rows], "total": total, "page": page, "page_size": page_size}
+    return {"data": await _presigned([_serialize(r) for r in rows]), "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/validate-referral/{code}")

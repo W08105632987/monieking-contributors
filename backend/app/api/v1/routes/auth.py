@@ -18,7 +18,7 @@ from app.core.security import verify_supabase_jwt
 from app.core.limiter import limiter
 from app.schemas.auth import LoginRequest
 from app.services.login_service import (
-    phone_to_email_alias, check_not_locked, record_failure, record_success,
+    phone_to_email_alias, check_not_locked, record_failure, record_success, begin_attempt, abort_attempt,
     password_grant, refresh_grant,
 )
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -55,7 +55,7 @@ LEGAL_DOCUMENT_VERSION = "2026-09-01"
 
 @router.post("/signup-session")
 @limiter.limit("5/minute")
-async def signup_session(request: Request, response: Response, body: LoginRequest):
+async def signup_session(request: Request, response: Response, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     """
     Sets the session cookie right after the frontend calls
     supabase.auth.signUp() — used ONLY at that exact moment in
@@ -67,6 +67,13 @@ async def signup_session(request: Request, response: Response, body: LoginReques
     sets to know which authenticated Supabase account to attach the new
     platform user row to.
     """
+    # SECURITY (finding S-02): this endpoint exchanges a password for a session WITHOUT the per-account
+    # lockout that /auth/login enforces. It exists only for the instant of registration, before the platform
+    # user row exists. If a platform account already has this phone number it is a real, registered customer —
+    # refuse, so this can never be used to guess their password around the lockout.
+    existing = (await db.execute(select(User.id).where(User.phone_number == body.phone_number))).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Could not start a session. Please log in instead.")
     email = phone_to_email_alias(body.phone_number)
     session = await password_grant(email, body.password)
     set_session_cookies(response, session["access_token"], session.get("refresh_token"))
@@ -240,7 +247,7 @@ async def reset_payment_pin(request: Request, body: dict, current_user: CurrentU
     pin = str(body.get("pin", ""))
     pin_service.validate_new_pin(pin)
     try:
-        await verify_login_password(current_user.phone_number, str(body.get("login_password", "")))
+        await verify_login_password(current_user.phone_number, str(body.get("login_password", "")), db=db, user_id=current_user.id)
     except HTTPException as e:
         if e.status_code == 401:
             raise HTTPException(status_code=401, detail="Your login password is incorrect")
@@ -253,12 +260,16 @@ async def reset_payment_pin(request: Request, body: dict, current_user: CurrentU
 
 
 @router.post("/set-withdrawal-password", status_code=200)
+@limiter.limit("10/minute")
 async def set_withdrawal_password(
+    request: Request,
     body: dict,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
     password = body.get("withdrawal_password", "")
+    if not isinstance(password, str):
+        raise HTTPException(status_code=400, detail="Invalid withdrawal password")
     if len(password) < 8:
         raise HTTPException(status_code=400, detail="Withdrawal password must be at least 8 characters")
     if password.isdigit():
@@ -270,6 +281,16 @@ async def set_withdrawal_password(
     # _CACHE_EXCLUDE in dependencies.py — so this fetch also gets the
     # accurate up-to-the-second value for the is_change check below.)
     user = await db.get(User, current_user.id)
+    # SECURITY (finding S-03): CHANGING an existing withdrawal password must prove knowledge of the current
+    # one, enforced HERE on the server. Before, only the app screen asked for it, so anyone holding a stolen
+    # login session could overwrite the password and then withdraw. First-time setup has nothing to prove.
+    if user.withdrawal_password_hash is not None:
+        from app.services.withdrawal_auth_service import check_withdrawal_password
+        current_pw = body.get("current_withdrawal_password", "")
+        if not isinstance(current_pw, str) or not current_pw:
+            raise HTTPException(status_code=400, detail="Enter your current withdrawal password to change it")
+        await check_withdrawal_password(db, current_user, current_pw)
+        user = await db.get(User, current_user.id)
     # Only a genuine CHANGE (there was already a password) is worth
     # alerting on — first-time setup during registration isn't a
     # security event, there's nothing to protect yet.
@@ -343,6 +364,12 @@ async def request_password_reset_otp(
     if not user:
         return generic_response
 
+    # SECURITY (finding S-04): cap codes per ACCOUNT per hour (stops SMS flooding and the "request a fresh code to
+    # reset the guess counter" trick). Same generic answer, so this reveals nothing.
+    from app.core import otp_guard
+    if not await otp_guard.allow_code_request(user.id):
+        return generic_response
+
     otp = es.new_code()
     user.login_password_reset_otp_hash = hash_password(otp)
     user.login_password_reset_otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_TTL_MINUTES)
@@ -390,6 +417,10 @@ async def reset_password_with_otp(
     if not user or not user.login_password_reset_otp_hash:
         raise HTTPException(status_code=400, detail="Invalid or expired code")
 
+    from app.core import otp_guard
+    if await otp_guard.guesses_exhausted(user.id):
+        raise HTTPException(status_code=429, detail="Too many wrong codes. Please try again later.")
+
     if not user.login_password_reset_otp_expires_at or user.login_password_reset_otp_expires_at < datetime.now(timezone.utc):
         user.login_password_reset_otp_hash = None
         user.login_password_reset_otp_expires_at = None
@@ -402,9 +433,10 @@ async def reset_password_with_otp(
         await db.commit()
         raise HTTPException(status_code=429, detail="Too many wrong codes. Request a new one.")
 
-    from app.core.security import verify_password
-    if not verify_password(str(otp), user.login_password_reset_otp_hash):
+    from app.core.security import verify_password_async
+    if not await verify_password_async(str(otp), user.login_password_reset_otp_hash):
         user.password_reset_attempts = (user.password_reset_attempts or 0) + 1
+        await otp_guard.note_wrong_guess(user.id)
         await db.commit()
         raise HTTPException(status_code=400, detail="Invalid or expired code")
 
@@ -449,7 +481,7 @@ async def change_login_password(
 
     try:
         # Same server-side call login uses. A wrong password is a 401; an unreachable login service is a clear 5xx.
-        await verify_login_password(current_user.phone_number, current_password)
+        await verify_login_password(current_user.phone_number, current_password, db=db, user_id=current_user.id)
         await supabase_admin_request(
             "PUT",
             f"/auth/v1/admin/users/{current_user.id}",
@@ -553,12 +585,17 @@ async def login(
         raise HTTPException(status_code=403, detail="Account is suspended")
 
     check_not_locked(user)
+    attempt = await begin_attempt(db, user)   # atomic: parallel guesses are each counted (S-01)
 
     try:
         session = await password_grant(phone_to_email_alias(body.phone_number), body.password)
     except HTTPException as e:
         if isinstance(e.detail, dict) and e.detail.get("code") == "WRONG_PASSWORD":
-            await record_failure(db, user)   # always raises — either the plain wrong-password error, the 4th-attempt warning, or the lockout
+            await record_failure(db, user, attempt)   # always raises — either the plain wrong-password error, the 4th-attempt warning, or the lockout
+        await abort_attempt(db, user)   # auth service trouble, not a wrong password: don't punish the customer
+        raise
+    except Exception:
+        await abort_attempt(db, user)
         raise
 
     await record_success(db, user)

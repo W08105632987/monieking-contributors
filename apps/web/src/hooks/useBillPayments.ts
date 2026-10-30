@@ -32,7 +32,11 @@ export function usePayBill(customerId?: string) {
       // The person tapping Pay confirms with their own 4-digit PIN (an officer paying for a customer uses the officer's PIN).
       return withPin(async (pin) => {
         const { data } = await api.post<BillPaymentRequest>(
-          '/bill-payments/pay', { ...body, pin }, { params: customerId ? { customer_id: customerId } : {} },
+          '/bill-payments/pay', { ...body, pin },
+          // Electricity vends (AEDC and others) can take well over the app's usual 20s: the server
+          // checks the meter, then waits on the provider. Giving up early meant no receipt and no token
+          // even though the payment went through, so this call waits longer than any other.
+          { params: customerId ? { customer_id: customerId } : {}, timeout: 90_000 },
         )
         return data
       }, { title: 'Confirm with your PIN', message: 'Enter your 4-digit payment PIN to complete this payment.' })
@@ -46,7 +50,30 @@ export function usePayBill(customerId?: string) {
       // unrelated happened to refetch it.
       qc.invalidateQueries({ queryKey: ['wallet'] })
       qc.invalidateQueries({ queryKey: ['wallet-transactions'] })
+      qc.invalidateQueries({ queryKey: ['service-history'] })
     },
+    onError: () => {
+      // If the call timed out the payment may still have gone through — refresh what the person sees.
+      qc.invalidateQueries({ queryKey: ['wallet'] })
+      qc.invalidateQueries({ queryKey: ['service-history'] })
+    },
+  })
+}
+
+/** One bill payment, kept fresh while it is still processing (and, for electricity, until its token arrives). */
+export function useBillRequest(id: string | null | undefined, initial?: BillPaymentRequest | null) {
+  return useQuery({
+    queryKey: ['bill-request', id],
+    enabled: !!id,
+    initialData: initial ?? undefined,
+    queryFn: async () => (await api.get<BillPaymentRequest>(`/bill-payments/requests/${id}`)).data,
+    refetchInterval: (q) => {
+      const r = q.state.data
+      if (!r) return false
+      const waitingForToken = r.status === 'completed' && r.biller_category === 'electricity' && !r.token
+      return r.status === 'pending' || waitingForToken ? 4000 : false
+    },
+    refetchIntervalInBackground: false,
   })
 }
 

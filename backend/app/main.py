@@ -160,6 +160,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+# ── Real client IP behind the proxy + request size cap. Added LAST so they run FIRST (outermost). ──
+from app.core.client_ip import TrustedProxyMiddleware
+from app.core.body_limit import BodySizeLimitMiddleware
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(TrustedProxyMiddleware)
+
 
 # ── Import and mount routers AFTER middleware ──────────────────────
 from app.api.v1.routes import (
@@ -274,8 +280,13 @@ async def health_versioned():
     # "is the server back yet?" check needs this one specifically.
     return {"status": "ok", "app": "MonieKing Contributors"}
 
+from app.core.dependencies import DirectorOrAdmin as _DirectorOrAdmin
+
+
 @app.get(f"{PREFIX}/health/auth-config")
-async def health_auth_config():
+async def health_auth_config(_staff: _DirectorOrAdmin):
+    # SECURITY (finding S-12): this was open to the whole internet and printed pieces of the Supabase service-role
+    # key and of the JWT signing secret. Now it needs a director/admin login and never shows any part of a secret.
     import httpx
     clean_url = settings.SUPABASE_URL.strip().strip('"').strip("'").rstrip("/")
     clean_key = settings.SUPABASE_SERVICE_ROLE_KEY.strip().strip('"').strip("'")
@@ -298,8 +309,8 @@ async def health_auth_config():
         "cookie_secure": settings.cookie_secure,
         "cors_origins": settings.cors_origins_list,
         "supabase_url": clean_url,
-        "service_role_key_prefix": clean_key[:12] + "..." + clean_key[-6:] if clean_key else "EMPTY",
-        "jwt_secret_prefix": settings.SUPABASE_JWT_SECRET[:8] + "..." if settings.SUPABASE_JWT_SECRET else "EMPTY",
+        "service_role_key_set": bool(clean_key),
+        "jwt_secret_set": bool(settings.SUPABASE_JWT_SECRET),
         "supabase_connectivity_status": status_code,
         "supabase_connectivity_response": body_snippet,
     }
