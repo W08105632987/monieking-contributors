@@ -5,8 +5,10 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import attempt_guard
+from app.core.attempt_guard import AttemptLocked
 from app.core.config import get_settings
-from app.core.security import hash_withdrawal_password, verify_withdrawal_password
+from app.core.security import hash_withdrawal_password, verify_withdrawal_password_async
 from app.models.user import User
 
 settings = get_settings()
@@ -34,7 +36,10 @@ async def set_pin(db: AsyncSession, user_id, pin: str) -> None:
 
 
 async def check_pin(db: AsyncSession, user: User, pin: str | None, *, need_kyc: bool = True) -> None:
-    """Raises on a missing PIN setup (428), lockout (429) or a wrong PIN (401). Returns on success."""
+    """Raises on a missing PIN setup (428), lockout (429) or a wrong PIN (403). Returns on success.
+
+    Brute-force safe: an attempt is reserved atomically BEFORE the PIN is compared (core/attempt_guard.py),
+    so firing many guesses in parallel can no longer be counted as one."""
     user = await db.get(User, user.id)   # never trust a cached copy for a security check
     if need_kyc:
         from app.services.kyc_gate import require_kyc
@@ -47,16 +52,14 @@ async def check_pin(db: AsyncSession, user: User, pin: str | None, *, need_kyc: 
         raise HTTPException(status_code=429, detail=f"Too many incorrect attempts. Try again in {mins} minute(s).")
     if not pin:
         raise HTTPException(status_code=400, detail="Enter your PIN to continue")
-    if verify_withdrawal_password(str(pin), user.payment_pin_hash):
-        user.pin_failed_attempts = 0
-        user.pin_locked_until = None
-        await db.flush()
+    try:
+        n = await attempt_guard.reserve(db, user.id, attempt_guard.PIN)
+    except AttemptLocked as e:
+        raise HTTPException(status_code=429, detail=f"Too many incorrect attempts. Try again in {e.minutes_left()} minute(s).")
+    if await verify_withdrawal_password_async(str(pin), user.payment_pin_hash):
+        await attempt_guard.clear(db, user.id, attempt_guard.PIN)
         return
-    user.pin_failed_attempts += 1
-    if user.pin_failed_attempts >= settings.MAX_LOGIN_ATTEMPTS:
-        user.pin_locked_until = now + timedelta(minutes=settings.LOCKOUT_MINUTES)
-        user.pin_failed_attempts = 0
-        await db.commit()
+    out = await attempt_guard.register_failure(db, user.id, attempt_guard.PIN, n)
+    if out.locked:
         raise HTTPException(status_code=429, detail=f"Too many incorrect attempts. Try again in {settings.LOCKOUT_MINUTES} minute(s).")
-    await db.commit()   # keep the count: the exception below rolls the request back
     raise HTTPException(status_code=403, detail="Incorrect PIN")   # not 401: a 401 would make the app try to refresh the login and retry

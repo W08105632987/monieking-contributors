@@ -16,10 +16,17 @@ class Settings(BaseSettings):
     APP_NAME: str = "MonieKing Contributors"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
+    # Trust the proxy's X-Forwarded-For (right-most entry only). Always on when APP_ENV=production.
+    TRUST_PROXY_HEADERS: bool = False
 
     # ── Database ──────────────────────────────────────────────────
     DATABASE_URL: str = ""
     DATABASE_URL_SYNC: str = ""
+    # Connection pool PER WORKER. Total = workers x (size + overflow); keep it under your database pooler limit.
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
+    # Refuse request bodies larger than this (bytes). Uploads are base64 JSON, so 8 MB covers a 5 MB file.
+    MAX_REQUEST_BODY_BYTES: int = 8 * 1024 * 1024
 
     # ── Supabase ──────────────────────────────────────────────────
     SUPABASE_URL: str = ""
@@ -57,6 +64,8 @@ class Settings(BaseSettings):
     MONNIFY_SECRET_KEY: str = ""
     MONNIFY_CONTRACT_CODE: str = ""
     MONNIFY_WEBHOOK_SECRET: str = ""
+    # Re-ask Monnify to confirm every payment before crediting (defence in depth). Turn on once tested on live.
+    MONNIFY_WEBHOOK_REQUERY: bool = False
     MONNIFY_SOURCE_ACCOUNT_NUMBER: str = "5856364342"  
 
     YOUVERIFY_BASE_URL: str = "https://api.youverify.co"

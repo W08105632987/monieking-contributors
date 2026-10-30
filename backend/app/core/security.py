@@ -38,6 +38,19 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
+# bcrypt at 12 rounds burns ~250ms of CPU. Called directly inside an async endpoint it FREEZES the whole server for
+# that long (every other request waits), so a burst of PIN / withdrawal-password / code checks would stall the app
+# (performance finding P-02). These helpers run it in a worker thread; bcrypt releases the GIL while hashing.
+async def verify_password_async(plain: str, hashed: str) -> bool:
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(pwd_context.verify, plain, hashed)
+
+
+async def hash_password_async(password: str) -> str:
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(pwd_context.hash, password)
+
+
 # ── JWT verification (Supabase-issued toke# ── JWT verification (Supabase-issued tokens) ─────────────────────
 async def verify_supabase_jwt(token: str) -> dict:
     try:
@@ -120,3 +133,7 @@ def hash_withdrawal_password(password: str) -> str:
 
 def verify_withdrawal_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
+
+async def verify_withdrawal_password_async(plain: str, hashed: str) -> bool:
+    return await verify_password_async(plain, hashed)

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.wallet import Wallet, TxCategory
 from app.models.webhook import PaymentWebhook
@@ -23,6 +24,14 @@ from app.models.funding_fee import FundingRecord
 from app.services.funding_fees import fee_for, get_settings as get_fee_settings
 
 logger = logging.getLogger(__name__)
+_settings = get_settings()
+
+
+def _may_skip_signature(provider) -> bool:
+    """SECURITY (finding S-06): the signature check may only be relaxed for a sandbox provider AND a non-production
+    deployment. Before, it relied on MONNIFY_BASE_URL alone — if that variable was missing or still pointed at the
+    sandbox in production, ANYONE could post a forged payment notice and credit any wallet for free."""
+    return bool(provider.is_sandbox) and _settings.APP_ENV != "production"
 
 # The only Monnify event that means "money arrived in a customer's account".
 # Monnify also posts disbursement, refund, settlement and mandate events —
@@ -54,7 +63,7 @@ async def monnify_payment_webhook(
 
     # ── Step 1: Verify signature ──────────────────────────────────
     if not signature:
-        if provider.is_sandbox:
+        if _may_skip_signature(provider):
             logger.warning(
                 "Monnify sandbox webhook received with no signature header "
                 "(expected in sandbox). Proceeding without verification."
@@ -62,7 +71,7 @@ async def monnify_payment_webhook(
         else:
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
     elif not provider.verify_webhook_signature(raw_body, signature):
-        if provider.is_sandbox:
+        if _may_skip_signature(provider):
             logger.warning(
                 "Monnify sandbox webhook received with non-matching signature. "
                 "Allowing test payment in sandbox mode."
@@ -105,6 +114,17 @@ async def monnify_payment_webhook(
             event.transaction_reference, bool(event.account_number), event.amount_kobo,
         )
         return {"message": "Event acknowledged — incomplete payment data, logged for manual review"}
+
+    # ── Step 2b (optional, MONNIFY_WEBHOOK_REQUERY=true): ask Monnify itself, not just the signature ──
+    # Defence in depth: even a correctly signed message is checked against Monnify's own record before money moves.
+    if _settings.MONNIFY_WEBHOOK_REQUERY and not provider.is_sandbox:
+        confirmed = await provider.get_transaction(event.transaction_reference)
+        if confirmed is None:
+            raise HTTPException(status_code=503, detail="Could not confirm the payment yet; please retry")
+        if (confirmed.status or "").upper() not in PAID_STATUSES or confirmed.amount_kobo != event.amount_kobo:
+            logger.error("Monnify requery mismatch for %s: webhook=%s/%s monnify=%s/%s - NOT credited",
+                         event.transaction_reference, event.status, event.amount_kobo, confirmed.status, confirmed.amount_kobo)
+            return {"message": "Event acknowledged - payment could not be confirmed, logged for manual review"}
 
     # ── Step 3: Idempotency check ─────────────────────────────────
     existing = await db.execute(

@@ -10,13 +10,14 @@ from datetime import datetime, timezone
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.limiter import limiter
 from app.core.dependencies import CurrentUser, CustomerOrOfficer, DirectorOrAdmin
 from app.core.security import generate_reference
 from app.models.manual_service_request import ManualServiceRequest, ManualServiceStatus
@@ -220,7 +221,9 @@ def _serialize(req: ManualServiceRequest) -> dict:
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.post("/upload")
+@limiter.limit("20/minute")
 async def upload_document(
+    request: Request,
     body: FileUploadRequest,
     current_user: CurrentUser,
 ):
@@ -228,46 +231,23 @@ async def upload_document(
     Upload a document (ID, photo, CAC certificate, affidavit, screenshot)
     to Supabase Storage and return the public URL.
     """
-    import base64
-    data_url = body.file_base64
-    if not data_url or "base64," not in data_url:
-        raise HTTPException(status_code=400, detail="Invalid file data")
+    from app.utils.upload_guard import decode_upload, IMAGES_AND_PDF
 
-    header, encoded = data_url.split("base64,", 1)
-    content_type = "image/jpeg"
-    ext = "jpg"
-    if "png" in header:
-        content_type = "image/png"
-        ext = "png"
-    elif "webp" in header:
-        content_type = "image/webp"
-        ext = "webp"
-    elif "pdf" in header:
-        content_type = "application/pdf"
-        ext = "pdf"
+    # Real file type from the bytes, size checked before decoding, never a client-claimed type (finding S-09).
+    file_bytes, content_type, ext = decode_upload(body.file_base64, max_bytes=5 * 1024 * 1024, allowed=IMAGES_AND_PDF)
 
-    try:
-        file_bytes = base64.b64decode(encoded)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Could not decode file data")
+    # 128 random bits: the address of a person's ID document cannot be guessed (it was 32 bits before).
+    storage_filename = f"manual_{current_user.id}_{uuid.uuid4().hex}.{ext}"
 
-    if len(file_bytes) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 5MB)")
-
-    storage_filename = f"manual_{current_user.id}_{uuid.uuid4().hex[:8]}.{ext}"
-
-    try:
-        await supabase_admin_request(
-            "POST",
-            f"/storage/v1/object/avatars/{storage_filename}",
-            content=file_bytes,
-            extra_headers={"Content-Type": content_type, "x-upsert": "true"},
-            failure_detail="Could not upload file — please try again",
-        )
-        url = f"{settings.SUPABASE_URL}/storage/v1/object/public/avatars/{storage_filename}"
-    except Exception:
-        # Fallback to serving the data url if storage request fails
-        url = data_url
+    # No silent fallback any more. The old code stored the ENTIRE base64 file in the database when storage failed.
+    await supabase_admin_request(
+        "POST",
+        f"/storage/v1/object/avatars/{storage_filename}",
+        content=file_bytes,
+        extra_headers={"Content-Type": content_type, "x-upsert": "false"},
+        failure_detail="Could not upload file — please try again",
+    )
+    url = f"{settings.SUPABASE_URL}/storage/v1/object/public/avatars/{storage_filename}"
 
     return {"url": url, "filename": body.filename}
 

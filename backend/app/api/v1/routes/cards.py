@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
+from app.core.access import require_card_viewer
 from app.core.dependencies import CurrentUser
 from app.core.redis_client import get_redis
 from app.core.idempotency import claim_idempotency_key, store_result, release_key, DuplicateInProgress
@@ -137,6 +138,7 @@ async def get_card(
     card = await resolve_card(db, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
+    require_card_viewer(current_user)
     if current_user.role == UserRole.CUSTOMER and card.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     if current_user.role == UserRole.OFFICER:
@@ -172,6 +174,7 @@ async def get_card_withdrawals(
     card = await resolve_card(db, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
+    require_card_viewer(current_user)
     if current_user.role == UserRole.CUSTOMER and card.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     if current_user.role == UserRole.OFFICER:
@@ -195,6 +198,7 @@ async def get_card_grid(
     card = await resolve_card(db, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
+    require_card_viewer(current_user)
     if current_user.role == UserRole.CUSTOMER and card.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     if current_user.role == UserRole.OFFICER:
@@ -222,6 +226,7 @@ async def get_card_detail(
     card = await resolve_card(db, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
+    require_card_viewer(current_user)
     if current_user.role == UserRole.CUSTOMER and card.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     if current_user.role == UserRole.OFFICER:
@@ -255,6 +260,7 @@ async def preview_card_withdrawal(
     card = await resolve_card(db, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
+    require_card_viewer(current_user)
     if current_user.role == UserRole.CUSTOMER and card.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     if current_user.role == UserRole.OFFICER:
@@ -285,6 +291,7 @@ async def list_card_contributions(
     card = await resolve_card(db, card_id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
+    require_card_viewer(current_user)
     if current_user.role == UserRole.CUSTOMER and card.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     if current_user.role == UserRole.OFFICER:
@@ -445,6 +452,7 @@ async def post_card_contribution(
 async def _authorize_card_action(db: AsyncSession, current_user: User, card: ContributionCard) -> None:
     """Shared access check for card actions the owner or their managing
     officer can both trigger (convert, manual close)."""
+    require_card_viewer(current_user)
     if current_user.role == UserRole.CUSTOMER and card.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="You do not own this card")
     if current_user.role == UserRole.OFFICER:

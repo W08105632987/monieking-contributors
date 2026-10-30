@@ -19,8 +19,9 @@ engine = create_async_engine(
     # long-running uvicorn process, so it should hold a small pool of
     # already-open connections and reuse them across requests instead.
     poolclass=AsyncAdaptedQueuePool,
-    pool_size=5,
-    max_overflow=5,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=10,   # fail fast under overload instead of piling up requests that all time out together
     # Recycle before Supabase/pgbouncer's own idle-connection timeout can
     # silently drop a pooled connection out from under us.
     pool_recycle=900,

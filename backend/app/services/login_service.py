@@ -25,6 +25,8 @@ from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import attempt_guard
+from app.core.attempt_guard import AttemptLocked
 from app.core.config import get_settings
 from app.models.user import User
 from app.utils.supabase_admin_client import supabase_admin_request
@@ -34,6 +36,10 @@ settings = get_settings()
 
 def phone_to_email_alias(phone_number: str) -> str:
     return f"{phone_number.replace(' ', '')}@monieking.app"
+
+
+def _lockout_hours_for_level(level: int) -> float:
+    return settings.LOGIN_LOCKOUT_INITIAL_HOURS if level <= 0 else settings.LOGIN_LOCKOUT_ESCALATED_HOURS
 
 
 def _lockout_hours_for(user: User) -> float:
@@ -59,38 +65,46 @@ def check_not_locked(user: User) -> None:
         )
 
 
-async def record_failure(db: AsyncSession, user: User) -> None:
-    """Increments the failure count and locks the account on the 5th.
+def _locked_http(e: AttemptLocked) -> HTTPException:
+    hours = max(1, int((e.until - datetime.now(timezone.utc)).total_seconds() // 60))
+    return HTTPException(
+        status_code=status.HTTP_423_LOCKED,
+        detail={
+            "code": "ACCOUNT_LOCKED",
+            "message": f"Too many wrong attempts. Try again in {hours} minute(s).",
+            "locked_until": e.until.isoformat(),
+        },
+    )
 
-    Commits explicitly (not just flush) before each raise below — this
-    function always raises an HTTPException by design, and get_db's
-    commit-only-on-clean-completion pattern rolls back the transaction
-    whenever one propagates. Without an explicit commit here, every
-    failed-attempt increment was being silently undone the instant the
-    exception left this function, so the count could never actually
-    reach MAX_LOGIN_ATTEMPTS — it just kept resetting to where it
-    started before each attempt.
-    """
-    user.login_failed_attempts += 1
 
-    if user.login_failed_attempts >= settings.MAX_LOGIN_ATTEMPTS:
-        hours = _lockout_hours_for(user)
-        user.login_locked_until = datetime.now(timezone.utc) + timedelta(hours=hours)
-        user.login_lockout_level += 1
-        user.login_failed_attempts = 0
-        await db.commit()
+async def begin_attempt(db: AsyncSession, user: User) -> int:
+    """Reserve one login attempt atomically BEFORE the password is checked (see core/attempt_guard.py:
+    parallel guesses can no longer be counted as one). Raises 423 if locked or over the limit."""
+    try:
+        return await attempt_guard.reserve(db, user.id, attempt_guard.LOGIN)
+    except AttemptLocked as e:
+        raise _locked_http(e)
+
+
+async def abort_attempt(db: AsyncSession, user: User) -> None:
+    """The password was never really checked (login service down): give the attempt back."""
+    await attempt_guard.release(db, user.id, attempt_guard.LOGIN)
+
+
+async def record_failure(db: AsyncSession, user: User, attempt: int) -> None:
+    """Call after a WRONG password. Locks on the last allowed attempt. Always raises an HTTPException."""
+    out = await attempt_guard.register_failure(db, user.id, attempt_guard.LOGIN, attempt)
+    if out.locked:
+        hours = _lockout_hours_for_level(out.level - 1)
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail={
                 "code": "ACCOUNT_LOCKED",
                 "message": f"Too many wrong attempts. Your account is locked for {hours:g} hour(s).",
-                "locked_until": user.login_locked_until.isoformat(),
+                "locked_until": out.until.isoformat(),
             },
         )
-
-    await db.commit()
-
-    if user.login_failed_attempts == settings.MAX_LOGIN_ATTEMPTS - 1:
+    if out.attempts_left == 1:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -98,7 +112,6 @@ async def record_failure(db: AsyncSession, user: User) -> None:
                 "message": "Incorrect password. One more wrong attempt will lock your account for 1 hour.",
             },
         )
-
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail={"code": "WRONG_PASSWORD", "message": "Incorrect phone number or password."},
@@ -106,9 +119,7 @@ async def record_failure(db: AsyncSession, user: User) -> None:
 
 
 async def record_success(db: AsyncSession, user: User) -> None:
-    user.login_failed_attempts = 0
-    user.login_locked_until = None
-    await db.flush()
+    await attempt_guard.clear(db, user.id, attempt_guard.LOGIN)
 
 
 async def password_grant(email: str, password: str) -> dict:
@@ -151,13 +162,34 @@ async def refresh_grant(refresh_token: str) -> dict:
     return resp.json()
 
 
-async def verify_login_password(phone_number: str, password: str) -> None:
-    """Checks someone's CURRENT login password (used before changing it). Goes through the same cleaned-up Supabase
-    call as login, so a stray quote or slash in the environment URL cannot crash it. Does not touch the login
-    lockout counters. Raises 401 for a wrong password and a clear 5xx message when the login service is unreachable."""
+async def verify_login_password(phone_number: str, password: str, *, db: AsyncSession | None = None, user_id=None) -> None:
+    """Checks someone's CURRENT login password (used before changing a PIN or password). Goes through the same cleaned-up
+    Supabase call as login, so a stray quote or slash in the environment URL cannot crash it. Raises 401 for a wrong
+    password and a clear 5xx message when the login service is unreachable.
+
+    SECURITY (finding S-05): when `db` and `user_id` are given, every check is counted against the same atomic login
+    lockout as /auth/login. Before, this was an unlimited password-guessing oracle for anyone holding a session."""
+    attempt = None
+    if db is not None and user_id is not None:
+        try:
+            attempt = await attempt_guard.reserve(db, user_id, attempt_guard.LOGIN)
+        except AttemptLocked as e:
+            raise _locked_http(e)
     try:
         await password_grant(phone_to_email_alias(phone_number), password)
     except HTTPException as e:
         if isinstance(e.detail, dict) and e.detail.get("code") == "WRONG_PASSWORD":
+            if attempt is not None:
+                out = await attempt_guard.register_failure(db, user_id, attempt_guard.LOGIN, attempt)
+                if out.locked:
+                    raise HTTPException(status_code=status.HTTP_423_LOCKED, detail={
+                        "code": "ACCOUNT_LOCKED",
+                        "message": "Too many wrong attempts. Your account is temporarily locked.",
+                        "locked_until": out.until.isoformat(),
+                    })
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+        if attempt is not None:
+            await attempt_guard.release(db, user_id, attempt_guard.LOGIN)
         raise
+    if attempt is not None:
+        await attempt_guard.clear(db, user_id, attempt_guard.LOGIN)
