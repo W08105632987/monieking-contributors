@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { motion, AnimatePresence, type PanInfo } from 'framer-motion'
+import { motion, AnimatePresence, useDragControls, type PanInfo } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScrollLock } from '@/hooks/useScrollLock'
@@ -36,6 +36,9 @@ export function Modal({ open, onClose, title, children, className, size = 'md' }
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
   const desktop = useIsDesktop()
+  // Dragging starts ONLY from the handle strip. Dragging the whole panel makes framer-motion set touch-action to
+  // pan-x, which stops the sheet's own content from scrolling vertically on phones.
+  const dragControls = useDragControls()
   useScrollLock(open)
 
   // Escape to close, focus trap, focus restore.
@@ -101,13 +104,21 @@ export function Modal({ open, onClose, title, children, className, size = 'md' }
             {...motionProps}
             style={willAnimate}
             drag={desktop ? false : 'y'}
-            dragDirectionLock
+            dragControls={dragControls}
+            dragListener={false}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0, bottom: 0.6 }}
             onDragEnd={handleDragEnd}
           >
             {/* Drag handle — mobile only */}
-            <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-4 md:hidden" />
+            <div
+              className="md:hidden -mt-3 mb-1 flex justify-center py-3 cursor-grab"
+              style={{ touchAction: 'none' }}
+              onPointerDown={(e) => dragControls.start(e)}
+              aria-hidden
+            >
+              <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full" />
+            </div>
             {title && (
               <div className="flex items-center justify-between gap-3 mb-5">
                 <h2 id={titleId} className="text-lg font-bold text-green-900 dark:text-white min-w-0 break-words">{title}</h2>

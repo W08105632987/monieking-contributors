@@ -14,6 +14,7 @@ import { AnalyticsTracker } from '@/components/analytics/AnalyticsTracker'
 import { useAuth } from '@/hooks/useAuth'
 import { useNotificationsPoll } from '@/hooks/useNotificationsPoll'
 import { useCreditSound } from '@/hooks/useCreditSound'
+import { releaseStaleScrollLock } from '@/hooks/useScrollLock'
 import { useAuthStore } from '@/store/auth.store'
 import { api } from '@/lib/api'
 import { LogoLoader } from '@/components/ui/LogoLoader'
@@ -173,6 +174,8 @@ export default function App() {
   const user = useAuthStore((s) => s.user)
   const { isDown } = useServerHealthStore()
   const location = useLocation()
+  // Safety net: a page change with no sheet open must never leave scrolling frozen.
+  useEffect(() => { releaseStaleScrollLock() }, [location.pathname])
 
   // Preload tab destinations for the authenticated role in background
   useEffect(() => {

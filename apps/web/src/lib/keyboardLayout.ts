@@ -33,7 +33,9 @@ export function initKeyboardLayout(): void {
     const inset = vv ? computeKeyboardInset(window.innerHeight, vv.height, vv.offsetTop) : 0
     root.style.setProperty('--kb-inset', `${inset}px`)
     root.style.setProperty('--vvh', `${vv ? Math.round(vv.height) : window.innerHeight}px`)
-    root.classList.toggle('kb-open', inset > KEYBOARD_MIN_INSET)
+    // Only while a text field has focus: pinch-zoom or browser chrome must never leave the page stuck in 'keyboard' mode.
+    const typing = !!document.activeElement && (document.activeElement as HTMLElement).matches?.(EDITABLE)
+    root.classList.toggle('kb-open', inset > KEYBOARD_MIN_INSET && typing)
   }
   update()
   vv?.addEventListener('resize', update)
@@ -41,6 +43,7 @@ export function initKeyboardLayout(): void {
   window.addEventListener('orientationchange', update)
 
   let timer: number | undefined
+  document.addEventListener('focusout', () => window.setTimeout(update, 50))
   document.addEventListener('focusin', (e) => {
     const el = e.target as HTMLElement | null
     if (!el || !el.matches?.(EDITABLE)) return
