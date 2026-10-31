@@ -5,6 +5,7 @@ import { ArrowLeft, AlertTriangle } from 'lucide-react'
 import toast from '@/lib/notify'
 import { api } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
+import { friendlyError } from '@/lib/errorText'
 
 interface PackageItem { id: string; name: string; icon: string | null }
 interface Stats { total_qualified: number; total_collected: number }
@@ -50,7 +51,7 @@ export default function FoodCloseYearPage() {
       toast.success(`${yearLabel} closed`)
       navigate(`/director/food/archives/${yearLabel}`)
     },
-    onError: (err: any) => toast.error(err?.response?.data?.detail || 'Could not close the year'),
+    onError: (err: any) => toast.error(friendlyError(err, 'Could not close the year')),
   })
 
   return (

@@ -156,17 +156,26 @@ async def reset_withdrawal_password(user_id: str, body: ResetKind, director: Dir
     return {"message": "Withdrawal password reset. They will be asked to set a new one."}
 
 
+async def enforce_manual_credit_cap(db: AsyncSession, kobo: int) -> None:
+    """The director-set ceiling (Business Settings > Wallet) on one manual credit. Shared by customer and officer funding."""
+    from app.services.settings_service import get_config_int
+    cap = await get_config_int(db, "max_manual_credit_kobo", 500_000_000)
+    if kobo > cap:
+        raise HTTPException(status_code=400, detail=f"A single manual credit cannot be more than ₦{cap / 100:,.0f}. This limit is set in Business Settings.")
+
+
 class FundBody(BaseModel):
-    amount_naira: float = Field(gt=0, le=5_000_000)
+    amount_naira: float = Field(gt=0, le=100_000_000)
     reason: str = Field(min_length=5, max_length=300)
     pin: str
 
 
 @router.post("/{user_id}/fund-wallet")
 async def fund_wallet(user_id: str, body: FundBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
-    await check_pin(db, director, body.pin)
-    user = await _customer(db, user_id)
     kobo = int(round(body.amount_naira * 100))
+    await enforce_manual_credit_cap(db, kobo)
+    await check_pin(db, director, body.pin)
+    user = await _person(db, user_id)   # a customer OR an officer: officers have a virtual account too
     wallet = await get_or_create_wallet(db, user.id)
     ref = f"MANUAL-{uuid.uuid4().hex[:12].upper()}"
     tx = await credit_wallet(
@@ -189,7 +198,7 @@ async def debit_wallet_manually(user_id: str, body: FundBody, director: Director
     It can never take the wallet below zero. Recorded as its own transaction type so it is never
     mistaken for a service charge or a withdrawal in reports."""
     await check_pin(db, director, body.pin)
-    user = await _customer(db, user_id)
+    user = await _person(db, user_id)
     kobo = int(round(body.amount_naira * 100))
     wallet = await get_or_create_wallet(db, user.id)
     ref = f"MANUAL-DEBIT-{uuid.uuid4().hex[:12].upper()}"
@@ -216,26 +225,34 @@ async def _risk(db: AsyncSession, user: User) -> dict:
     card_kobo = sum(int(c.total_contributed_kobo or 0) for c in cards)
     active_cards = [c for c in cards if c.status == CardStatus.ACTIVE]
     money = int(wallet.balance_kobo or 0) + card_kobo
+    owed = 0
+    pending_payouts = 0
+    if user.role == UserRole.OFFICER and user.officer_type == "affiliated":
+        from app.services import officer_earnings_service as oes
+        bal = await oes.balance(db, user.id)
+        owed, pending_payouts = bal["available_kobo"], bal["pending_payout_kobo"]
+        money += owed + pending_payouts
     hard = bool(user.is_test) or (money == 0 and not open_w)
     return {
+        "role": user.role.value, "commission_owed_kobo": owed + pending_payouts,
         "id": str(user.id), "full_name": user.full_name, "phone_number": user.phone_number, "is_test": bool(user.is_test),
         "wallet_balance_kobo": int(wallet.balance_kobo or 0),
         "card_balance_kobo": card_kobo,
         "cards_total": len(cards), "cards_active": len(active_cards),
         "unpaid_withdrawals": [{"id": str(w.id), "amount_kobo": int(w.amount_kobo), "status": w.status.value} for w in open_w],
         "mode": "delete" if hard else "archive",
-        "blocked": bool(open_w) and not user.is_test,
+        "blocked": (bool(open_w) or pending_payouts > 0) and not user.is_test,
         "explain": (
             "This account will be erased completely and the phone number can be used again."
             if hard else
-            "This customer has money history. Every personal detail is erased from the whole system — name, phone, bank details, photos, documents, devices, messages and the login — and the phone number can be used again. Only anonymous money records stay, for your books."
+            "This person has money history. Every personal detail is erased from the whole system — name, phone, bank details, photos, documents, devices, messages and the login — and the phone number can be used again. Only anonymous money records stay, for your books."
         ),
     }
 
 
 @router.get("/{user_id}/delete-preview")
 async def delete_preview(user_id: str, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
-    return await _risk(db, await _customer(db, user_id))
+    return await _risk(db, await _person(db, user_id))
 
 
 class DeleteBody(BaseModel):
@@ -246,17 +263,21 @@ class DeleteBody(BaseModel):
 
 @router.post("/{user_id}/delete")
 async def delete_customer(user_id: str, body: DeleteBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
-    user = await _customer(db, user_id)
+    user = await _person(db, user_id)
     if body.confirm_name.strip().lower() != (user.full_name or "").strip().lower():
-        raise HTTPException(status_code=400, detail="Type the customer's full name exactly to confirm.")
+        raise HTTPException(status_code=400, detail="Type the person's full name exactly to confirm.")
     await check_pin(db, director, body.pin)
     risk = await _risk(db, user)
     if risk["blocked"]:
-        raise HTTPException(status_code=409, detail="This customer has unpaid withdrawals. Settle or reject them first.")
-    money = risk["wallet_balance_kobo"] + risk["card_balance_kobo"]
+        raise HTTPException(status_code=409, detail="This account has unpaid withdrawals or payout requests. Settle or reject them first.")
+    money = risk["wallet_balance_kobo"] + risk["card_balance_kobo"] + risk.get("commission_owed_kobo", 0)
     if money > 0 and not user.is_test and not body.acknowledge_money:
         raise HTTPException(status_code=409, detail="This customer still holds money. Tick the acknowledgement to continue.")
     name = user.full_name
+    if user.role == UserRole.OFFICER:
+        # Customers must stop earning commission for an officer who is leaving, and the officer stops being 'affiliated'.
+        await db.execute(text("UPDATE users SET commission_officer_id = NULL WHERE commission_officer_id = :i"), {"i": user.id})
+        user.officer_type = None
     from app.services.erasure_service import erase_account
     # One engine for every delete: removes the person from every table, files and login, keeps only anonymous money
     # records, then re-scans the database and tells the director whether anything still mentions them.
@@ -305,3 +326,103 @@ async def service_delete(service_id: uuid.UUID, body: ServiceDeleteBody, directo
     await log_action(db, actor_id=director.id, action="identity_service.deleted", entity_type="identity_service", entity_id=str(service_id))
     await db.flush()
     return {"message": "Service removed"}
+
+
+# ── Helping someone who cannot pass KYC ─────────────────────────────────────
+# The usual cause: the name on the account is a nickname, so it does not match the NIN. A director can look the NIN up
+# for them, see both names side by side, correct the account name, and (if needed) complete the verification for them.
+# Every step needs the director's PIN where it changes something, and is written to the audit log.
+from fastapi import Request
+from app.core.limiter import limiter
+
+
+class KycLookupBody(BaseModel):
+    nin: str
+
+
+@router.get("/{user_id}/kyc")
+async def kyc_status(user_id: str, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    user = await _person(db, user_id)
+    wallet = await get_or_create_wallet(db, user.id)
+    return {
+        "full_name": user.full_name, "kyc_complete": bool(user.kyc_complete), "kyc_completed_at": user.kyc_completed_at.isoformat() if user.kyc_completed_at else None,
+        "nin_last4": user.nin_last4, "account_name": user.account_name, "bank_name": user.bank_name,
+        "virtual_account_name": getattr(wallet, "virtual_account_name", None), "has_virtual_account": bool(wallet.virtual_account_number),
+    }
+
+
+@router.post("/{user_id}/kyc/lookup")
+@limiter.limit("10/minute")
+async def kyc_lookup(request: Request, user_id: str, body: KycLookupBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Look the customer's NIN up and show the name on it next to the name on their account."""
+    from app.api.v1.routes.kyc import lookup_nin_name
+    from app.services import kyc_flow
+    from app.verification.normalize import mask_id
+    user = await _person(db, user_id)
+    if user.kyc_complete:
+        raise HTTPException(status_code=409, detail="This person is already verified.")
+    uid, registered = user.id, user.full_name
+    fields, verified_name = await lookup_nin_name(db, body.nin)
+    ok = kyc_flow.names_match(registered, verified_name)
+    proof = kyc_flow.make_proof(user_id=str(uid), kind="nin", number=fields["nin"], name=verified_name, name_ok=ok)
+    return {"verified_name": verified_name, "registered_name": registered, "name_matches": ok, "id_masked": mask_id(fields["nin"]), "proof": proof}
+
+
+class CorrectNameBody(BaseModel):
+    new_name: str = Field(min_length=3, max_length=200)
+    reason: str = Field(min_length=5, max_length=300)
+    pin: str
+
+
+@router.post("/{user_id}/kyc/correct-name")
+async def correct_name(user_id: str, body: CorrectNameBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Change the name on an UNVERIFIED account (e.g. a nickname -> the legal name). Once someone is verified their name is
+    locked to the verified one, so this refuses."""
+    await check_pin(db, director, body.pin)
+    user = await _person(db, user_id)
+    if user.kyc_complete:
+        raise HTTPException(status_code=409, detail="This person is already verified, so their name is locked to the verified name.")
+    new_name = " ".join(body.new_name.split())
+    old_name = user.full_name
+    if new_name.lower() == (old_name or "").lower():
+        raise HTTPException(status_code=400, detail="That is already the name on the account.")
+    user.full_name = new_name
+    wallet = await get_or_create_wallet(db, user.id)
+    await log_action(db, actor_id=director.id, action="user.name_corrected", entity_type="user", entity_id=str(user.id),
+                     old_value={"full_name": old_name}, new_value={"full_name": new_name, "reason": body.reason.strip()})
+    await send_notification(db, user_id=user.id, title="Your name was corrected",
+                            body=f"Your account name is now {new_name}. You can now try your identity verification again.",
+                            type=NotificationType.INFO, deep_link_url="/kyc")
+    await db.flush()
+    from app.core.dependencies import invalidate_user_cache
+    await invalidate_user_cache(str(user.id))
+    return {"full_name": new_name, "note": (
+        "Their virtual account number was opened in the old name and stays that way." if wallet.virtual_account_number else None)}
+
+
+class KycCompleteBody(BaseModel):
+    nin: str
+    proof: str
+    pin: str
+
+
+@router.post("/{user_id}/kyc/complete")
+@limiter.limit("10/minute")
+async def kyc_complete(request: Request, user_id: str, body: KycCompleteBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Finish the verification for the person, after the lookup showed the NIN name matches the account name."""
+    from app.api.v1.routes.kyc import finish_nin_kyc
+    from app.services import kyc_flow
+    from app.verification.normalize import InputError, normalize_inputs
+    user = await _person(db, user_id)
+    if user.kyc_complete:
+        raise HTTPException(status_code=409, detail="This person is already verified.")
+    try:
+        number = normalize_inputs("nin", {"nin": body.nin})["nin"]
+    except InputError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    proof = kyc_flow.read_proof(body.proof, user_id=str(user.id), kind="nin", number=number)
+    if not proof.get("ok"):
+        raise HTTPException(status_code=422, detail="The name on that NIN still does not match the account name. Correct the name first, then look the NIN up again.")
+    await check_pin(db, director, body.pin)
+    await finish_nin_kyc(db, user.id, number, proof["n"], actor_id=director.id, assisted=True)
+    return {"message": "Verification completed", "verified_name": proof["n"]}

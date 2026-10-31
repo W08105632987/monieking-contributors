@@ -119,12 +119,30 @@ async def _run(monkeypatch):
         # charging ON: ₦100 funding -> ₦10 fee -> credited ₦90
         r = await c.post("/api/v1/webhooks/monnify/payment", json=payload("R2", 100, 98.39), headers=hdr)
         assert r.status_code == 200 and await balance() == 10_000 + 9_000
+        # the history shows TWO honest lines: the full amount in, then the fee out under the default name
+        async with maker() as s:
+            lines = (await s.execute(text("SELECT type, category, amount_kobo, description FROM wallet_transactions WHERE reference IN ('R2', 'R2-FEE') ORDER BY created_at, reference"))).all()
+        assert [(l.type, l.category, l.amount_kobo) for l in lines] == [("credit", "wallet_funding", 10_000), ("debit", "charge", 1_000)]
+        assert lines[1].description == "NIPPS charge"
+        # the director renames the charge; the next funding shows the new name
+        who["id"] = ids["d"]
+        cur = (await c.get("/api/v1/director/funding-fees")).json()
+        assert cur["fee_label"] == "NIPPS charge"
+        r = await c.put("/api/v1/director/funding-fees", json={"charge_customers": True, "pass_monnify_fee": False, "fee_label": "Transfer fee", "tiers": cur["tiers"]})
+        assert r.status_code == 200 and r.json()["fee_label"] == "Transfer fee"
+        r = await c.post("/api/v1/webhooks/monnify/payment", json=payload("R2B", 100, 98.39), headers=hdr)
+        async with maker() as s:
+            fee = (await s.execute(text("SELECT description, amount_kobo FROM wallet_transactions WHERE reference = 'R2B-FEE'"))).one()
+        assert (fee.description, fee.amount_kobo) == ("Transfer fee", 1_000)
+        await c.put("/api/v1/director/funding-fees", json={"charge_customers": True, "pass_monnify_fee": False, "fee_label": "NIPPS charge", "tiers": cur["tiers"]})
+        who["id"] = ids["c"]
+        before_bal = await balance()
 
         # director sees what was absorbed (R1) and what was collected (R2)
         who["id"] = ids["d"]
         s = (await c.get("/api/v1/director/funding-fees/summary")).json()
         assert s["absorbed"] == {"count": 1, "lost_kobo": 161}
-        assert s["charged"]["collected_kobo"] == 1000 and s["charged"]["profit_kobo"] == 1000 - 161
+        assert s["charged"]["collected_kobo"] == 2000 and s["charged"]["profit_kobo"] == 2000 - 2 * 161
         assert s["by_monnify_fee"] == [{"monnify_fee_kobo": 161, "count": 1, "lost_kobo": 161}]
         # Monnify-charge mode: the customer pays Monnify's actual charge and sees what is left
         r = await c.put("/api/v1/director/funding-fees", json={"charge_customers": False, "pass_monnify_fee": True, "tiers": DEFAULT_TIERS})
@@ -136,7 +154,7 @@ async def _run(monkeypatch):
         assert (await c.get("/api/v1/wallets/funding-fee")).json()["mode"] == "monnify"
         who["id"] = ids["d"]
         st = (await c.get("/api/v1/director/funding-fees/stats")).json()
-        assert st["overall"]["fundings"] == 3 and st["overall"]["customers"] == 1 and len(st["monthly"]) == 1
+        assert st["overall"]["fundings"] == 4 and st["overall"]["customers"] == 1 and len(st["monthly"]) == 1
     main_mod.app.dependency_overrides.clear()
     await engine.dispose()
 

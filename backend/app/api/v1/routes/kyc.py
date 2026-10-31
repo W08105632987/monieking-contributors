@@ -103,17 +103,13 @@ class NinConfirmBody(NinBody):
     webauthn_assertion: dict | None = None
 
 
-@router.post("/nin/preview")
-@limiter.limit("6/minute")
-async def nin_preview(request: Request, body: NinBody, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
-    """Look the NIN up and return the VERIFIED NAME, before the person confirms anything."""
-    if current_user.nin_linked or current_user.bvn_linked:
-        raise HTTPException(status_code=400, detail="Your identity is already verified.")
+async def lookup_nin_name(db: AsyncSession, number: str, *, notify_uid=None) -> tuple[dict, str]:
+    """Look a NIN up with Techhub and return (normalised fields, verified full name).
+    Shared by the customer's own KYC page and the director's help-a-customer tool. Raises HTTPException."""
     try:
-        fields = normalize_inputs("nin", {"nin": body.number})
+        fields = normalize_inputs("nin", {"nin": number})
     except InputError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    uid = current_user.id
 
     cfg = await vs.load_settings(db)
     endpoint = C.ENDPOINTS.get(("nin", cfg.lookup_tier["nin"]))
@@ -127,7 +123,8 @@ async def nin_preview(request: Request, body: NinBody, current_user: CurrentUser
     except T.TechhubNotFound:
         await vs.record_outcome(db, "nin", ok=True)
         await db.commit()
-        await _notify(db, uid, "KYC not completed", "We couldn't find that NIN. Check the number and try again from your KYC page.")
+        if notify_uid:
+            await _notify(db, notify_uid, "KYC not completed", "We couldn't find that NIN. Check the number and try again from your KYC page.")
         raise HTTPException(status_code=404, detail="We couldn't find that NIN. Check the number and try again.")
     except T.TechhubInvalidInput as e:
         raise HTTPException(status_code=422, detail=e.user_message)
@@ -136,7 +133,8 @@ async def nin_preview(request: Request, body: NinBody, current_user: CurrentUser
             await vs.record_outcome(db, "nin", ok=False, reason=e.reason)
             await db.commit()
         logger.warning("kyc nin preview failed reason=%s", e.reason)
-        await _notify(db, uid, "KYC not completed", "Identity verification is unavailable right now. Please try again in a few minutes.")
+        if notify_uid:
+            await _notify(db, notify_uid, "KYC not completed", "Identity verification is unavailable right now. Please try again in a few minutes.")
         raise HTTPException(status_code=503, detail=e.user_message)
 
     person = X.complete(result.user_data, result.pdf, id_key="nin", requested_id=fields["nin"])
@@ -147,16 +145,26 @@ async def nin_preview(request: Request, body: NinBody, current_user: CurrentUser
         raise HTTPException(status_code=503, detail=UNAVAILABLE)
     await vs.record_outcome(db, "nin", ok=True)
     await db.commit()
+    return fields, full_name(person)
 
-    verified_name = full_name(person)
-    ok = kyc_flow.names_match(current_user.full_name, verified_name)
+
+@router.post("/nin/preview")
+@limiter.limit("6/minute")
+async def nin_preview(request: Request, body: NinBody, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Look the NIN up and return the VERIFIED NAME, before the person confirms anything."""
+    if current_user.nin_linked or current_user.bvn_linked:
+        raise HTTPException(status_code=400, detail="Your identity is already verified.")
+    uid = current_user.id
+    registered_name = current_user.full_name
+    fields, verified_name = await lookup_nin_name(db, body.number, notify_uid=uid)
+    ok = kyc_flow.names_match(registered_name, verified_name)
     proof = kyc_flow.make_proof(user_id=str(uid), kind="nin", number=fields["nin"], name=verified_name, name_ok=ok)
     message = None
     if not ok:
         message = (f"The name on this NIN ({verified_name}) doesn't match the name on your MonieKing account "
-                   f"({current_user.full_name}). Check you typed your own NIN, or ask your officer to correct your name.")
+                   f"({registered_name}). Check you typed your own NIN, or ask your officer to correct your name.")
         await _notify(db, uid, "KYC not completed", "The name on the NIN you entered doesn't match your MonieKing account name.")
-    return {"verified_name": verified_name, "registered_name": current_user.full_name, "name_matches": ok,
+    return {"verified_name": verified_name, "registered_name": registered_name, "name_matches": ok,
             "id_masked": mask_id(fields["nin"]), "proof": proof, "message": message}
 
 
@@ -183,9 +191,13 @@ async def nin_confirm(request: Request, body: NinConfirmBody, current_user: Curr
     else:
         raise HTTPException(status_code=400, detail="Invalid auth method")
 
-    user = await db.get(User, current_user.id)
+    return await finish_nin_kyc(db, current_user.id, number, proof["n"], actor_id=current_user.id)
+
+
+async def finish_nin_kyc(db: AsyncSession, user_id, number: str, verified_name: str, *, actor_id, assisted: bool = False):
+    """Mark the NIN verified and complete KYC. `assisted` = a director did it for the customer."""
+    user = await db.get(User, user_id)
     wallet = await get_or_create_wallet(db, user.id)
-    verified_name = proof["n"]
     provider = get_payment_provider()
 
     if wallet.virtual_account_ref:
@@ -207,8 +219,8 @@ async def nin_confirm(request: Request, body: NinConfirmBody, current_user: Curr
     if sealed:
         user.nin_encrypted = sealed
     user.kyc_completed_at = datetime.now(timezone.utc)
-    await log_action(db, actor_id=user.id, action="kyc.verified", entity_type="user", entity_id=str(user.id),
-                     new_value={"kind": "nin", "id_last4": number[-4:], "verified_name": verified_name})
+    await log_action(db, actor_id=actor_id, action="kyc.verified_by_director" if assisted else "kyc.verified", entity_type="user", entity_id=str(user.id),
+                     new_value={"kind": "nin", "id_last4": number[-4:], "verified_name": verified_name, "assisted": assisted})
     await db.commit()
     await invalidate_user_cache(str(user.id))
     await _notify(db, user.id, "KYC complete 🎉", "Thank you! Your identity is verified and you now have full access to MonieKing.")
@@ -241,7 +253,7 @@ async def _create_account(db: AsyncSession, user: User, wallet, provider, *, nam
     except Exception as e:
         reason = _reason(e)
         logger.error("[va] virtual account creation FAILED for %s: %r | monnify said: %s", user.id, e, reason or "(nothing)")
-        raise HTTPException(status_code=502, detail="We couldn't create your account number just yet." + (f" ({reason})" if reason else "") + " Please try again in a minute.")
+        raise HTTPException(status_code=502, detail="We couldn't create your account number just yet. Please try again in a minute.")
     if not account.account_number:
         logger.error("[va] Monnify returned no account number for %s", user.id)
         raise HTTPException(status_code=502, detail="We couldn't create your account number just yet. Please try again in a minute.")

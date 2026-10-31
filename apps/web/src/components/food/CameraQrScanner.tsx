@@ -172,7 +172,7 @@ export function CameraQrScanner({ onScan, onClose }: CameraQrScannerProps) {
           if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
             setErrorMessage('Camera access was denied. Please allow camera permissions in your browser.')
           } else {
-            setErrorMessage('Could not open camera: ' + (err.message || 'Unknown error'))
+            setErrorMessage('Could not open the camera. Please allow camera access and try again.')
           }
         }
       } else {
@@ -200,7 +200,7 @@ export function CameraQrScanner({ onScan, onClose }: CameraQrScannerProps) {
           )
         } catch (err: any) {
           if (isCancelled) return
-          setErrorMessage('Failed to initialize camera scanner: ' + (err.message || 'Camera not accessible'))
+          setErrorMessage('The camera scanner could not start. Please allow camera access and try again.')
         }
       }
     }

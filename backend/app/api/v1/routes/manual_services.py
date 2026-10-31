@@ -287,6 +287,8 @@ async def submit_service_request(
 
     target_user_id = current_user.id
     if customer_id and current_user.role == UserRole.OFFICER:
+        from app.core.access import require_officer_zone_for
+        await require_officer_zone_for(db, current_user, customer_id)   # only customers of the officer's own zone (S-17)
         target_user_id = customer_id
 
     # Every request is confirmed with the payment PIN. No PIN set yet -> 428 "Set up payment pin".

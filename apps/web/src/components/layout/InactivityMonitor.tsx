@@ -173,7 +173,7 @@ export function InactivityMonitor({ isAuthenticated }: InactivityMonitorProps) {
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           className="fixed inset-0 z-[100] flex items-center justify-center px-6"
         >
-          <div className="absolute inset-0 bg-green-950/70 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-green-950/70" />
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
             className="relative bg-white dark:bg-night-700 rounded-3xl p-6 max-w-xs w-full text-center shadow-2xl"

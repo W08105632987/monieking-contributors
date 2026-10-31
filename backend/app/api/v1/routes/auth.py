@@ -80,6 +80,39 @@ async def signup_session(request: Request, response: Response, body: LoginReques
     return {"message": "Session started"}
 
 
+# ── Sign-up bank helpers ────────────────────────────────────────────────────
+# Public on purpose: the person has no session yet while they fill the sign-up form. Tightly rate limited, and
+# they only ever return the bank list and the name a bank itself reports for an account number.
+@router.get("/banks")
+@limiter.limit("20/minute")
+async def signup_banks(request: Request):
+    from app.integrations.monnify import get_payment_provider
+    try:
+        banks = await get_payment_provider().get_banks()
+    except Exception as e:
+        print(f"[auth] Bank list fetch failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not load the bank list right now. Please try again shortly.")
+    return [{"name": b.get("name"), "code": b.get("code")} for b in banks if b.get("code")]
+
+
+@router.get("/resolve-bank-account")
+@limiter.limit("10/minute")
+async def signup_resolve_bank_account(request: Request, bank_code: str, account_number: str):
+    from app.integrations.monnify import get_payment_provider
+    if not (account_number.isdigit() and len(account_number) == 10):
+        raise HTTPException(status_code=400, detail="Account number must be exactly 10 digits.")
+    try:
+        name = await get_payment_provider().resolve_account_name(account_number, bank_code)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[auth] Bank account resolution failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not verify this account right now. Please try again.")
+    return {"account_name": name}
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 async def register_customer(
@@ -104,6 +137,17 @@ async def register_customer(
         )
 
     user_id = uuid.UUID(current_user_id)
+
+    # The account name on file is whatever the BANK says it is, never what was typed. If the app sent a bank code,
+    # confirm it again here; a wrong number is a hard stop, a lookup outage falls back to what the app already verified.
+    if body.bank_code:
+        try:
+            from app.integrations.monnify import get_payment_provider
+            body.account_name = await get_payment_provider().resolve_account_name(body.account_number, body.bank_code)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            print(f"[auth] Register-time account re-check skipped: {e}")
 
     # Create platform user
     user = User(

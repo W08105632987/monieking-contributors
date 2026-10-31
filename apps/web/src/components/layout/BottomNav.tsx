@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { useAuthStore } from '@/store/auth.store'
 import { useAppNavigate } from '@/hooks/useAppNavigate'
+import { prefetchRoute } from '@/lib/preloadRoutes'
+import { haptic } from '@/lib/haptics'
 
 interface NavItem {
   label: string
@@ -140,7 +142,9 @@ export const BottomNav = forwardRef<HTMLElement>(function BottomNav(_props, ref)
             <button
               key={item.href}
               ref={(el) => { tabRefs.current[idx] = el }}
-              onClick={() => navigate(item.href)}
+              onClick={() => { if (!isActive) haptic('tap'); navigate(item.href) }}
+              onPointerEnter={() => prefetchRoute(item.href)}
+              onTouchStart={() => prefetchRoute(item.href)}
               className={cn(
                 'relative flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl z-10',
                 'transition-all duration-200 min-w-[3rem]',

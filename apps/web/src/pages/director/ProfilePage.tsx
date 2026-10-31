@@ -1,3 +1,4 @@
+import { sheetMotion, overlayMotion } from '@/lib/motion'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, LogOut, Shield, Info } from 'lucide-react'
@@ -29,12 +30,9 @@ function SignOutSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 dark:bg-night-900/60 backdrop-blur-sm" />
+      <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/60 dark:bg-night-900/60" />
       <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >

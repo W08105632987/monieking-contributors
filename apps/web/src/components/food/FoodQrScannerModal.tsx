@@ -1,8 +1,10 @@
+import { sheetMotion } from '@/lib/motion'
 import { useState, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ShieldCheck, Scan, CheckCircle2, AlertCircle, Loader2, ArrowRight, X, UserCheck, Camera, Keyboard } from 'lucide-react'
 import { api } from '@/lib/api'
 import { CameraQrScanner } from './CameraQrScanner'
+import { friendlyError } from '@/lib/errorText'
 
 interface FoodQrScannerModalProps {
   isOpen: boolean
@@ -47,7 +49,7 @@ export function FoodQrScannerModal({ isOpen, onClose }: FoodQrScannerModalProps)
       })
       setVerification(data)
     } catch (err: any) {
-      setInlineError(err?.response?.data?.detail || 'Failed to verify food QR code.')
+      setInlineError(friendlyError(err, 'Failed to verify food QR code.'))
       processingTokenRef.current = null // allow retry on error
     } finally {
       setLoading(false)
@@ -80,7 +82,7 @@ export function FoodQrScannerModal({ isOpen, onClose }: FoodQrScannerModalProps)
       })
       setConfirmedAudit(data)
     } catch (err: any) {
-      setInlineError(err?.response?.data?.detail || 'Incorrect PIN or collection failed.')
+      setInlineError(friendlyError(err, 'Incorrect PIN or collection failed.'))
     } finally {
       setLoading(false)
     }
@@ -109,7 +111,7 @@ export function FoodQrScannerModal({ isOpen, onClose }: FoodQrScannerModalProps)
           onClick={handleClose}
         >
           <motion.div
-            className="absolute inset-0 bg-green-950/75 backdrop-blur-sm"
+            className="absolute inset-0 bg-green-950/75"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -117,10 +119,7 @@ export function FoodQrScannerModal({ isOpen, onClose }: FoodQrScannerModalProps)
           />
 
           <motion.div
-            initial={{ y: '100%', opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: '100%', opacity: 0 }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300, mass: 0.8 }}
+            {...sheetMotion}
             style={{ willChange: 'transform' }}
             className="relative bg-white dark:bg-night-700 rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
             onClick={e => e.stopPropagation()}

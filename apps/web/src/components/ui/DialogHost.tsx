@@ -31,7 +31,7 @@ export function DialogHost() {
       {current && (
         <motion.div key={current.id} className="fixed inset-0 z-[10000] flex items-center justify-center px-5"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" onClick={() => settle(false)} />
+          <div className="absolute inset-0 bg-green-950/60" onClick={() => settle(false)} />
           <motion.div role="alertdialog" aria-modal="true"
             className="relative w-full max-w-sm rounded-3xl bg-white dark:bg-night-800 p-6 text-center shadow-2xl"
             initial={{ scale: 0.88, y: 16, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.94, opacity: 0 }}

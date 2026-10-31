@@ -19,7 +19,7 @@ export function NoticeHost() {
       {open && isError && (
         <motion.div key="err" className="fixed inset-0 z-[10000] flex items-center justify-center px-6"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" onClick={close} />
+          <div className="absolute inset-0 bg-green-950/60" onClick={close} />
           <motion.div role="alertdialog" aria-modal="true" aria-live="assertive"
             className="relative w-full max-w-xs rounded-3xl bg-white p-6 text-center shadow-2xl dark:bg-night-800"
             initial={{ scale: 0.88, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}

@@ -1,27 +1,29 @@
+import { sheetMotion } from '@/lib/motion'
 import { StepUpHost } from './auth'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, Bell, FlaskConical, Home, X } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatNairaAmount, formatNairaNumber } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 import { useAuthStore } from '@/store/auth.store'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { useCoopStatus } from './api'
 import { mainHomePath, notificationsPath, profilePath } from './nav'
+import { friendlyError } from '@/lib/errorText'
 
 export const pctText = (bps: number) => `${+(bps / 100).toFixed(2)}%`
 export const dShort = (iso: string) =>
   new Date(iso.length === 10 ? iso + 'T00:00:00' : iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
 export const dDay = (iso: string) =>
   new Date(iso.length === 10 ? iso + 'T00:00:00' : iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })
-export const nairaNum = (kobo: number) => new Intl.NumberFormat('en-NG', { maximumFractionDigits: 0 }).format(kobo / 100)
+export const nairaNum = (kobo: number) => formatNairaNumber(kobo)
 export const compactNaira = (kobo: number) => {
   const n = kobo / 100
   if (Math.abs(n) >= 1_000_000) return `₦${+(n / 1_000_000).toFixed(1)}M`
   if (Math.abs(n) >= 1_000) return `₦${+(n / 1_000).toFixed(1)}K`
-  return `₦${n}`
+  return formatNairaAmount(n)
 }
 
 export function TestBanner({ className }: { className?: string }) {
@@ -208,12 +210,12 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     <AnimatePresence>
       {open && (
         <>
-          <motion.div className="fixed inset-0 z-[10001] bg-green-950/60 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
+          <motion.div className="fixed inset-0 z-[10001] bg-green-950/60" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.div
             role="dialog" aria-label={title}
             className="fixed inset-x-0 bottom-0 z-[10002] mx-auto max-h-[88dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 dark:bg-night-700"
-            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 32, stiffness: 320 }}
-          >
+            {...sheetMotion}
+            >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-green-200 dark:bg-night-400" />
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-extrabold text-green-900 dark:text-white">{title}</h2>
@@ -284,9 +286,9 @@ export function LoadError({ error, onRetry }: { error: unknown; onRetry?: () => 
   const detail = (error as any)?.response?.data?.detail
   return (
     <div role="alert" className="mt-3 rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">
-      <p className="font-extrabold">The cooperative could not load{status ? ` (error ${status})` : ''}.</p>
-      {typeof detail === 'string' && <p className="mt-1">{detail}</p>}
-      {(!status || status >= 500) && <p className="mt-1 text-xs">The server could not answer. If this keeps happening after an update, the cooperative database update (migration 047) may not have been run yet. Check the server log.</p>}
+      <p className="font-extrabold">The cooperative could not load.</p>
+      {typeof detail === 'string' && friendlyError(error, '') && <p className="mt-1">{friendlyError(error, '')}</p>}
+      {(!status || status >= 500) && <p className="mt-1 text-xs">We could not reach the cooperative right now. Please try again in a few minutes.</p>}
       {onRetry && <button onClick={onRetry} className="mt-3 rounded-full bg-red-600 px-4 py-1.5 text-xs font-bold text-white">Try again</button>}
     </div>
   )

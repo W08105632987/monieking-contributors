@@ -6,12 +6,13 @@ import { formatNaira } from '@/lib/utils'
 import { useProfile } from '../api'
 import { Card, CoopPage, Pill, SectionTitle, Skel, Stat, dShort } from '../ui'
 import { ReliabilityBadge } from '../parts'
+import { friendlyError } from '@/lib/errorText'
 
 
 export default function MemberProfilePage() {
   const { id } = useParams()
   const { data: p, error } = useProfile(id)
-  if (error) return <CoopPage title="Profile" back><Card><p className="text-sm font-semibold text-red-600">{(error as any)?.response?.data?.detail ?? 'You cannot view this profile.'}</p></Card></CoopPage>
+  if (error) return <CoopPage title="Profile" back><Card><p className="text-sm font-semibold text-red-600">{friendlyError(error, 'You cannot view this profile.')}</p></Card></CoopPage>
   if (!p) return <CoopPage title="Profile" back><Skel h="h-48" /></CoopPage>
   const youAre = { self: 'This is how you appear to others', guarantor: 'You can see this because you were asked to guarantee their loan', director: 'Director view', member: '' }[p.you_are]
   return (

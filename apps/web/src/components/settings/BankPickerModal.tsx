@@ -10,6 +10,8 @@ interface BankPickerModalProps {
   onClose: () => void
   onSelect: (bank: Bank) => void
   selectedCode?: string
+  /** Where to load the list from. Sign-up has no session yet, so it uses the public /auth/banks. */
+  banksPath?: string
 }
 
 /**
@@ -19,7 +21,7 @@ interface BankPickerModalProps {
  * live, so this can take a moment) — no skeleton rows, no partial list,
  * so there's never a half-loaded state to tap into by mistake.
  */
-export function BankPickerModal({ open, onClose, onSelect, selectedCode }: BankPickerModalProps) {
+export function BankPickerModal({ open, onClose, onSelect, selectedCode, banksPath = '/users/banks' }: BankPickerModalProps) {
   const [banks, setBanks] = useState<Bank[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -28,11 +30,11 @@ export function BankPickerModal({ open, onClose, onSelect, selectedCode }: BankP
   const fetchBanks = useCallback(() => {
     setLoading(true)
     setError(false)
-    api.get<Bank[]>('/users/banks')
+    api.get<Bank[]>(banksPath)
       .then(({ data }) => setBanks([...data].sort((a, b) => a.name.localeCompare(b.name))))
       .catch(() => setError(true))
       .finally(() => setLoading(false))
-  }, [])
+  }, [banksPath])
 
   useEffect(() => {
     if (!open) return

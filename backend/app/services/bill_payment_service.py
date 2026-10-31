@@ -17,6 +17,8 @@ from app.integrations.monnify_bills import get_bills_provider, MonnifyBillsError
 from app.utils.audit import log_action
 from app.services import bill_config, bill_pricing
 
+from app.core.public_errors import public_message  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 PENDING_NOTE = "Waiting for the bills provider to confirm this payment."
@@ -150,7 +152,7 @@ async def fetch_catalogue(provider=None) -> dict:
         try:
             billers = await _retry_once(lambda: provider.get_billers(monnify_category_code))
         except MonnifyBillsError as e:
-            errors.append(f"{internal_category.value}: couldn't list billers ({e.message})")
+            errors.append(f"{internal_category.value}: couldn't list billers ({e.raw})")
             all_clean = False
             continue
 
@@ -174,7 +176,7 @@ async def fetch_catalogue(provider=None) -> dict:
 
         for (biller_code, biller_name), result in zip(valid, results):
             if isinstance(result, MonnifyBillsError):
-                errors.append(f"{biller_name}: couldn't list products ({result.message})")
+                errors.append(f"{biller_name}: couldn't list products ({result.raw})")
                 all_clean = False
                 continue
             if isinstance(result, BaseException):
@@ -330,6 +332,68 @@ def _read_customer_name(result: dict) -> str | None:
     return None
 
 
+_ADDRESS_KEYS = ("address", "customerAddress", "meterAddress", "customer_address", "serviceAddress", "contactAddress", "residentialAddress")
+_UNIT_KEYS = ("units", "unit", "kwh", "tokenUnits", "energyUnits", "unitsPurchased", "purchasedUnits", "tokenUnit", "totalUnits")
+_UNIT_TEXT = re.compile(r"(?i)(?:units?|kwh|energy)\s*(?:purchased|bought)?\s*[:=\-]?\s*(\d+(?:\.\d+)?)\s*(?:kwh)?|(\d+(?:\.\d+)?)\s*kwh")
+
+
+def _walk_for(node, keys, depth: int = 0):
+    """First scalar value stored under any of `keys`, searching nested provider responses (field names differ by provider)."""
+    if depth > 4:
+        return None
+    if isinstance(node, dict):
+        for key in keys:
+            value = node.get(key)
+            if value is not None and not isinstance(value, (dict, list)) and str(value).strip():
+                return str(value).strip()
+        for value in node.values():
+            if isinstance(value, (dict, list)):
+                found = _walk_for(value, keys, depth + 1)
+                if found:
+                    return found
+    elif isinstance(node, list):
+        for item in node:
+            found = _walk_for(item, keys, depth + 1)
+            if found:
+                return found
+    return None
+
+
+def _read_customer_address(result) -> str | None:
+    value = _walk_for(result, _ADDRESS_KEYS)
+    return value[:255] if value else None
+
+
+def _read_units(result) -> str | None:
+    """Electricity units bought (kWh) — from a units field, or out of the provider's description text."""
+    value = _walk_for(result, _UNIT_KEYS)
+    if not value:
+        def texts(n, d=0):
+            if d > 4:
+                return
+            if isinstance(n, dict):
+                for k in ("description", "message", "responseMessage", "narration", "vendDescription"):
+                    if isinstance(n.get(k), str):
+                        yield n[k]
+                for v in n.values():
+                    if isinstance(v, (dict, list)):
+                        yield from texts(v, d + 1)
+            elif isinstance(n, list):
+                for i in n:
+                    yield from texts(i, d + 1)
+        for t in texts(result):
+            m = _UNIT_TEXT.search(t)
+            if m:
+                value = m.group(1) or m.group(2)
+                break
+    if not value:
+        return None
+    try:
+        return f"{float(str(value).replace(',', '')):.2f}".rstrip("0").rstrip(".")[:40]
+    except ValueError:
+        return str(value)[:40]
+
+
 async def validate_bill(
     db: AsyncSession, *, biller_id: uuid.UUID, customer_reference: str,
 ) -> dict:
@@ -339,7 +403,7 @@ async def validate_bill(
 
     if not biller.requires_validation:
         # Airtime/data — nothing to confirm, the phone number IS the target.
-        return {"validation_reference": None, "validated_account_name": None, "requires_validation": False}
+        return {"validation_reference": None, "validated_account_name": None, "customer_address": None, "requires_validation": False}
 
     provider = get_bills_provider()
     try:
@@ -357,6 +421,7 @@ async def validate_bill(
     return {
         "validation_reference": ref if required else None,
         "validated_account_name": _read_customer_name(result),
+        "customer_address": _read_customer_address(result),
         "requires_validation": True,
     }
 
@@ -394,7 +459,7 @@ async def _enforce_director_rules(db: AsyncSession, biller: Biller, customer_ref
             raise ValueError(f"Airtime must be between ₦{cfg['min_airtime_naira']:,} and ₦{cfg['max_airtime_naira']:,}.")
 
 
-async def _validate_for_vend(provider, biller: Biller, customer_reference: str) -> tuple[str | None, str | None]:
+async def _validate_for_vend(provider, biller: Biller, customer_reference: str) -> tuple[str | None, str | None, str | None]:
     """
     Server-side validation, run again at payment time so it can't be skipped
     or tampered with by the client. Returns (validation_reference_to_send,
@@ -411,16 +476,17 @@ async def _validate_for_vend(provider, biller: Biller, customer_reference: str) 
     except MonnifyBillsError as e:
         if strict:
             raise ValueError(e.message)
-        logger.info("[bills] best-effort validation skipped for %s: %s", biller.product_id, e.message)
-        return None, None
+        logger.info("[bills] best-effort validation skipped for %s: %s", biller.product_id, e.raw)
+        return None, None, None
 
     required, ref = _read_vend_instruction(result)
     name = _read_customer_name(result)
+    address = _read_customer_address(result)
     if required and not ref:
         if strict:
             raise ValueError("The bills provider did not return a validation reference. Please try again.")
-        return None, name
-    return (ref if required else None), name
+        return None, name, address
+    return (ref if required else None), name, address
 
 
 _TOKEN_KEYS = ("token", "tokenCode", "tokenValue", "meterToken", "electricityToken", "pin", "stsToken")
@@ -463,6 +529,11 @@ def _extract_token(result: dict) -> str | None:
 def _mark_completed(request: BillPaymentRequest, result: dict) -> None:
     request.status = BillPaymentStatus.COMPLETED
     request.token = _extract_token(result) or request.token   # present for electricity, null otherwise
+    request.units = _read_units(result) or request.units       # kWh bought (electricity)
+    if request.token and not request.units:
+        # Helps diagnose a provider that does not send units: field NAMES only, never values (the token is a secret).
+        logger.info("[bills] electricity vend %s had no units field; response keys=%s", request.id, sorted(result.keys()) if isinstance(result, dict) else type(result).__name__)
+    request.customer_address = _read_customer_address(result) or request.customer_address
     request.amount_charged_kobo = request.amount_kobo
     request.failure_reason = None
     request.completed_at = datetime.now(timezone.utc)
@@ -507,7 +578,10 @@ async def _apply_outcome(db: AsyncSession, request: BillPaymentRequest, outcome:
     elif outcome == "FAILED":
         reason = (
             (result.get("responseMessage") or result.get("message")) if isinstance(result, dict) else None
-        ) or "The bills provider could not complete this payment."
+        )
+        if reason:
+            logger.info("[bills] request %s failed at provider: %s", request.id, reason)
+        reason = public_message(reason, "We could not complete this payment. You have not been charged.")
         await _refund(db, request, str(reason))
         request.status = BillPaymentStatus.FAILED
         request.failure_reason = str(reason)
@@ -572,7 +646,7 @@ async def pay_bill(
     provider = get_bills_provider()
     # Server-side validation: authoritative, ignores any client-supplied
     # reference, and only yields one when Monnify says the vend needs it.
-    vend_validation_reference, validated_name = await _validate_for_vend(provider, biller, customer_reference)
+    vend_validation_reference, validated_name, validated_address = await _validate_for_vend(provider, biller, customer_reference)
 
     # Balance pre-check — a cheap early exit; debit_wallet below is the real,
     # row-locked check.
@@ -592,6 +666,7 @@ async def pay_bill(
         markup_kobo=sale.markup_kobo,
         validation_reference=vend_validation_reference,
         validated_account_name=validated_name,
+        customer_address=validated_address,
         status=BillPaymentStatus.PENDING,
     )
     db.add(request)
@@ -635,6 +710,7 @@ async def pay_bill(
             await _apply_outcome(db, request, "PENDING", {})
         elif vend_error is not None:
             # A definite rejection (could not connect, or Monnify said no).
+            logger.warning("[bills] vend %s rejected: %s", request.id, vend_error.raw)
             await _apply_outcome(db, request, "FAILED", {"message": vend_error.message})
         else:
             await _apply_outcome(db, request, vend_outcome(result), result)
@@ -669,7 +745,7 @@ async def resolve_pending_bill(db: AsyncSession, request_id: uuid.UUID) -> BillP
             result = await provider.requery_bill(reference)
             break
         except MonnifyBillsError as e:
-            logger.info("[bills] requery of %s by %s failed: %s", request.id, reference, e.message)
+            logger.info("[bills] requery of %s by %s failed: %s", request.id, reference, e.raw)
 
     if result is None:
         await db.commit()   # release the lock; still pending
@@ -704,7 +780,7 @@ async def backfill_missing_token(db: AsyncSession, request: BillPaymentRequest) 
         try:
             result = await provider.requery_bill(reference)
         except MonnifyBillsError as e:
-            logger.info("[bills] token requery of %s by %s failed: %s", request.id, reference, e.message)
+            logger.info("[bills] token requery of %s by %s failed: %s", request.id, reference, e.raw)
             continue
         token = _extract_token(result) if isinstance(result, dict) else None
         if token:

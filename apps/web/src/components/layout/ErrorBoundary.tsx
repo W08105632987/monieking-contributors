@@ -29,6 +29,10 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('Uncaught render error:', error, info)
   }
 
+  handleRetry = () => {
+    this.setState({ hasError: false })
+  }
+
   handleReload = () => {
     this.setState({ hasError: false })
     window.location.href = '/'
@@ -51,6 +55,12 @@ export class ErrorBoundary extends Component<Props, State> {
           >
             <RefreshCw className="w-4 h-4" />
             Reload MonieKing
+          </button>
+          <button
+            onClick={this.handleRetry}
+            className="mt-3 text-green-700 font-semibold text-sm underline underline-offset-2"
+          >
+            Try again
           </button>
         </div>
       )

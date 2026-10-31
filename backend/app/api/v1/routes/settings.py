@@ -11,6 +11,7 @@ from app.schemas.settings import (
     SystemConfigItem, SystemConfigUpdate,
     RateChangeRequest, RateChangePreview, PendingRateChangeResponse, RateChangeEditRequest,
 )
+from app.services import settings_registry as REG
 from app.services.settings_service import get_config_value, set_config_value
 from app.utils.audit import log_action
 
@@ -69,6 +70,15 @@ async def get_food_card_window(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/registry")
+async def settings_registry(director: DirectorOrAdmin, db: AsyncSession = Depends(get_db)):
+    """Everything the Business Settings page renders: groups, each setting with its current value, limits,
+    plain-language explanation and any other screen that can change the same value."""
+    rows = {r.key: r for r in (await db.execute(select(SystemConfig).where(SystemConfig.key.in_(list(REG.BY_KEY))))).scalars().all()}
+    items = [REG.to_public(d, rows[d.key].value if d.key in rows else None, rows[d.key].updated_at if d.key in rows else None) for d in REG.DEFS]
+    return {"groups": REG.GROUPS, "settings": items, "retired": [{"key": k, "why": v} for k, v in REG.RETIRED.items()]}
+
+
 @router.get("", response_model=list[SystemConfigItem])
 async def list_settings(director: DirectorOrAdmin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(SystemConfig).order_by(SystemConfig.key))
@@ -91,8 +101,24 @@ async def update_setting(
                 "take effect on the next January 1st."
             ),
         )
+    if key in REG.RETIRED:
+        raise HTTPException(status_code=400, detail=REG.RETIRED[key])
+    d = REG.BY_KEY.get(key)
+    if d is None:
+        raise HTTPException(status_code=400, detail=f"'{key}' is not an editable business setting.")
     try:
-        row = await set_config_value(db, key=key, value=body.value, updated_by=director.id)
+        value = REG.validate(d, body.value)
+    except REG.SettingError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    # Enrollment dates must stay in order (checked against the other date as it is stored now).
+    if key in ("food_card_open_from", "food_card_open_until"):
+        other_key = "food_card_open_until" if key == "food_card_open_from" else "food_card_open_from"
+        other = await get_config_value(db, other_key, default=REG.BY_KEY[other_key].default)
+        a, b = (value, other) if key == "food_card_open_from" else (other, value)
+        if a and b and a > b:
+            raise HTTPException(status_code=422, detail="The enrollment opening date must be on or before the closing date.")
+    try:
+        row = await set_config_value(db, key=key, value=value, updated_by=director.id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return row

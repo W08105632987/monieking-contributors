@@ -12,8 +12,8 @@ class SettingsError(ValueError):
 @dataclass
 class Settings:
     enabled: bool = False
-    retention_hours: int = C.DEFAULT_RETENTION_HOURS
-    retention_never: bool = False        # True = keep results forever (retention_hours is then ignored)
+    retention_minutes: int = C.DEFAULT_RETENTION_MINUTES
+    retention_never: bool = False        # True = keep results forever (retention_minutes is then ignored)
     nin_auth_url: str = ""
     lookup_tier: dict = field(default_factory=lambda: dict(C.DEFAULT_LOOKUP_TIER))
     fees: dict = field(default_factory=dict)          # method -> kobo (0 = not set)
@@ -44,8 +44,8 @@ def parse(raw: dict[str, str | None]) -> Settings:
     the safe default (OFF, price 0)."""
     s = Settings()
     s.enabled = str(raw.get(C.K_ENABLED) or "").strip().lower() == "true"
-    hrs = _int(raw.get(C.K_RETENTION), C.DEFAULT_RETENTION_HOURS)
-    s.retention_hours = hrs if C.MIN_RETENTION_HOURS <= hrs <= C.MAX_RETENTION_HOURS else C.DEFAULT_RETENTION_HOURS
+    mins = _int(raw.get(C.K_RETENTION), C.DEFAULT_RETENTION_MINUTES)
+    s.retention_minutes = mins if C.MIN_RETENTION_MINUTES <= mins <= C.MAX_RETENTION_MINUTES else C.DEFAULT_RETENTION_MINUTES
     s.retention_never = str(raw.get(C.K_RETENTION_NEVER) or "").strip().lower() == "true"
     s.nin_auth_url = str(raw.get(C.K_NIN_AUTH_URL) or "").strip()
     for kind in C.KINDS:
@@ -73,24 +73,26 @@ def validate_update(current: Settings, patch: dict) -> dict[str, str]:
     key: new value} to write, or raises SettingsError with a human message.
     Rule: it is impossible to leave the feature ON without every fee set."""
     out: dict[str, str] = {}
-    known = {"enabled", "retention_hours", "retention_never", "nin_auth_url", "lookup_tier", "fees", "slips"}
+    known = {"enabled", "retention_minutes", "retention_hours", "retention_never", "nin_auth_url", "lookup_tier", "fees", "slips"}
     unknown = set(patch) - known
     if unknown:
         raise SettingsError(f"Unknown setting(s): {', '.join(sorted(unknown))}")
 
     # Apply onto a copy so the enable check sees the final state.
     nxt = Settings(
-        enabled=current.enabled, retention_hours=current.retention_hours, retention_never=current.retention_never,
+        enabled=current.enabled, retention_minutes=current.retention_minutes, retention_never=current.retention_never,
         nin_auth_url=current.nin_auth_url, lookup_tier=dict(current.lookup_tier),
         fees=dict(current.fees), slips=dict(current.slips),
     )
 
-    if "retention_hours" in patch:
-        h = patch["retention_hours"]
-        if not isinstance(h, int) or isinstance(h, bool) or not (C.MIN_RETENTION_HOURS <= h <= C.MAX_RETENTION_HOURS):
-            raise SettingsError(f"Retention must be between {C.MIN_RETENTION_HOURS} and {C.MAX_RETENTION_HOURS} hours.")
-        nxt.retention_hours = h
-        out[C.K_RETENTION] = str(h)
+    if "retention_minutes" in patch or "retention_hours" in patch:
+        # `retention_hours` is the older field name; the Verification page may still send it.
+        m = patch["retention_minutes"] if "retention_minutes" in patch else (
+            patch["retention_hours"] * 60 if isinstance(patch["retention_hours"], int) and not isinstance(patch["retention_hours"], bool) else None)
+        if not isinstance(m, int) or isinstance(m, bool) or not (C.MIN_RETENTION_MINUTES <= m <= C.MAX_RETENTION_MINUTES):
+            raise SettingsError(f"Retention must be between {C.MIN_RETENTION_MINUTES // 60} hour and {C.MAX_RETENTION_MINUTES // 60} hours.")
+        nxt.retention_minutes = m
+        out[C.K_RETENTION] = str(m)
 
     if "retention_never" in patch:
         v = patch["retention_never"]

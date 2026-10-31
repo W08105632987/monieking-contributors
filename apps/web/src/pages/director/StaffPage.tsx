@@ -1,13 +1,16 @@
+import { sheetMotion, overlayMotion } from '@/lib/motion'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Plus, Shield, UserCog, MoreVertical } from 'lucide-react'
+import { ArrowLeft, Plus, Shield, UserCog, MoreVertical, Banknote, BadgeDollarSign } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { ManageMemberSheet } from '@/components/settings/ManageMemberSheet'
 import { cn, initials, formatDate } from '@/lib/utils'
 import type { User, Zone } from '@/types'
+import { PasswordInput } from '@/components/ui/PasswordInput'
+import { OfficerClassifyBanner } from '@/components/director/OfficerTypeModal'
 
 type StaffTab = 'officers' | 'directors'
 
@@ -34,6 +37,12 @@ function StaffRow({ member, onManage }: { member: User; onManage: () => void }) 
         )}>
           {member.status === 'active' ? 'Active' : 'Suspended'}
         </span>
+        {isOfficer && (
+          <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full flex-shrink-0',
+            member.officer_type === 'affiliated' ? 'bg-amber-100 text-amber-800' : member.officer_type === 'salary' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' : 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300')}>
+            {member.officer_type === 'affiliated' ? 'Affiliated' : member.officer_type === 'salary' ? 'Salary' : 'Not set'}
+          </span>
+        )}
       </button>
       <button onClick={onManage} aria-label={`Manage ${member.full_name}`} className="flex-shrink-0 p-1">
         <MoreVertical className="w-4 h-4 text-green-300 dark:text-night-300" />
@@ -49,6 +58,8 @@ function CreateStaffSheet({ tab, onClose }: { tab: StaffTab; onClose: () => void
   const [phone, setPhone]         = useState('')
   const [password, setPassword]   = useState('')
   const [zoneId, setZoneId]       = useState('')
+  const [officerType, setOfficerType] = useState<'salary' | 'affiliated' | ''>('')
+  const [ownPercent, setOwnPercent]   = useState('')
 
   const { data: zones = [] } = useQuery({
     queryKey: ['zones'],
@@ -60,7 +71,11 @@ function CreateStaffSheet({ tab, onClose }: { tab: StaffTab; onClose: () => void
     mutationFn: () => {
       const endpoint = tab === 'officers' ? '/users/officers' : '/users/directors'
       const body: Record<string, unknown> = { full_name: fullName, phone_number: phone, password }
-      if (tab === 'officers') body.zone_id = zoneId
+      if (tab === 'officers') {
+        body.zone_id = zoneId
+        body.officer_type = officerType
+        if (officerType === 'affiliated' && ownPercent !== '') body.commission_percent = Number(ownPercent)
+      }
       return api.post(endpoint, body)
     },
     onSuccess: () => {
@@ -71,14 +86,13 @@ function CreateStaffSheet({ tab, onClose }: { tab: StaffTab; onClose: () => void
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
-  const canSubmit = fullName.trim() && phone.trim().length >= 10 && password.length >= 6 && (tab === 'directors' || zoneId)
+  const canSubmit = fullName.trim() && phone.trim().length >= 10 && password.length >= 6 && (tab === 'directors' || (zoneId && officerType && (ownPercent === '' || Number(ownPercent) <= 100)))
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 dark:bg-night-900/60 backdrop-blur-sm" />
+      <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/60 dark:bg-night-900/60" />
       <motion.div
-        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
@@ -102,7 +116,7 @@ function CreateStaffSheet({ tab, onClose }: { tab: StaffTab; onClose: () => void
           </div>
           <div>
             <label className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide block mb-1.5">Password</label>
-            <input value={password} onChange={e => setPassword(e.target.value)} type="password"
+            <PasswordInput value={password} onChange={e => setPassword(e.target.value)}
               className="w-full border border-green-200 dark:border-night-500 rounded-xl px-4 py-3 text-sm text-green-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
           </div>
           {tab === 'officers' && (
@@ -115,6 +129,29 @@ function CreateStaffSheet({ tab, onClose }: { tab: StaffTab; onClose: () => void
               </select>
               {zones.length === 0 && (
                 <p className="text-amber-600 dark:text-amber-300 text-xs mt-1">No zones yet — add one from Business Settings first.</p>
+              )}
+            </div>
+          )}
+          {tab === 'officers' && (
+            <div>
+              <label className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide block mb-1.5">How is this officer paid?</label>
+              <div className="grid grid-cols-2 gap-2">
+                {([['salary', Banknote, 'Salary', 'Paid by the company'], ['affiliated', BadgeDollarSign, 'Affiliated', 'Earns a share of profit']] as const).map(([id, Icon, t, sub]) => (
+                  <button key={id} type="button" onClick={() => setOfficerType(id)}
+                    className={cn('rounded-2xl border-2 p-3 text-left transition', officerType === id ? 'border-green-600 bg-green-50 dark:bg-green-900/30' : 'border-green-100 dark:border-night-500')}>
+                    <Icon className="mb-1 h-5 w-5 text-green-700 dark:text-night-100" />
+                    <span className="block text-sm font-extrabold text-green-950 dark:text-white">{t}</span>
+                    <span className="block text-[11px] text-green-600 dark:text-night-300">{sub}</span>
+                  </button>
+                ))}
+              </div>
+              {officerType === 'affiliated' && (
+                <div className="mt-3">
+                  <label className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide block mb-1.5">Their own rate, % (optional)</label>
+                  <input value={ownPercent} onChange={e => setOwnPercent(e.target.value.replace(/\D/g, '').slice(0, 3))} inputMode="numeric" placeholder="Empty = the company rate in Business Settings"
+                    className="w-full border border-green-200 dark:border-night-500 rounded-xl px-4 py-3 text-sm text-green-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+                  <p className="text-green-400 dark:text-night-300 text-xs mt-1">They will see a welcome screen on first login and an Earnings page. They add their bank details later from their profile.</p>
+                </div>
               )}
             </div>
           )}
@@ -172,6 +209,7 @@ export default function StaffPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
+        {tab === 'officers' && <OfficerClassifyBanner />}
         <button
           onClick={() => setShowCreate(true)}
           className="w-full flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-500 text-green-950 font-bold text-sm rounded-2xl py-3.5 active:scale-95 transition-all mb-4 shadow-card"

@@ -5,6 +5,7 @@ import { useWalletStore } from '@/store/wallet.store'
 import { useAuthStore } from '@/store/auth.store'
 import { supabase } from '@/lib/supabase'
 import toast from '@/lib/notify'
+import { formatNairaAmount } from '@/lib/utils'
 import type { Wallet, PaginatedResponse, WalletTransaction } from '@/types'
 
 export function useWallet() {
@@ -50,7 +51,7 @@ export function useWallet() {
     if (currentBalance !== undefined) {
       if (prevBalanceRef.current !== null && currentBalance > prevBalanceRef.current) {
         const diffNaira = (currentBalance - prevBalanceRef.current) / 100
-        toast.success(`Wallet credited with ₦${diffNaira.toLocaleString()}`, {
+        toast.success(`Wallet credited with ${formatNairaAmount(diffNaira)}`, {
           icon: '💰',
           duration: 5000,
         })

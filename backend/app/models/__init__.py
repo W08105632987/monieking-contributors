@@ -26,6 +26,7 @@ from app.models.service_worker_withdrawal import ServiceWorkerWithdrawal, SWWith
 from app.models.job_pool_event import JobPoolEvent
 from app.models.service_template import ServiceTemplate, ServiceTemplateVersion
 from app.models.offline_import import OfflineImportBatch, PendingOfflineCustomer
+from app.models.officer_earnings import OfficerCommission, OfficerPayout
 
 
 __all__ = [

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, CheckCircle2, XCircle, Clock, Share2, Download, Copy, ChevronDown } from 'lucide-react'
 import toast from '@/lib/notify'
@@ -9,6 +9,9 @@ import { AppLogo } from '@/components/ui/AppLogo'
 import { BillerLogo } from '@/components/billers/BillerLogo'
 import { TokenCard } from '@/components/billers/TokenCard'
 import { rgba, type BillerBrand } from '@/lib/billerBrand'
+import { sheetMotion, SHEET_DURATION } from '@/lib/motion'
+import { useScrollLock } from '@/hooks/useScrollLock'
+import { haptic } from '@/lib/haptics'
 
 export type ReceiptStatus = 'completed' | 'failed' | 'pending'
 
@@ -47,6 +50,17 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
   const receiptRef = useRef<HTMLDivElement>(null)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Heavy content (token cards, field list, logo animation) mounts only after the slide-up
+  // has finished, so the transition runs on a trivially cheap tree and never drops frames.
+  const [ready, setReady] = useState(false)
+  useScrollLock(open)
+  useEffect(() => {
+    if (!open) { setReady(false); return }
+    haptic('success')
+    // Fallback in case onAnimationComplete is skipped (reduced motion, interrupted animation).
+    const t = window.setTimeout(() => setReady(true), Math.round(SHEET_DURATION * 1000) + 120)
+    return () => window.clearTimeout(t)
+  }, [open])
 
   const meta = statusMeta[status]
   const StatusIcon = meta.icon
@@ -89,10 +103,12 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
       {open && (
         <motion.div
           className="fixed inset-0 z-50 bg-white dark:bg-night-900 flex flex-col"
-          initial={{ y: '100%' }}
-          animate={{ y: 0 }}
-          exit={{ y: '100%' }}
-          transition={{ type: 'spring', damping: 32, stiffness: 300 }}
+          {...sheetMotion}
+          style={{ willChange: ready ? 'auto' : 'transform', contain: 'layout paint' }}
+          onAnimationComplete={(def) => { if (def === 'animate' || (typeof def === 'object' && (def as { y?: unknown }).y === 0)) setReady(true) }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Payment receipt"
         >
           {/* Top bar */}
           <div className="flex items-center justify-between px-4 py-4 shrink-0 border-b border-green-50 dark:border-night-700">
@@ -118,9 +134,13 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
                 style={{ backgroundImage: brand ? `linear-gradient(180deg, ${rgba(brand.main, 0.22)} 0%, ${rgba(brand.main, 0.04)} 100%)` : 'linear-gradient(180deg, rgba(20,83,45,0.10), rgba(20,83,45,0.02))' }}
               >
                 {brand ? (
-                  <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 320, damping: 20 }}>
-                    <BillerLogo brand={brand} size={60} glow />
-                  </motion.div>
+                  ready ? (
+                    <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
+                      <BillerLogo brand={brand} size={60} glow />
+                    </motion.div>
+                  ) : (
+                    <div className="h-[60px] w-[60px] rounded-2xl bg-green-100/70 dark:bg-night-700" />
+                  )
                 ) : (
                   <div className="w-14 h-14 rounded-2xl bg-green-900 flex items-center justify-center">
                     <AppLogo size={30} rounded="10px" />
@@ -137,6 +157,16 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
                 <p className="mt-2 px-2 text-[13px] leading-snug text-green-700 dark:text-night-200 break-words">{serviceName}</p>
               </div>
 
+              {!ready ? (
+                <div className="px-5 pb-6 pt-5 space-y-4" aria-hidden>
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div key={i} className="flex justify-between gap-6">
+                      <div className="h-3 w-20 rounded bg-green-100/70 dark:bg-night-700" />
+                      <div className="h-3 w-28 rounded bg-green-100/70 dark:bg-night-700" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
               <div className="px-5 pb-5">
                 {status === 'failed' && failureReason && (
                   <div className="mt-4 rounded-xl bg-red-50 dark:bg-red-900/20 px-3.5 py-3 text-[13px] leading-snug text-red-700 dark:text-red-300 break-words">
@@ -208,15 +238,16 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
                   <p className="mt-0.5 text-[11px] text-green-400 dark:text-night-500">Need help? Chat us on WhatsApp</p>
                 </div>
               </div>
+              )}
             </div>
           </div>
 
           {/* Sticky action bar */}
-          <div className="shrink-0 border-t border-green-50 dark:border-night-700 px-4 py-3 flex gap-3 relative">
+          <div className="shrink-0 border-t border-green-50 dark:border-night-700 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex gap-3 relative">
             <button
               onClick={handleShare}
-              disabled={busy}
-              className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-green-900 text-white font-semibold py-3.5 disabled:opacity-60"
+              disabled={busy || !ready}
+              className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-green-900 text-white font-semibold py-3.5 disabled:opacity-60 active:scale-[0.98] transition-transform"
             >
               <Share2 className="w-4 h-4" /> Share
             </button>
@@ -224,7 +255,7 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
             <div className="relative">
               <button
                 onClick={() => setExportMenuOpen((o) => !o)}
-                disabled={busy}
+                disabled={busy || !ready}
                 className="flex items-center justify-center gap-1.5 rounded-2xl bg-green-50 dark:bg-night-700 text-green-900 dark:text-night-100 font-semibold px-4 py-3.5 disabled:opacity-60"
               >
                 <Download className="w-4 h-4" /> <ChevronDown className="w-3.5 h-3.5" />

@@ -97,6 +97,8 @@ class BillPaymentRequest(Base):
     # isn't the customer's personal data, it's the thing they came here
     # to buy; masking it would make the receipt useless.
     token:           Mapped[str | None] = mapped_column(String(60), nullable=True)
+    units:           Mapped[str | None] = mapped_column(String(40), nullable=True)            # electricity kWh bought
+    customer_address: Mapped[str | None] = mapped_column(String(255), nullable=True)           # meter / customer address from the provider
 
     amount_charged_kobo: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 

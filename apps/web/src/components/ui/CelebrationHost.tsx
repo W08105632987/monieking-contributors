@@ -20,7 +20,7 @@ export function CelebrationHost() {
     <AnimatePresence>
       {current && (
         <motion.div
-          className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/55 px-6 backdrop-blur-sm"
+          className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/55 px-6"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           onClick={close}
         >

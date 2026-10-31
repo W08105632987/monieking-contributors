@@ -16,7 +16,7 @@ const input = 'w-full mt-1 rounded-xl border-2 border-green-100 dark:border-nigh
 const FEE_LABELS: Record<string, string> = { nin: 'NIN: by NIN', phone: 'NIN: by phone', demographic: 'NIN: by name & date of birth', bvn: 'BVN: by BVN' }
 
 interface Server {
-  enabled: boolean; retention_hours: number; retention_never?: boolean; nin_auth_url: string
+  enabled: boolean; retention_hours: number; retention_minutes?: number; retention_never?: boolean; nin_auth_url: string
   lookup_tier: Record<VerifyKind, SlipTier>
   fees: Record<string, number>; slips: Record<string, number>; missing_fees: string[]
   services: Record<VerifyKind, { available: boolean; reason: string | null; retry_at: string | null }>
@@ -33,6 +33,9 @@ export default function VerificationSettingsPage() {
 
   const [enabled, setEnabled] = useState(false)
   const [retention, setRetention] = useState('24')
+  const [retentionMins, setRetentionMins] = useState('0')
+  const retentionTotal = (Number(retention || 0) * 60) + Number(retentionMins || 0)
+  const retentionOk = Number(retentionMins || 0) <= 59 && retentionTotal >= 60 && retentionTotal <= 168 * 60
   const [keepForever, setKeepForever] = useState(false)
   const [authUrl, setAuthUrl] = useState('')
   const [tiers, setTiers] = useState<Record<string, string>>({ nin: 'regular', bvn: 'standard' })
@@ -43,7 +46,7 @@ export default function VerificationSettingsPage() {
   useEffect(() => {
     const d = q.data
     if (!d || loaded) return
-    setEnabled(d.enabled); setRetention(String(d.retention_hours)); setKeepForever(!!d.retention_never); setAuthUrl(d.nin_auth_url ?? '')
+    setEnabled(d.enabled); { const total = d.retention_minutes ?? d.retention_hours * 60; setRetention(String(Math.floor(total / 60))); setRetentionMins(String(total % 60)) }; setKeepForever(!!d.retention_never); setAuthUrl(d.nin_auth_url ?? '')
     setTiers({ ...d.lookup_tier })
     setFees(Object.fromEntries(Object.entries(d.fees).map(([k, v]) => [k, toNaira(v)])))
     setSlips(Object.fromEntries(Object.entries(d.slips).map(([k, v]) => [k, toNaira(v)])))
@@ -53,7 +56,7 @@ export default function VerificationSettingsPage() {
   const save = useMutation({
     mutationFn: () => adminPutSettings({
       enabled,
-      retention_hours: Number(retention) || 24,
+      retention_minutes: retentionOk ? retentionTotal : 24 * 60,
       retention_never: keepForever,
       nin_auth_url: authUrl.trim(),
       lookup_tier: tiers,
@@ -155,8 +158,15 @@ export default function VerificationSettingsPage() {
                 </select>
               </div>
               <div className="mt-2">
-                <span className="text-green-900 dark:text-white text-sm">How long results are kept (hours, 1 to 168)</span>
-                <input inputMode="numeric" value={retention} disabled={keepForever} onChange={e => setRetention(e.target.value.replace(/\D/g, ''))} className={`${input} disabled:opacity-40`} />
+                <span className="text-green-900 dark:text-white text-sm">How long results are kept (1 hour to 168 hours)</span>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <label className="block text-xs text-green-700 dark:text-night-200">Hours
+                    <input inputMode="numeric" value={retention} disabled={keepForever} onChange={e => setRetention(e.target.value.replace(/\D/g, ''))} className={`${input} disabled:opacity-40`} /></label>
+                  <label className="block text-xs text-green-700 dark:text-night-200">Minutes
+                    <input inputMode="numeric" value={retentionMins} disabled={keepForever} onChange={e => setRetentionMins(e.target.value.replace(/\D/g, ''))} className={`${input} disabled:opacity-40`} /></label>
+                </div>
+                {!keepForever && !retentionOk && <p className="text-red-500 text-xs mt-1">Enter between 1 hour and 168 hours, with minutes from 0 to 59.</p>}
+                <p className="text-amber-600 dark:text-amber-300 text-xs mt-1">This same value can also be changed in Business Settings (Identity Verification). Both screens edit the same retention time.</p>
                 <label className="mt-2 flex items-start gap-2 text-xs text-green-800 dark:text-night-100">
                   <input type="checkbox" className="mt-0.5" checked={keepForever} onChange={e => setKeepForever(e.target.checked)} />
                   <span><b>Never delete.</b> Keep every NIN and BVN result in the system forever. Results already wiped cannot be brought back. Stored results stay encrypted.</span>
@@ -170,7 +180,7 @@ export default function VerificationSettingsPage() {
 
             <button
               onClick={() => save.mutate()}
-              disabled={save.isPending || (!keepForever && !retention)}
+              disabled={save.isPending || (!keepForever && !retentionOk)}
               className="w-full font-bold text-sm rounded-full py-3.5 bg-amber-400 dark:bg-night-100 text-green-900 dark:text-night-900 disabled:opacity-40"
             >
               {save.isPending ? 'Saving…' : 'Save'}

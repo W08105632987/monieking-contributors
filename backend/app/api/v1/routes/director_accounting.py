@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import DirectorOnly
-from app.models.accounting import AccountingSettings, CostRate, Expense
+from app.models.accounting import ExternalIncome, AccountingSettings, CostRate, Expense
 from app.services import accounting_service as svc
 from app.utils.audit import log_action
 
@@ -34,9 +34,10 @@ def _period(start: date | None, end: date | None) -> tuple[date, date]:
 
 # ── overview ──────────────────────────────────────────────────────────────
 @router.get("/report")
-async def get_report(director: DirectorOnly, start: date | None = None, end: date | None = None, series: bool = True, db: AsyncSession = Depends(get_db)):
+async def get_report(director: DirectorOnly, start: date | None = None, end: date | None = None, series: bool = True, series_only: bool = False, db: AsyncSession = Depends(get_db)):
+    """The page asks twice: first `series=false` (totals, fast), then `series_only=true` (chart points)."""
     a, b = _period(start, end)
-    return await svc.report(db, a, b, series)
+    return await svc.report(db, a, b, series, series_only)
 
 
 @router.get("/holdings")
@@ -162,9 +163,72 @@ async def delete_expense(expense_id: uuid.UUID, director: DirectorOnly, db: Asyn
     return {"deleted": True}
 
 
+# ── other income: money earned OUTSIDE the app (no month lock, same as expenses) ──
+DEFAULT_INCOME_SOURCES = ["Other business", "Investment", "Consulting", "Rent", "Gift or grant", "Other"]
+
+
+class IncomeBody(BaseModel):
+    earned_on: date
+    source: str = Field(min_length=1, max_length=60)
+    description: str = Field(min_length=1, max_length=300)
+    amount_naira: float = Field(gt=0)
+
+
+def _inc_out(x: ExternalIncome) -> dict:
+    return {"id": str(x.id), "earned_on": x.earned_on.isoformat(), "source": x.source, "description": x.description, "amount_kobo": x.amount_kobo, "created_at": x.created_at}
+
+
+@router.get("/income")
+async def list_income(director: DirectorOnly, start: date | None = None, end: date | None = None, db: AsyncSession = Depends(get_db)):
+    a, b = _period(start, end)
+    rows = (await db.execute(select(ExternalIncome).where(ExternalIncome.earned_on >= a, ExternalIncome.earned_on <= b).order_by(ExternalIncome.earned_on.desc(), ExternalIncome.created_at.desc()))).scalars().all()
+    used = [c for (c,) in (await db.execute(select(ExternalIncome.source).distinct())).all()]
+    sources = sorted(set(DEFAULT_INCOME_SOURCES) | set(used), key=lambda c: (c == "Other", c))
+    return {"income": [_inc_out(x) for x in rows], "total_kobo": sum(x.amount_kobo for x in rows), "sources": sources}
+
+
+@router.post("/income")
+async def add_income(body: IncomeBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    x = ExternalIncome(earned_on=body.earned_on, source=body.source.strip(), description=body.description.strip(), amount_kobo=round(body.amount_naira * 100), created_by=director.id)
+    db.add(x)
+    await db.flush()
+    await log_action(db, actor_id=director.id, action="accounting.income_added", entity_type="external_income", entity_id=str(x.id), old_value=None, new_value=_inc_out(x) | {"created_at": None})
+    await db.commit()
+    return _inc_out(x)
+
+
+@router.put("/income/{income_id}")
+async def edit_income(income_id: uuid.UUID, body: IncomeBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    x = await db.get(ExternalIncome, income_id)
+    if x is None:
+        raise HTTPException(status_code=404, detail="Income entry not found.")
+    old = _inc_out(x) | {"created_at": None}
+    x.earned_on, x.source, x.description = body.earned_on, body.source.strip(), body.description.strip()
+    x.amount_kobo = round(body.amount_naira * 100)
+    await log_action(db, actor_id=director.id, action="accounting.income_edited", entity_type="external_income", entity_id=str(x.id), old_value=old, new_value=_inc_out(x) | {"created_at": None})
+    await db.commit()
+    return _inc_out(x)
+
+
+@router.delete("/income/{income_id}")
+async def delete_income(income_id: uuid.UUID, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    x = await db.get(ExternalIncome, income_id)
+    if x is None:
+        raise HTTPException(status_code=404, detail="Income entry not found.")
+    await log_action(db, actor_id=director.id, action="accounting.income_deleted", entity_type="external_income", entity_id=str(x.id), old_value=_inc_out(x) | {"created_at": None}, new_value=None)
+    await db.delete(x)
+    await db.commit()
+    return {"deleted": True}
+
+
 # ── export ────────────────────────────────────────────────────────────────
 def _naira(k: int) -> str:
     return f"{k / 100:.2f}"
+
+
+def _csv_safe(v: str) -> str:
+    """A cell starting with = + - @ would run as a formula when the file is opened in Excel; a leading ' makes it plain text."""
+    return "'" + v if v and v[0] in "=+-@\t\r" else v
 
 
 @router.get("/export.csv")
@@ -183,10 +247,16 @@ async def export_csv(director: DirectorOnly, start: date | None = None, end: dat
     w.writerow(["Provider costs", _naira(t["provider_cost_kobo"])])
     w.writerow(["Gross profit", _naira(t["gross_profit_kobo"])])
     w.writerow(["Expenses", _naira(t["expenses_kobo"])])
+    w.writerow(["Other income (outside the app)", _naira(t["other_income_kobo"])])
     w.writerow(["Net profit", _naira(t["net_profit_kobo"])])
     w.writerow([])
     w.writerow(["Expense date", "Category", "Description", "Amount (NGN)"])
     rows = (await db.execute(select(Expense).where(Expense.spent_on >= a, Expense.spent_on <= b).order_by(Expense.spent_on))).scalars().all()
     for x in rows:
-        w.writerow([x.spent_on.isoformat(), x.category, x.description, _naira(x.amount_kobo)])
+        w.writerow([x.spent_on.isoformat(), _csv_safe(x.category), _csv_safe(x.description), _naira(x.amount_kobo)])
+    w.writerow([])
+    w.writerow(["Income date", "Source", "Description", "Amount (NGN)"])
+    inc_rows = (await db.execute(select(ExternalIncome).where(ExternalIncome.earned_on >= a, ExternalIncome.earned_on <= b).order_by(ExternalIncome.earned_on))).scalars().all()
+    for x in inc_rows:
+        w.writerow([x.earned_on.isoformat(), _csv_safe(x.source), _csv_safe(x.description), _naira(x.amount_kobo)])
     return Response(content=buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="monieking-accounts-{a}-{b}.csv"'})

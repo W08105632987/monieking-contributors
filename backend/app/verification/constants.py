@@ -41,16 +41,16 @@ FIELD_NAMES = {
 
 # system_config keys (all director-editable through the settings page).
 K_ENABLED = "verification.techhub_enabled"
-K_RETENTION = "verification.retention_hours"
+K_RETENTION = "verification.retention_minutes"   # stored as whole minutes so directors can set hours AND minutes
 K_RETENTION_NEVER = "verification.retention_never"   # "true" = results are kept forever
 K_NIN_AUTH_URL = "verification.nin_auth_url"
 K_LOOKUP_TIER = "verification.lookup_tier."          # + kind
 K_FEE = "verification.fee."                          # + nin | phone | demographic | bvn
 K_SLIP = "verification.slip."                        # + kind + "." + tier
 
-DEFAULT_RETENTION_HOURS = 24
-MIN_RETENTION_HOURS = 1
-MAX_RETENTION_HOURS = 168
+DEFAULT_RETENTION_MINUTES = 24 * 60
+MIN_RETENTION_MINUTES = 60
+MAX_RETENTION_MINUTES = 168 * 60
 DEFAULT_LOOKUP_TIER = {"nin": "regular", "bvn": "standard"}
 
 # Circuit breaker

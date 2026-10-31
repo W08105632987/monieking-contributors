@@ -7,6 +7,7 @@ import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { useAuth } from '@/hooks/useAuth'
 import { copyToClipboard } from '@/lib/utils'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 
 const NIGERIAN_STATES = [
   'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue', 'Borno',
@@ -303,13 +304,12 @@ export default function WorkerOnboardingPage() {
               </label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-green-600 dark:text-night-400" />
-                <input
-                  type="password"
-                  required
+                <PasswordInput
+                                    required
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Create a new secure password"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-green-200 dark:border-night-700 bg-white dark:bg-night-800 text-green-950 dark:text-white text-sm outline-none focus:border-green-600 transition-colors"
+                  className="w-full pl-10 py-3 rounded-xl border-2 border-green-200 dark:border-night-700 bg-white dark:bg-night-800 text-green-950 dark:text-white text-sm outline-none focus:border-green-600 transition-colors"
                 />
               </div>
             </div>
@@ -320,13 +320,12 @@ export default function WorkerOnboardingPage() {
               </label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-green-600 dark:text-night-400" />
-                <input
-                  type="password"
-                  required
+                <PasswordInput
+                                    required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Re-enter your new password"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-green-200 dark:border-night-700 bg-white dark:bg-night-800 text-green-950 dark:text-white text-sm outline-none focus:border-green-600 transition-colors"
+                  className="w-full pl-10 py-3 rounded-xl border-2 border-green-200 dark:border-night-700 bg-white dark:bg-night-800 text-green-950 dark:text-white text-sm outline-none focus:border-green-600 transition-colors"
                 />
               </div>
               {confirmPassword && newPassword !== confirmPassword && (

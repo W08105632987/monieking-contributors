@@ -1,3 +1,4 @@
+import { sheetMotion, overlayMotion } from '@/lib/motion'
 import { useState, useEffect } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import { useNavigate } from 'react-router-dom'
@@ -12,7 +13,7 @@ import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { useNotificationsStore } from '@/store/notifications.store'
 import { DisputeModal } from '@/components/disputes/DisputeModal'
-import { timeAgo, formatDateTime, groupByDateBucket } from '@/lib/utils'
+import { timeAgo, formatDateTime, groupByDateBucket, formatNaira } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { AppNotification } from '@/types'
 import { NotifViewButton } from '@/components/notifications/NotifViewButton'
@@ -105,10 +106,9 @@ function NotifDetailSheet({ notif, onClose }: { notif: AppNotification; onClose:
     (notif.title === 'Withdrawal rejected' || notif.title === 'Withdrawal paid ✓') && !!notif.related_entity_id
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+      <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/60" />
       <motion.div
-        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 22, stiffness: 260, mass: 0.9 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
@@ -320,7 +320,7 @@ export default function NotificationsPage() {
                   )}
                 </div>
                 <p className="text-xs text-green-600 dark:text-night-200 mt-0.5 leading-snug">
-                  {smsFee ? `₦${(smsFee.sms_fee_per_sms_kobo / 100).toLocaleString()} per SMS` : 'Pay per SMS'} · SMS when your card is marked
+                  {smsFee ? `${formatNaira(smsFee.sms_fee_per_sms_kobo)} per SMS` : 'Pay per SMS'} · SMS when your card is marked
                 </p>
               </div>
             </div>

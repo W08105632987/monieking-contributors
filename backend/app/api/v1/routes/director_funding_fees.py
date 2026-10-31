@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,11 +18,12 @@ router = APIRouter(prefix="/director/funding-fees", tags=["funding-fees"])
 class SettingsBody(BaseModel):
     charge_customers: bool
     pass_monnify_fee: bool = False
+    fee_label: str = Field(default="NIPPS charge", min_length=1, max_length=40)
     tiers: list[dict]
 
 
 def _out(row) -> dict:
-    return {"charge_customers": row.charge_customers, "pass_monnify_fee": row.pass_monnify_fee, "tiers": row.tiers, "defaults": DEFAULT_TIERS, "updated_at": row.updated_at}
+    return {"charge_customers": row.charge_customers, "pass_monnify_fee": row.pass_monnify_fee, "fee_label": row.fee_label or "NIPPS charge", "tiers": row.tiers, "defaults": DEFAULT_TIERS, "updated_at": row.updated_at}
 
 
 @router.get("")
@@ -43,14 +44,15 @@ async def save_settings(body: SettingsBody, director: DirectorOnly, db: AsyncSes
     if problems:
         raise HTTPException(status_code=422, detail=problems[0] + (f" (+{len(problems) - 1} more)" if len(problems) > 1 else ""))
     row = await get_settings(db)
-    old = {"charge_customers": row.charge_customers, "pass_monnify_fee": row.pass_monnify_fee, "tiers": row.tiers}
+    old = {"charge_customers": row.charge_customers, "pass_monnify_fee": row.pass_monnify_fee, "fee_label": row.fee_label, "tiers": row.tiers}
     row.charge_customers = body.charge_customers
     row.pass_monnify_fee = body.pass_monnify_fee
+    row.fee_label = body.fee_label.strip() or "NIPPS charge"
     row.tiers = [{"from": int(t["from"]), "to": (None if t.get("to") in (None, "") else int(t["to"])), "fee": float(t["fee"])} for t in body.tiers]
     row.updated_by = director.id
     row.updated_at = datetime.now(timezone.utc)
     await log_action(db, actor_id=director.id, action="funding_fee.updated", entity_type="funding_fee_settings", entity_id="1",
-                     old_value=old, new_value={"charge_customers": row.charge_customers, "pass_monnify_fee": row.pass_monnify_fee, "tiers": row.tiers})
+                     old_value=old, new_value={"charge_customers": row.charge_customers, "pass_monnify_fee": row.pass_monnify_fee, "fee_label": row.fee_label, "tiers": row.tiers})
     await db.commit()
     return _out(row)
 

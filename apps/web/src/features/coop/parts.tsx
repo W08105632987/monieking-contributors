@@ -2,11 +2,12 @@ import { Avatar } from '@/components/ui/Avatar'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, ShieldCheck, Star } from 'lucide-react'
-import { formatNaira } from '@/lib/utils'
+import { formatNaira, formatNairaAmount } from '@/lib/utils'
 import { BigButton, Field, MoneyInput, Pill, Sheet, toKobo, pctText } from './ui'
 import { postIdem, useCoopAction, useCoopStatus, type MemberSummary, type PublicRules } from './api'
 import { newKey, useAuthPrompt } from './auth'
 import { api } from '@/lib/api'
+import { friendlyError } from '@/lib/errorText'
 
 export function ReliabilityBadge({ pct, has }: { pct: number | null; has: boolean }) {
   if (!has || pct === null) return <Pill tone="grey">No loan history yet</Pill>
@@ -34,7 +35,7 @@ export function TopUpSheet({ open, onClose }: { open: boolean; onClose: () => vo
       <Field label="Amount"><MoneyInput value={v} onChange={setV} autoFocus /></Field>
       <div className="mt-2 flex gap-2">
         {[5_000, 20_000, 100_000].map((n) => (
-          <button key={n} onClick={() => setV(String(n))} className="flex-1 rounded-full border border-green-200 py-1.5 text-xs font-bold text-green-800 dark:border-night-400 dark:text-night-100">+₦{n.toLocaleString()}</button>
+          <button key={n} onClick={() => setV(String(n))} className="flex-1 rounded-full border border-green-200 py-1.5 text-xs font-bold text-green-800 dark:border-night-400 dark:text-night-100">+{formatNairaAmount(n)}</button>
         ))}
       </div>
       <div className="mt-4"><BigButton loading={m.isPending} disabled={toKobo(v) <= 0} onClick={() => m.mutate(toKobo(v))}>Add contribution</BigButton></div>
@@ -56,7 +57,7 @@ export function WithdrawSheet({ open, onClose, member, rules }: { open: boolean;
   const check = async () => {
     setBusy(true); setErr('')
     try { setPreview((await api.post('/coop/withdrawals', { amount_kobo: toKobo(v) })).data) }
-    catch (e: any) { setErr(e?.response?.data?.detail ?? 'Could not check that amount') }
+    catch (e: any) { setErr(friendlyError(e, 'Could not check that amount')) }
     finally { setBusy(false) }
   }
   const { data: st } = useCoopStatus()

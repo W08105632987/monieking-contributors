@@ -1,3 +1,4 @@
+import { sheetMotion } from '@/lib/motion'
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ShieldCheck, Calendar, AlertTriangle, Eye, EyeOff, X } from 'lucide-react'
@@ -50,10 +51,7 @@ export function FoodQrDisplayModal({
           <motion.div
             // Slide only. Animating opacity as well made the sheet blink at the end
             // of the animation, and it is not needed: the sheet slides up from off-screen.
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 32, stiffness: 320, mass: 0.8 }}
+            {...sheetMotion}
             style={{ willChange: 'transform' }}
             className="relative bg-white dark:bg-night-700 rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-center"
             onClick={e => e.stopPropagation()}

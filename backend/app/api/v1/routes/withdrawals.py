@@ -444,6 +444,14 @@ async def mark_withdrawal_paid(
     withdrawal.status       = WithdrawalStatus.PAID
     withdrawal.processed_at = datetime.now(timezone.utc)
 
+    # Commission for the customer's affiliated officer (director-assigned). Never allowed to block a payout.
+    try:
+        async with db.begin_nested():
+            from app.services.officer_earnings_service import accrue_for_withdrawal
+            await accrue_for_withdrawal(db, withdrawal)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[OFFICER_COMMISSION_FAILED] {exc.__class__.__name__}: {exc}")
+
     # Update card completion status if applicable
     card_result = await db.execute(
         select(ContributionCard).where(ContributionCard.id == withdrawal.card_id)

@@ -10,6 +10,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { CustomerStatsPanel } from '@/components/dashboard/CustomerStatsPanel'
 import { OfficerContributionCard } from '@/components/dashboard/OfficerContributionCard'
 import { CustomerAdminPanel } from '@/components/director/CustomerAdminPanel'
+import { OfficerCommissionPanel } from '@/components/director/OfficerCommissionPanel'
 import type { User, Zone, ZoneAssignmentHistory } from '@/types'
 
 export default function OfficerDetailPage() {
@@ -137,6 +138,9 @@ export default function OfficerDetailPage() {
           </div>
         </div>
 
+        {/* How this officer is paid: salary or affiliated (commission) */}
+        <OfficerCommissionPanel officer={officer} />
+
         {/* Per-officer contribution gathered, day/week/custom */}
         {currentZone && <OfficerContributionCard officerId={officer.id} />}
 
@@ -213,7 +217,7 @@ export default function OfficerDetailPage() {
 
       {showZonePicker && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowZonePicker(false)}>
-          <div className="absolute inset-0 bg-green-950/60 dark:bg-night-900/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-green-950/60 dark:bg-night-900/60" />
           <div className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-5 pb-8 max-h-[70vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <p className="text-green-900 dark:text-white font-extrabold text-base">Choose a zone</p>

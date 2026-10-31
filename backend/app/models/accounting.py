@@ -39,6 +39,19 @@ class Expense(Base):
     updated_at:  Mapped[datetime]  = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
 
 
+class ExternalIncome(Base):
+    """Money the business earned OUTSIDE the app (another business, a one-off deal ...). Entered by the director."""
+    __tablename__ = "external_income"
+    id:          Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    earned_on:   Mapped[date]      = mapped_column(Date, nullable=False)
+    source:      Mapped[str]       = mapped_column(String(60), nullable=False)
+    description: Mapped[str]       = mapped_column(String(300), nullable=False)
+    amount_kobo: Mapped[int]       = mapped_column(BigInteger, nullable=False)
+    created_by:  Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at:  Mapped[datetime]  = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at:  Mapped[datetime]  = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
 class ProviderUsage(Base):
     __tablename__ = "provider_usage"
     id:         Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

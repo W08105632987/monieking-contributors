@@ -1,7 +1,7 @@
 """Dispute SLA Auto-escalation Sweep
 ==================================
 Auto-escalates any dispute sitting OPEN or UNDER_REVIEW beyond the
-Director-configured `dispute_sla_hours` (defaults to 48 hours).
+Director-configured `dispute_sla_minutes` (defaults to 48 hours = 2880 minutes).
 Mirroring `reclaim_expired_jobs`.
 
 HOTFIX NOTES
@@ -53,16 +53,21 @@ _last_sweep_time: float = 0.0
 SWEEP_DEBOUNCE_SECONDS: float = 120.0  # run at most once every 2 minutes
 
 
-async def get_dispute_sla_hours(db: AsyncSession) -> int:
-    """Reads dispute_sla_hours from system_config (cached TTL, default 48)."""
-    val = await get_config_int(db, "dispute_sla_hours", default=48)
+def _fmt(minutes: int) -> str:
+    h, m = divmod(int(minutes), 60)
+    return f"{h}h {m}m" if h and m else (f"{h}h" if h else f"{m}m")
+
+
+async def get_dispute_sla_minutes(db: AsyncSession) -> int:
+    """Reads dispute_sla_minutes from system_config (cached TTL, default 48 hours)."""
+    val = await get_config_int(db, "dispute_sla_minutes", default=2880)
     return max(1, val)
 
 
 async def _run_sweep(db: AsyncSession) -> int:
-    sla_hours = await get_dispute_sla_hours(db)
+    sla_minutes = await get_dispute_sla_minutes(db)
     now = datetime.now(timezone.utc)
-    threshold = now - timedelta(hours=sla_hours)
+    threshold = now - timedelta(minutes=sla_minutes)
 
     stmt = (
         select(Dispute)
@@ -87,7 +92,7 @@ async def _run_sweep(db: AsyncSession) -> int:
         d.status = DisputeStatus.ESCALATED
         d.is_escalated = True
         d.escalated_at = now
-        d.escalation_reason = f"Auto-escalated: SLA threshold ({sla_hours} hours) exceeded without resolution."
+        d.escalation_reason = f"Auto-escalated: SLA threshold ({_fmt(sla_minutes)}) exceeded without resolution."
         d.assigned_to = None
         d.updated_at = now
         escalated_count += 1
@@ -99,18 +104,18 @@ async def _run_sweep(db: AsyncSession) -> int:
                 user_id=dir_id,
                 type=NotificationType.WARNING,
                 title="Dispute SLA Breached — Auto-Escalated",
-                body=f"Dispute #{str(d.id)[:8]} has exceeded the {sla_hours}h SLA and is now in the open Director queue.",
+                body=f"Dispute #{str(d.id)[:8]} has exceeded the {_fmt(sla_minutes)} SLA and is now in the open Director queue.",
                 related_entity_id=d.id, deep_link_url=f"/disputes/{d.id}",
             )
 
     await db.flush()
-    logger.info("Dispute SLA sweep: auto-escalated %d disputes past %d hours SLA", escalated_count, sla_hours)
+    logger.info("Dispute SLA sweep: auto-escalated %d disputes past %s SLA", escalated_count, _fmt(sla_minutes))
     return escalated_count
 
 
 async def sweep_dispute_sla(db: AsyncSession, force: bool = False) -> int:
     """
-    Checks for open or under-review disputes older than dispute_sla_hours.
+    Checks for open or under-review disputes older than dispute_sla_minutes.
     Auto-escalates them to the open Director queue (assigned_to = None, status = ESCALATED)
     and notifies all directors.
     Debounced: Runs at most once every SWEEP_DEBOUNCE_SECONDS unless force=True.

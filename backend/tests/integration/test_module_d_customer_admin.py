@@ -74,7 +74,7 @@ async def _run(monkeypatch):
         r = await c.post(f"{base}/{real_id}/reset-password", json={"pin": "0000"})
         assert r.status_code in (400, 401, 403)
         r = await c.post(f"{base}/{real_id}/reset-password", json={"pin": "4821"})
-        assert r.status_code == 200 and r.json()["sms_sent"] is False and r.json()["temporary_password"].endswith("MK")
+        assert r.status_code == 200 and r.json()["sms_sent"] is False and __import__("re").fullmatch(r"[A-HJKMNP-Z2-9]{8}", r.json()["temporary_password"]) is not None   # random one-time password, no longer phone + MK
         assert ("PUT", f"/auth/v1/admin/users/{real_id}") in calls
 
         # manual funding
@@ -112,8 +112,9 @@ async def _run(monkeypatch):
         assert r.status_code == 200 and r.json()["result"] == "deleted"
 
         # analytics
+        # the erased customer's own page views are removed with them; the anonymous visitor's one stays
         r = await c.get("/api/v1/analytics/overview?today=true")
-        assert r.status_code == 200 and r.json()["pageviews"] == 2
+        assert r.status_code == 200 and r.json()["pageviews"] == 1
         r = await c.get("/api/v1/analytics/visitors?today=true")
         assert r.status_code == 200 and r.json()["anonymous"] == 1
 

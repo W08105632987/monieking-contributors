@@ -103,8 +103,12 @@ async def _details_bill_payment(db: AsyncSession, entity_id: uuid.UUID) -> dict[
     }
     if row.validated_account_name:
         details["Account name"] = row.validated_account_name
+    if row.customer_address:
+        details["Address"] = row.customer_address
     if row.token:
         details["Token"] = row.token
+    if row.units:
+        details["Units"] = f"{row.units} kWh"
     biller = await db.get(Biller, row.biller_id)
     if biller:
         details["Biller"] = biller.name

@@ -1,3 +1,4 @@
+import { sheetMotion } from '@/lib/motion'
 import { useState } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import { useNavigate } from 'react-router-dom'
@@ -12,7 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getErrorMessage } from '@/lib/api'
 import { DisputeModal } from '@/components/disputes/DisputeModal'
 import { useAuthStore } from '@/store/auth.store'
-import { formatNaira, formatDateTime, timeAgo, copyToClipboard } from '@/lib/utils'
+import { formatNaira, formatNairaAmount, formatDateTime, timeAgo, copyToClipboard } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { txLabel } from '@/lib/txLabel'
 import toast from '@/lib/notify'
@@ -20,6 +21,7 @@ import { kycPath } from '@/lib/kyc'
 import type { WalletTransaction } from '@/types'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { CoinSoundToggle } from '@/components/wallet/CoinSoundToggle'
 
 // ── Transaction item ──────────────────────────────────────────────
 function TxItem({ tx, onClick }: { tx: WalletTransaction; onClick: () => void }) {
@@ -84,10 +86,9 @@ function TxDetailSheet({ tx, onClose }: { tx: WalletTransaction; onClose: () => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-green-950/60" />
       <motion.div
-        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 22, stiffness: 260, mass: 0.9 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
@@ -166,12 +167,9 @@ function FundWalletSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-green-950/60" />
       <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
@@ -226,8 +224,8 @@ function FundWalletSheet({ onClose }: { onClose: () => void }) {
                 <p className="mb-2 text-xs font-bold text-green-800 dark:text-night-100">Funding fee (taken from what you send)</p>
                 {feeInfo.tiers.map((t, i) => (
                   <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05, duration: 0.2 }} className="flex justify-between py-1 text-xs text-green-900 dark:text-white">
-                    <span>{t.to === null ? `₦${t.from.toLocaleString()} and above` : `₦${t.from.toLocaleString()} – ₦${t.to.toLocaleString()}`}</span>
-                    <b>₦{t.fee.toLocaleString()}</b>
+                    <span>{t.to === null ? `${formatNairaAmount(t.from)} and above` : `${formatNairaAmount(t.from)} – ${formatNairaAmount(t.to)}`}</span>
+                    <b>{formatNairaAmount(t.fee)}</b>
                   </motion.div>
                 ))}
               </div>
@@ -356,6 +354,7 @@ export default function WalletPage() {
       <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
         <BrandBlobLogo height={36} />
         <div className="flex items-center gap-2">
+          <CoinSoundToggle />
           <button
             onClick={handleRefresh}
             className="w-9 h-9 bg-green-100 dark:bg-night-600 rounded-xl flex items-center justify-center"

@@ -338,7 +338,7 @@ async def create_lookup(db: AsyncSession, *, actor: User, customer_id: uuid.UUID
     row.status, row.fee_kobo, row.fee_reference = "found", fee, reference
     row.completed_at = _now()
     # "never" (director setting): no expiry date at all, so the result is never wiped by the retention sweep
-    row.expires_at = None if cfg.retention_never else row.completed_at + timedelta(hours=cfg.retention_hours)
+    row.expires_at = None if cfg.retention_never else row.completed_at + timedelta(minutes=cfg.retention_minutes)
     row.result_enc = crypto.encrypt_json(result.user_data)
     row.pdf_enc = crypto.encrypt_bytes(result.pdf) if result.pdf else None
     row.photo_enc = crypto.encrypt_bytes(photo) if photo else None

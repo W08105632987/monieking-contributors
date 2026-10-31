@@ -11,7 +11,7 @@ FIX HISTORY (migration 038 / dispute overhaul):
   4.1.4 — req.dispute_id is now set at dispute creation
   4.1.7 — real DisputeReason values collected from callers
   4.1.8 — log_action added to claim, resolve, escalate, and both create paths
-  4.1.9 — dispute_sla_hours auto-escalation sweep (see services/dispute_sla_sweep.py)
+  4.1.9 — dispute_sla_minutes auto-escalation sweep (see services/dispute_sla_sweep.py)
   4.1.10— is_internal flag on messages; customers cannot see internal notes
   4.2   — _serialize_detail returns job_context when service_request_id is set
   4.4   — commission hold/release on dispute create/resolve
@@ -302,6 +302,14 @@ async def _release_commission_for_worker(
 
 # ─── Routes ─────────────────────────────────────────────────────────────────
 
+
+def _fmt_window(minutes: int) -> str:
+    h, m = divmod(int(minutes), 60)
+    if h and m:
+        return f"{h} hour{'s' if h != 1 else ''} {m} minute{'s' if m != 1 else ''}"
+    return f"{h} hour{'s' if h != 1 else ''}" if h else f"{m} minute{'s' if m != 1 else ''}"
+
+
 @router.post("", response_model=DisputeResponse, status_code=201)
 async def create_dispute(
     body: CreateDisputeRequest,
@@ -400,7 +408,7 @@ async def list_disputes(
     status: DisputeStatus | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    # 4.1.9 — sweep any overdue disputes past dispute_sla_hours (debounced)
+    # 4.1.9 — sweep any overdue disputes past dispute_sla_minutes (debounced)
     await sweep_dispute_sla(db)
 
     query = select(Dispute).options(selectinload(Dispute.customer), selectinload(Dispute.handler))
@@ -764,15 +772,15 @@ async def create_manual_service_dispute(
         raise HTTPException(status_code=400, detail="You can only dispute completed service requests.")
 
     # 4.4 — check eligibility window for commission-hold disputes
-    eligibility_hours = await _get_config_int(db, "dispute_eligibility_window_hours", 72)
+    eligibility_minutes = await _get_config_int(db, "dispute_eligibility_window_minutes", 4320)
     if req.status == ManualServiceStatus.SUCCESSFUL and req.worker_commission_kobo > 0:
         completed = getattr(req, "completed_at", None) or req.updated_at
         if completed:
-            age_hours = (datetime.now(timezone.utc) - completed.replace(tzinfo=timezone.utc)).total_seconds() / 3600
-            if age_hours > eligibility_hours:
+            age_minutes = (datetime.now(timezone.utc) - completed.replace(tzinfo=timezone.utc)).total_seconds() / 60
+            if age_minutes > eligibility_minutes:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"This service was completed more than {eligibility_hours} hours ago and is no longer eligible for a commission dispute. You can still raise a general complaint — contact support."
+                    detail=f"This service was completed more than {_fmt_window(eligibility_minutes)} ago and is no longer eligible for a commission dispute. You can still raise a general complaint — contact support."
                 )
 
     # 4.1.2 — one live dispute per job (regardless of who raised it)

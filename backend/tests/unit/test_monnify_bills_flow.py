@@ -121,7 +121,7 @@ def test_5xx_is_ambiguous_and_retriable(monkeypatch):
 
 def test_non_json_5xx_is_ambiguous(monkeypatch):
     e = _err(monkeypatch, lambda r: httpx.Response(502, text="<html>bad gateway</html>"))
-    assert e.ambiguous and "502" in e.message
+    assert e.ambiguous and "502" in e.raw
 
 
 def test_read_timeout_is_ambiguous(monkeypatch):
@@ -162,7 +162,7 @@ def test_auth_failure_becomes_a_bills_error_not_an_http_exception(monkeypatch):
     p = MonnifyBillsProvider()
     with pytest.raises(MonnifyBillsError) as ei:
         run(p._request("GET", "/x"))
-    assert "credentials" in ei.value.message
+    assert "credentials" in ei.value.raw
 
 
 # ── Provider: paging ──────────────────────────────────────────────

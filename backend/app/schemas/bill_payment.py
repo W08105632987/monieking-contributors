@@ -42,6 +42,7 @@ class ValidateBillRequest(BaseModel):
 class ValidateBillResponse(BaseModel):
     validation_reference: str | None = None   # null when the biller doesn't require validation (airtime/data)
     validated_account_name: str | None = None
+    customer_address: str | None = None       # electricity: the meter/customer address the provider returned
     requires_validation: bool
 
 
@@ -72,6 +73,8 @@ class BillPaymentRequestItem(BaseModel):
     status: str
     failure_reason: str | None = None
     token: str | None = None
+    units: str | None = None
+    customer_address: str | None = None
     amount_charged_kobo: int | None = None
     monnify_transaction_reference: str | None = None
     created_at: datetime

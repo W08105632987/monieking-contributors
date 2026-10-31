@@ -1,3 +1,4 @@
+import { sheetMotion } from '@/lib/motion'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -319,12 +320,9 @@ export default function WorkerEarningsPage() {
       {/* Payout Modal Sheet */}
       <AnimatePresence>
         {isPayoutModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60">
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 280 }}
+              {...sheetMotion}
               className="bg-white dark:bg-night-800 rounded-t-3xl sm:rounded-3xl w-full max-w-lg p-5 space-y-4 border border-green-100 dark:border-night-700"
             >
               <div className="flex items-center justify-between pb-2 border-b border-green-100 dark:border-night-700">

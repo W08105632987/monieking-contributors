@@ -12,6 +12,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import toast from '@/lib/notify'
 import type { DisputeDetail, DisputeMessage } from '@/types'
 import { DISPUTE_REASON_LABEL } from '@/types'
+import { friendlyError } from '@/lib/errorText'
 
 type PendingMessage = {
   localId: string
@@ -144,7 +145,7 @@ export default function DisputeDetailPage() {
       qc.invalidateQueries({ queryKey: ['worker-disputes'] })
     } catch (err: any) {
       setPending(p => p.map(m => m.localId === localId ? { ...m, failed: true } : m))
-      toast.error(err?.response?.data?.detail ?? 'Could not send message')
+      toast.error(friendlyError(err, 'Could not send message'))
     }
   }
 
@@ -155,7 +156,7 @@ export default function DisputeDetailPage() {
       toast.success('Dispute claimed')
       refresh()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Could not claim')
+      toast.error(friendlyError(err, 'Could not claim'))
     } finally {
       setBusy(false)
     }
@@ -174,7 +175,7 @@ export default function DisputeDetailPage() {
       setResolutionNote('')
       refresh()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Could not resolve')
+      toast.error(friendlyError(err, 'Could not resolve'))
     } finally {
       setBusy(false)
     }
@@ -189,7 +190,7 @@ export default function DisputeDetailPage() {
       setEscalateReason('')
       refresh()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Could not escalate')
+      toast.error(friendlyError(err, 'Could not escalate'))
     } finally {
       setBusy(false)
     }

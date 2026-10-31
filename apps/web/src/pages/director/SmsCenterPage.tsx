@@ -81,6 +81,9 @@ export default function SmsCenterPage() {
               <input inputMode="decimal" value={cost} onChange={e => setCost(e.target.value.replace(/[^0-9.]/g, ''))} className="mt-1 w-full rounded-lg border-2 border-green-100 dark:border-night-500 bg-transparent px-3 py-2 text-sm text-green-900 dark:text-white" /></label>
           </div>
           {cfg && Number(fee) * 100 < Number(cost) * 100 && <p className="text-xs text-red-500 font-semibold">The fee is lower than what the SMS costs us.</p>}
+          <p className="text-[11px] text-amber-600 dark:text-amber-300 leading-snug">
+            These two amounts can also be changed in Business Settings (SMS Alerts). Both screens edit the same values, so whichever you save last is the one in force.
+          </p>
           <button onClick={() => saveFee.mutate()} disabled={saveFee.isPending} className="w-full bg-green-900 dark:bg-night-100 text-white dark:text-night-900 font-bold text-sm py-2.5 rounded-xl disabled:opacity-60">Save fee</button>
         </section>
 

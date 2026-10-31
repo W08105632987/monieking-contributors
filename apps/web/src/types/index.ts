@@ -49,6 +49,12 @@ export interface User {
   phone_verified?: boolean
   kyc_complete?: boolean
   nin_linked?: boolean
+  /** Officers only: 'salary' (paid as before) or 'affiliated' (earns commission). null = the director has not chosen yet. */
+  officer_type?: 'salary' | 'affiliated' | null
+  officer_commission_percent?: number | null
+  officer_welcome_seen_at?: string | null
+  /** Customers only: the one officer who earns commission on this customer's withdrawals. */
+  commission_officer_id?: string | null
   bvn_last4?: string | null
   nin_last4?: string | null
   sms_alerts_enabled?: boolean
@@ -566,6 +572,7 @@ export interface Biller {
 export interface BillValidationResult {
   validation_reference: string | null
   validated_account_name: string | null
+  customer_address?: string | null
   requires_validation: boolean
 }
 
@@ -584,6 +591,8 @@ export interface BillPaymentRequest {
   status: BillPaymentStatus
   failure_reason: string | null
   token: string | null
+  units?: string | null
+  customer_address?: string | null
   amount_charged_kobo: number | null
   monnify_transaction_reference: string | null
   created_at: string

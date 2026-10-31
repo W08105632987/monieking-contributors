@@ -1,3 +1,4 @@
+import { sheetMotion, overlayMotion } from '@/lib/motion'
 import { useState } from 'react'
 import { ask } from '@/lib/dialog'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -424,10 +425,9 @@ export default function CardDetailPage() {
 
       {showCloseModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => !closing && setShowCloseModal(false)}>
-          <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+          <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/60" />
           <motion.div
-            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            {...sheetMotion}
             className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
             onClick={e => e.stopPropagation()}
           >

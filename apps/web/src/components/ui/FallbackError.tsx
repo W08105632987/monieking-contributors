@@ -1,4 +1,5 @@
 import { WifiOff, RotateCw } from 'lucide-react'
+import { safeText } from '@/lib/errorText'
 
 interface FallbackErrorProps {
   title?: string
@@ -9,7 +10,7 @@ interface FallbackErrorProps {
 
 export function FallbackError({
   title = "Couldn't load this",
-  message = 'Check your connection and try again.',
+  message = 'Check your connection, then tap Retry.',
   onRetry,
   isRetrying = false,
 }: FallbackErrorProps) {
@@ -19,7 +20,7 @@ export function FallbackError({
         <WifiOff className="w-5 h-5 text-amber-500" />
       </div>
       <p className="text-green-900 dark:text-white text-sm font-semibold">{title}</p>
-      <p className="text-green-400 dark:text-night-300 text-xs">{message}</p>
+      <p className="text-green-400 dark:text-night-300 text-xs">{safeText(message, 'Something went wrong. Please tap Retry.')}</p>
       <button
         onClick={onRetry}
         disabled={isRetrying}

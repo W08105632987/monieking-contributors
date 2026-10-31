@@ -23,7 +23,7 @@ export function FeedbackModalHost() {
       {open && (
         <>
           <motion.div
-            className="fixed inset-0 bg-green-950/60 backdrop-blur-sm z-[9998]"
+            className="fixed inset-0 bg-green-950/60 z-[9998]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

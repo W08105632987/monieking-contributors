@@ -27,6 +27,7 @@ import httpx
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.core.public_errors import public_message, UNAVAILABLE_MESSAGE
 from app.integrations.monnify import get_payment_provider
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,10 @@ class MonnifyBillsError(Exception):
                  4xx), so the caller can safely treat it as failed.
     """
     def __init__(self, message: str, *, retriable: bool = False, ambiguous: bool = False):
-        self.message = message
+        # `raw` is the real provider/technical detail: for logs and operator
+        # tools only. `message` is always customer-safe.
+        self.raw = message
+        self.message = public_message(message, UNAVAILABLE_MESSAGE if retriable else "We could not complete this request. Please try again or contact support.")
         self.retriable = retriable
         self.ambiguous = ambiguous
         super().__init__(message)
@@ -119,7 +123,9 @@ class MonnifyBillsProvider:
             headers = await self._headers()
         except HTTPException as e:
             # Auth/login problems surface from monnify.py as HTTPException.
-            raise MonnifyBillsError(str(e.detail), retriable=e.status_code in (503, 504))
+            # Login failures, outages and 5xx (incl. 502) are all transient from the customer's point of view.
+            logger.warning("[monnify-bills] auth failed: %s %s", e.status_code, e.detail)
+            raise MonnifyBillsError(str(e.detail), retriable=e.status_code >= 500 or e.status_code == 429)
 
         try:
             async with httpx.AsyncClient(timeout=BILLS_TIMEOUT) as client:
@@ -157,7 +163,8 @@ class MonnifyBillsProvider:
             body = resp.json()
         except ValueError:
             # A gateway/WAF/auth-layer rejection can come back as plain text
-            # or HTML instead of JSON — surface the status and raw text.
+            # or HTML instead of JSON. Log the raw text; the exception's public message hides it.
+            logger.warning("[monnify-bills] non-JSON %s from %s %s: %s", resp.status_code, method, path, resp.text[:300])
             raise MonnifyBillsError(
                 f"Bills provider returned a non-JSON response (HTTP {resp.status_code}): {resp.text[:300]}",
                 retriable=resp.status_code >= 500,

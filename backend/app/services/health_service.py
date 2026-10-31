@@ -97,7 +97,7 @@ async def check_transactions(db: AsyncSession) -> dict:
     """
     Two independent anomaly signals, either one enough to flag:
       1. Withdrawals stuck in 'pending' past your own configured SLA
-         (WITHDRAWAL_SLA_HOURS) — the same threshold the app already
+         (withdrawal_sla_minutes in Business Settings) — the same threshold the app already
          defines for how long a withdrawal should take, reused here
          rather than inventing a second, possibly inconsistent number.
       2. A wallet balance that doesn't match its own transaction
@@ -105,7 +105,9 @@ async def check_transactions(db: AsyncSession) -> dict:
          admin CRM's reconciliation page) rather than duplicating that
          query here.
     """
-    sla_cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.WITHDRAWAL_SLA_HOURS)
+    from app.services.settings_service import get_config_int
+    sla_minutes = await get_config_int(db, "withdrawal_sla_minutes", settings.WITHDRAWAL_SLA_HOURS * 60)
+    sla_cutoff = datetime.now(timezone.utc) - timedelta(minutes=max(1, sla_minutes))
     stuck_withdrawals = (await db.execute(
         select(func.count()).select_from(Withdrawal)
         .where(Withdrawal.status == WithdrawalStatus.PENDING, Withdrawal.requested_at < sla_cutoff)

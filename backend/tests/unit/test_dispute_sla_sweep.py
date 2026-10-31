@@ -105,11 +105,11 @@ def notified(monkeypatch):
     async def fake_notify(db, **kwargs):
         sent.append(kwargs)
 
-    async def fake_sla_hours(db):
-        return 48
+    async def fake_sla_minutes(db):
+        return 48 * 60
 
     monkeypatch.setattr(sweep, "send_notification", fake_notify)
-    monkeypatch.setattr(sweep, "get_dispute_sla_hours", fake_sla_hours)
+    monkeypatch.setattr(sweep, "get_dispute_sla_minutes", fake_sla_minutes)
     monkeypatch.setattr(sweep, "_last_sweep_time", 0.0)
     return sent
 
@@ -128,7 +128,7 @@ def test_overdue_disputes_are_escalated_and_directors_notified(notified):
         assert d.is_escalated is True
         assert d.assigned_to is None          # back in the open director queue
         assert d.escalated_at is not None
-        assert "48 hours" in d.escalation_reason
+        assert "48h" in d.escalation_reason
     assert len(notified) == 4                 # 2 disputes x 2 directors
     assert db.savepoints_opened == 1
 
@@ -196,7 +196,7 @@ def test_500_carries_cors_headers_for_allowed_origin(client_with_boom_route):
     assert resp.status_code == 500
     assert resp.headers.get("access-control-allow-origin") == origin
     assert resp.headers.get("access-control-allow-credentials") == "true"
-    assert resp.json() == {"detail": "Internal server error"}
+    assert resp.json() == {"detail": "Something went wrong on our side. Please try again in a moment."}
     assert "secret internal detail" not in resp.text      # still leaks nothing
 
 

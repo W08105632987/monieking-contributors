@@ -1,5 +1,5 @@
-from pydantic import BaseModel, field_validator, ConfigDict
-from typing import Optional
+from pydantic import BaseModel, Field, field_validator, ConfigDict
+from typing import Literal, Optional
 import uuid
 from datetime import datetime
 from app.models.user import UserRole, UserStatus
@@ -63,6 +63,9 @@ class CreateOfficerRequest(BaseModel):
     phone_number: str
     password:     str
     zone_id:      uuid.UUID
+    # The director must choose: 'salary' (paid by the company as before) or 'affiliated' (earns a share of profit).
+    officer_type: Literal["salary", "affiliated"]
+    commission_percent: Optional[int] = Field(default=None, ge=0, le=100)   # affiliated only; empty = the global setting
 
 
 class CreateDirectorRequest(BaseModel):
@@ -116,6 +119,10 @@ class UserResponse(BaseModel):
     state_of_residence: Optional[str] = None
     referral_code:      Optional[str] = None
     commission_balance_kobo: int = 0
+    officer_type: Optional[str] = None
+    officer_commission_percent: Optional[int] = None
+    officer_welcome_seen_at: Optional[datetime] = None
+    commission_officer_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 

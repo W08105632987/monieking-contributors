@@ -1,3 +1,4 @@
+import { sheetMotion } from '@/lib/motion'
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
@@ -55,11 +56,10 @@ export function PlanSheet({ title, placeholder, brand, plans, selectedId, onSele
           <div className="fixed inset-0 z-50 flex items-end justify-center">
             <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" onClick={close}
+              className="absolute inset-0 bg-green-950/60" onClick={close}
             />
             <motion.div
-              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              {...sheetMotion}
               className="relative bg-white dark:bg-night-800 rounded-t-3xl w-full max-w-lg max-h-[82dvh] flex flex-col"
             >
               <div className="px-5 pt-5 pb-3" style={{ background: `linear-gradient(180deg, ${rgba(brand.main, 0.16)}, transparent)` }}>

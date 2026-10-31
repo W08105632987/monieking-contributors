@@ -180,6 +180,9 @@ async def create_request(
     if user.role == "officer" and not customer_id:
         raise HTTPException(status_code=400, detail="customer_id is required when an officer submits this on a customer's behalf.")
 
+    if user.role == "officer":
+        from app.core.access import require_officer_zone_for
+        await require_officer_zone_for(db, user, target_customer_id)   # only customers of the officer's own zone (S-17)
     from app.services.pin_service import check_pin
     await check_pin(db, user, body.pin)
 
@@ -289,6 +292,8 @@ async def list_requests(
     db: AsyncSession = Depends(get_db),
 ):
     target_id = user.id if user.role == "customer" else (customer_id or user.id)
+    from app.core.access import require_can_view_customer_data
+    await require_can_view_customer_data(db, user, target_id)   # service workers etc. never; officers only their zone (S-17)
     stmt = (
         select(IdentityServiceRequest, IdentityService.name, IdentityService.category)
         .join(IdentityService, IdentityService.id == IdentityServiceRequest.service_id)
@@ -321,8 +326,8 @@ async def get_request(
     if not row:
         raise HTTPException(status_code=404, detail="Request not found")
     req, name, cat = row
-    if user.role == "customer" and req.customer_id != user.id:
-        raise HTTPException(status_code=403, detail="Not your request")
+    from app.core.access import require_can_view_customer_data
+    await require_can_view_customer_data(db, user, req.customer_id)
     return IdentityServiceRequestItem(**req.__dict__, service_name=name, service_category=cat)
 
 
@@ -347,8 +352,8 @@ async def download_reference_pdf(
     if not row:
         raise HTTPException(status_code=404, detail="Request not found")
     req, service = row
-    if user.role == "customer" and req.customer_id != user.id:
-        raise HTTPException(status_code=403, detail="Not your request")
+    from app.core.access import require_can_view_customer_data
+    await require_can_view_customer_data(db, user, req.customer_id)
     if req.status != IdentityRequestStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Only a completed request has a reference to download.")
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Eye, EyeOff, Copy } from 'lucide-react'
 import { formatNaira, copyToClipboard } from '@/lib/utils'
+import { SeasonalArt } from '@/components/ui/SeasonalArt'
 import { Button } from '@/components/ui'
 import type { Wallet } from '@/types'
 import toast from '@/lib/notify'
@@ -25,6 +26,8 @@ export function WalletCard({ wallet, onFund, onWithdraw }: WalletCardProps) {
       {/* Decorative orbs */}
       <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-green-700/30 pointer-events-none" />
       <div className="absolute right-8 bottom-0    w-24 h-24 rounded-full bg-copper-400/10 pointer-events-none" />
+
+      <SeasonalArt slot="wallet" className="absolute inset-0 w-full h-full object-cover" />
 
       <div className="relative">
         <div className="flex items-center justify-between mb-4">

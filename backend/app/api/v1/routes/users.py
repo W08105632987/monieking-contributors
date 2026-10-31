@@ -282,6 +282,8 @@ async def create_customer(
         status=                   UserStatus.ACTIVE,
         is_manual_customer=       True,
         managing_officer_id=      current_user.id if user_role == "officer" else None,
+        # An affiliated officer who registers a customer starts as that customer's commission officer; the director can change it.
+        commission_officer_id=    current_user.id if (user_role == "officer" and getattr(current_user, "officer_type", None) == "affiliated") else None,
         # Who can actually manage this customer going forward is
         # zone-based, not tied to whichever officer happened to register
         # them — see 012_zone_coverage.sql. If the registering officer
@@ -362,6 +364,8 @@ async def create_officer(
         full_name=    body.full_name,
         phone_number= body.phone_number,
         zone_id=      body.zone_id,
+        officer_type= body.officer_type,
+        officer_commission_percent= body.commission_percent if body.officer_type == "affiliated" else None,
         created_by=   director.id,
         status=       UserStatus.ACTIVE,
         login_password_hash=      hash_password(body.password),
@@ -393,7 +397,7 @@ async def create_officer(
     await log_action(
         db, actor_id=director.id, action="officer.created",
         entity_type="user", entity_id=str(officer.id),
-        new_value={"full_name": officer.full_name, "phone_number": officer.phone_number},
+        new_value={"full_name": officer.full_name, "phone_number": officer.phone_number, "officer_type": officer.officer_type},
         ip_address=request.client.host if request else None,
     )
     return await build_user_response(db, officer)

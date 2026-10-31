@@ -4,6 +4,7 @@ import { formatNaira } from '@/lib/utils'
 import { useTransparency } from '../api'
 import { bucketSeries } from '../chart'
 import { Bar, Card, CoopPage, SectionTitle, Skel, Stat, compactNaira, dDay, dShort, inputCls, pctText } from '../ui'
+import { friendlyError } from '@/lib/errorText'
 
 const RANGES = [['7d', '7 days'], ['30d', '30 days'], ['year', 'This year'], ['custom', 'Custom']] as const
 
@@ -34,7 +35,7 @@ export default function TransparencyPage() {
           <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className={inputCls} aria-label="To" />
         </div>
       )}
-      {error && <p className="mt-3 text-sm font-semibold text-red-600">{(error as any)?.response?.data?.detail ?? 'Could not load this range'}</p>}
+      {error && <p className="mt-3 text-sm font-semibold text-red-600">{friendlyError(error, 'Could not load this range')}</p>}
 
       {!t ? <div className="mt-4 space-y-3"><Skel h="h-48" /><Skel /></div> : (
         <>

@@ -45,15 +45,28 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/** Convert kobo (integer) to formatted Naira string  e.g. 100000 → ₦1,000 */
+const NAIRA_FMT = new Intl.NumberFormat('en-NG', {
+  style: 'currency',
+  currency: 'NGN',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+/** Format a NAIRA amount, always 2 decimals  e.g. 1250.5 → ₦1,250.50 */
+export function formatNairaAmount(naira: number): string {
+  const n = Number.isFinite(naira) ? naira : 0
+  // Intl may emit "NGN" instead of the symbol on some runtimes; normalise to ₦
+  return NAIRA_FMT.format(n).replace(/NGN\s?/, '₦')
+}
+
+/** Convert kobo (integer) to formatted Naira string, always 2 decimals  e.g. 4500 → ₦45.00, 125050 → ₦1,250.50 */
 export function formatNaira(kobo: number): string {
-  const naira = kobo / 100
-  return new Intl.NumberFormat('en-NG', {
-    style: 'currency',
-    currency: 'NGN',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(naira)
+  return formatNairaAmount(kobo / 100)
+}
+
+/** Plain number part of an amount in kobo, 2 decimals, no symbol  e.g. 125050 → 1,250.50 */
+export function formatNairaNumber(kobo: number): string {
+  return formatNairaAmount(kobo / 100).replace('₦', '')
 }
 
 /** Convert Naira input string to kobo integer  e.g. "1000" → 100000 */

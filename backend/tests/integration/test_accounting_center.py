@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 os.environ.setdefault("DATABASE_URL", os.environ.get("TEST_DATABASE_URL") or "postgresql+asyncpg://x@localhost/x_test")
-from app.services.accounting_service import _segments, cost_sql, _buckets
+from app.services.accounting_service import _segments, cost_sql, _buckets, _bucket_case, expense_totals_multi, service_rows_multi
 from app.models.accounting import CostRate
 from datetime import date
 from decimal import Decimal
@@ -31,6 +31,35 @@ def test_buckets_are_bounded():
     assert len(_buckets(date(2026, 1, 1), date(2026, 1, 7))) == 7
     assert len(_buckets(date(2026, 1, 1), date(2026, 3, 1))) <= 10
     assert len(_buckets(date(2024, 1, 1), date(2026, 3, 1))) == 12
+
+
+def test_bucket_case_builds_disjoint_windows():
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ws = [(t0 + timedelta(days=i), t0 + timedelta(days=i + 1)) for i in range(3)]
+    sql, p = _bucket_case("ts", ws)
+    assert sql.count("WHEN") == 3 and p["ws2"] == ws[2][0] and p["we0"] == ws[0][1] and sql.endswith("END")
+
+
+def test_report_query_count_does_not_depend_on_bucket_count():
+    """A fake session counts queries: 12 buckets must cost the same as 2 (no per-bucket loop)."""
+    from app.services.accounting_service import service_rows_multi as multi
+
+    class Res:
+        def all(self): return []
+        def one(self): return (0, 0, 0, 0)
+
+    class FakeDB:
+        n = 0
+        async def execute(self, q, p=None):
+            FakeDB.n += 1
+            return Res()
+
+    def count(k):
+        FakeDB.n = 0
+        t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        asyncio.run(multi(FakeDB(), [(t0 + timedelta(days=i), t0 + timedelta(days=i + 1)) for i in range(k)], rates={}))
+        return FakeDB.n
+    assert count(2) == count(12)
 
 
 TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", "")
@@ -148,6 +177,10 @@ async def _run():
         rep = (await cl.get(f"{A}/report")).json()
         assert rep["totals"]["expenses_kobo"] == 2500 and rep["totals"]["net_profit_kobo"] == rep["totals"]["gross_profit_kobo"] - 2500
         assert len(rep["series"]) >= 1 and sum(p["revenue_kobo"] for p in rep["series"]) == rep["totals"]["revenue_kobo"]
+        # split loading: totals-only and series-only must agree with the full report
+        only_t = (await cl.get(f"{A}/report?series=false")).json()
+        only_s = (await cl.get(f"{A}/report?series_only=true")).json()
+        assert "series" not in only_t and "totals" not in only_s and only_s["series"] == rep["series"] and only_t["totals"] == rep["totals"]
         assert (await cl.delete(f"{A}/expenses/{r2.json()['id']}")).json()["deleted"] is True
         assert (await cl.delete(f"{A}/expenses/{r2.json()['id']}")).status_code == 404
 

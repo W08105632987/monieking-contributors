@@ -1,3 +1,5 @@
+import { formatNairaAmount } from '@/lib/utils'
+
 export interface FeeTier { from: number; to: number | null; fee: number }
 
 export const DEFAULT_TIERS: FeeTier[] = [
@@ -7,7 +9,7 @@ export const DEFAULT_TIERS: FeeTier[] = [
   { from: 20001, to: null, fee: 50 },
 ]
 
-const n = (x: number) => `₦${x.toLocaleString('en-NG')}`
+const n = (x: number) => formatNairaAmount(x)
 
 /** Same rules as the server: start at ₦0, no gaps, no overlaps, last range open-ended. */
 export function validateTiers(tiers: FeeTier[]): string[] {

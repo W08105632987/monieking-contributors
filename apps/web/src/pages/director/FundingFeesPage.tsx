@@ -6,10 +6,10 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, Plus, RotateCcw, Trash2, Wand2 
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
-import { formatNaira } from '@/lib/utils'
+import { formatNaira, formatNairaAmount } from '@/lib/utils'
 import { DEFAULT_TIERS, FeeTier, closeGaps, validateTiers } from '@/lib/fundingFees'
 
-interface Settings { charge_customers: boolean; pass_monnify_fee: boolean; tiers: FeeTier[] }
+interface Settings { charge_customers: boolean; pass_monnify_fee: boolean; fee_label?: string; tiers: FeeTier[] }
 interface Summary {
   fundings: number; total_funded_kobo: number; monnify_fees_kobo: number; fee_unknown_count: number
   absorbed: { count: number; lost_kobo: number }
@@ -41,6 +41,7 @@ export default function FundingFeesPage() {
   const { data: saved } = useQuery({ queryKey: ['funding-fees'], queryFn: async () => (await api.get<Settings>('/director/funding-fees')).data })
   const [charge, setCharge] = useState(false)
   const [pass, setPass] = useState(false)
+  const [label, setLabel] = useState('NIPPS charge')   // the name customers see on the fee line
   const [tiers, setTiers] = useState<FeeTier[]>(DEFAULT_TIERS)
   // Unsaved edits are kept on this device so they survive leaving the page; they are offered back when you return.
   const DRAFT_KEY = 'monieking.fundingFeesDraft'
@@ -53,11 +54,12 @@ export default function FundingFeesPage() {
     if (draft && Array.isArray(draft.tiers) && JSON.stringify(draft) !== JSON.stringify({ charge_customers: saved.charge_customers, pass_monnify_fee: !!saved.pass_monnify_fee, tiers: saved.tiers })) {
       setCharge(!!draft.charge_customers); setPass(!!draft.pass_monnify_fee); setTiers(draft.tiers); setRestored(true)
     } else { setCharge(saved.charge_customers); setPass(!!saved.pass_monnify_fee); setTiers(saved.tiers) }
+    setLabel(saved.fee_label || 'NIPPS charge')
     loaded.current = true
   }, [saved])
 
   const problems = useMemo(() => validateTiers(tiers), [tiers])
-  const dirty = !!saved && (saved.charge_customers !== charge || !!saved.pass_monnify_fee !== pass || JSON.stringify(saved.tiers) !== JSON.stringify(tiers))
+  const dirty = !!saved && (saved.charge_customers !== charge || !!saved.pass_monnify_fee !== pass || JSON.stringify(saved.tiers) !== JSON.stringify(tiers) || (saved.fee_label || 'NIPPS charge') !== label)
   useEffect(() => {
     if (!loaded.current) return
     try { if (dirty) localStorage.setItem(DRAFT_KEY, JSON.stringify({ charge_customers: charge, pass_monnify_fee: pass, tiers })); else localStorage.removeItem(DRAFT_KEY) } catch { /* private mode: no draft */ }
@@ -78,7 +80,7 @@ export default function FundingFeesPage() {
   const { data: stats } = useQuery({ queryKey: ['funding-stats'], queryFn: async () => (await api.get<Stats>('/director/funding-fees/stats', { params: { months: 3 } })).data })
 
   const save = useMutation({
-    mutationFn: () => api.put('/director/funding-fees', { charge_customers: charge, pass_monnify_fee: pass, tiers }),
+    mutationFn: () => api.put('/director/funding-fees', { charge_customers: charge, pass_monnify_fee: pass, fee_label: label.trim() || 'NIPPS charge', tiers }),
     onSuccess: () => { try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ } setRestored(false); qc.invalidateQueries({ queryKey: ['funding-fees'] }); toast.success(pass ? 'Saved. Customers pay Monnify’s charge and see what remains.' : charge ? 'Saved. Customers are now charged when they fund.' : 'Saved. Customers see the full amount they send.') },
     onError: (e) => toast.error(getErrorMessage(e)),
   })
@@ -108,7 +110,7 @@ export default function FundingFeesPage() {
           <button onClick={() => setCharge((c) => !c)} className="flex w-full items-center justify-between gap-3 text-left" aria-pressed={charge}>
             <span>
               <span className="block text-sm font-extrabold text-green-950 dark:text-white">Charge customers a funding fee</span>
-              <span className="block text-xs text-green-600 dark:text-night-300">{charge ? 'ON: customers see the fee and receive the amount minus the fee.' : 'OFF: a customer who sends ₦100 sees ₦100. MonieKing pays Monnify’s fee.'}</span>
+              <span className="block text-xs text-green-600 dark:text-night-300">{charge ? 'ON: customers see the full amount they sent, then the fee as a separate line.' : 'OFF: a customer who sends ₦100 sees ₦100. MonieKing pays Monnify’s fee.'}</span>
             </span>
             <span className={`relative h-8 w-14 shrink-0 rounded-full transition-colors duration-200 ${charge ? 'bg-green-600' : 'bg-gray-300 dark:bg-night-500'}`}>
               <motion.span layout transition={{ type: 'spring', stiffness: 600, damping: 34 }} className="absolute top-1 h-6 w-6 rounded-full bg-white shadow" style={{ left: charge ? 28 : 4 }} />
@@ -127,6 +129,13 @@ export default function FundingFeesPage() {
               <motion.span layout transition={{ type: 'spring', stiffness: 600, damping: 34 }} className="absolute top-1 h-6 w-6 rounded-full bg-white shadow" style={{ left: pass ? 28 : 4 }} />
             </span>
           </button>
+        </div>
+
+        {/* the name customers see on the fee line */}
+        <div className={`${card} mb-4`}>
+          <label className="block text-sm font-extrabold text-green-950 dark:text-white" htmlFor="fee-label">What customers see this charge called</label>
+          <p className="mb-2 mt-1 text-xs text-green-600 dark:text-night-300">When a customer funds their wallet, their history shows the full amount they sent, then this charge as a separate line, for example “+₦1,500.00 Wallet funded” followed by “−₦40.00 {label.trim() || 'NIPPS charge'}”.</p>
+          <input id="fee-label" maxLength={40} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="NIPPS charge" className="w-full rounded-xl border border-green-200 bg-white px-3 py-2 text-sm text-green-950 outline-none focus:border-green-500 dark:border-night-500 dark:bg-night-600 dark:text-white" />
         </div>
 
         {/* ranges */}
@@ -221,7 +230,7 @@ export default function FundingFeesPage() {
                 <Tile label="Avg per customer" value={formatNaira(stats.overall.avg_per_customer_kobo)} />
               </div>
               <p className="mb-1 text-[11px] font-bold uppercase text-green-600 dark:text-night-300">Total funded per month</p>
-              <div className="h-44"><ResponsiveContainer width="100%" height="100%"><BarChart data={stats.monthly.map((m) => ({ ...m, total: m.total_kobo / 100 }))}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="month" fontSize={11} /><YAxis fontSize={11} width={48} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)} /><Tooltip formatter={(v: number) => `₦${v.toLocaleString()}`} /><Bar dataKey="total" fill="#16a34a" radius={[6, 6, 0, 0]} isAnimationActive={false} /></BarChart></ResponsiveContainer></div>
+              <div className="h-44"><ResponsiveContainer width="100%" height="100%"><BarChart data={stats.monthly.map((m) => ({ ...m, total: m.total_kobo / 100 }))}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="month" fontSize={11} /><YAxis fontSize={11} width={48} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)} /><Tooltip formatter={(v: number) => formatNairaAmount(v)} /><Bar dataKey="total" fill="#16a34a" radius={[6, 6, 0, 0]} isAnimationActive={false} /></BarChart></ResponsiveContainer></div>
               <p className="mb-1 mt-3 text-[11px] font-bold uppercase text-green-600 dark:text-night-300">How big the fundings are</p>
               <div className="h-44"><ResponsiveContainer width="100%" height="100%"><BarChart data={stats.distribution}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" fontSize={10} interval={0} /><YAxis fontSize={11} width={30} allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#d97706" radius={[6, 6, 0, 0]} isAnimationActive={false} /></BarChart></ResponsiveContainer></div>
             </>

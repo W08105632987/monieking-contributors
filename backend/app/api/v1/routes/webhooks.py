@@ -16,7 +16,7 @@ from app.models.wallet import Wallet, TxCategory
 from app.models.webhook import PaymentWebhook
 from app.models.notification import NotificationType
 from app.integrations.monnify import get_payment_provider
-from app.services.wallet_service import credit_wallet
+from app.services.wallet_service import credit_wallet, debit_wallet
 from app.services.notification_service import send_notification
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -167,12 +167,12 @@ async def monnify_payment_webhook(
 
     # ── Step 5: Credit wallet (less the director-set funding fee, if charging is on) ──
     monnify_fee = (event.amount_kobo - event.settlement_kobo) if event.settlement_kobo is not None and 0 <= event.settlement_kobo <= event.amount_kobo else None
-    customer_fee, fee_label = 0, "funding fee"
+    customer_fee, fee_label = 0, "NIPPS charge"
     try:
         fee_settings = await get_fee_settings(db)
+        fee_label = (getattr(fee_settings, "fee_label", None) or "NIPPS charge").strip() or "NIPPS charge"   # the director names it
         if fee_settings.pass_monnify_fee:
             # The customer bears Monnify's actual charge and is shown what is left.
-            fee_label = "Monnify charge"
             if monnify_fee and 0 < monnify_fee < event.amount_kobo:
                 customer_fee = monnify_fee
         elif fee_settings.charge_customers:
@@ -183,16 +183,29 @@ async def monnify_payment_webhook(
     credited = event.amount_kobo - customer_fee
     try:
         async with db.begin_nested():
+            # Two honest lines in the customer's history: the FULL amount they sent comes in, then the fee goes out as its
+            # own line under the name the director chose (default "NIPPS charge"). Nothing is hidden inside a smaller credit.
             await credit_wallet(
                 db,
                 wallet=       wallet,
-                amount_kobo=  credited,
+                amount_kobo=  event.amount_kobo,
                 category=     TxCategory.WALLET_FUNDING,
                 reference=    event.transaction_reference,
-                description=  f"Monnify deposit — {event.transaction_reference}" + (f" (₦{customer_fee / 100:,.2f} {fee_label})" if customer_fee else ""),
+                description=  f"Monnify deposit — {event.transaction_reference}",
                 initiated_by= wallet.owner_id,
                 related_entity_type="wallet_funding",
             )
+            if customer_fee:
+                await debit_wallet(
+                    db,
+                    wallet=       wallet,
+                    amount_kobo=  customer_fee,
+                    category=     TxCategory.CHARGE,
+                    reference=    f"{event.transaction_reference}-FEE",
+                    description=  fee_label,
+                    initiated_by= wallet.owner_id,
+                    related_entity_type="wallet_funding_fee",
+                )
             db.add(FundingRecord(reference=event.transaction_reference, wallet_id=wallet.id, user_id=wallet.owner_id,
                                  gross_kobo=event.amount_kobo, customer_fee_kobo=customer_fee, credited_kobo=credited,
                                  monnify_fee_kobo=monnify_fee))
@@ -218,7 +231,7 @@ async def monnify_payment_webhook(
         db,
         user_id= wallet.owner_id,
         title=   "Wallet funded ✓",
-        body=    (f"Your wallet has been credited with ₦{credited / 100:,.2f} (₦{event.amount_kobo / 100:,.2f} sent, ₦{customer_fee / 100:,.2f} {fee_label}). " if customer_fee
+        body=    (f"Your wallet has been credited with ₦{event.amount_kobo / 100:,.2f}. A ₦{customer_fee / 100:,.2f} {fee_label} was then deducted, leaving ₦{credited / 100:,.2f} added. " if customer_fee
                   else f"Your wallet has been credited with ₦{event.amount_kobo / 100:,.2f}. ") + f"Ref: {event.transaction_reference}",
         type=    NotificationType.SUCCESS,
         deep_link_url="/customer/wallet/transactions",

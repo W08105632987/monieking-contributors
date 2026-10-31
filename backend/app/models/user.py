@@ -186,6 +186,14 @@ class User(Base):
     commission_held_kobo:    Mapped[int]         = mapped_column(default=0, server_default="0")  # held pending dispute
     commission_debt_kobo:    Mapped[int]         = mapped_column(default=0, server_default="0")  # owed from reversed commission
 
+    # Officers: 'salary' or 'affiliated' (commission). NULL = not classified yet. See 066_affiliated_officers.sql
+    officer_type:               Mapped[str | None]      = mapped_column(String(12), nullable=True)
+    officer_commission_percent: Mapped[int | None]      = mapped_column(nullable=True)          # NULL = the global setting
+    officer_welcome_seen_at:    Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # On a CUSTOMER: the one officer who earns commission on this customer's withdrawals. The director controls it.
+    commission_officer_id:      Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
 
     @property
     def has_withdrawal_password(self) -> bool:

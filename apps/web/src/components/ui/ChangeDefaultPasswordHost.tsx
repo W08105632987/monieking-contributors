@@ -52,7 +52,7 @@ export function ChangeDefaultPasswordHost() {
   return (
     <AnimatePresence>
       <motion.div className="fixed inset-0 z-[10002] flex items-center justify-center px-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-        <div className="absolute inset-0 bg-green-950/70 backdrop-blur-sm" />
+        <div className="absolute inset-0 bg-green-950/70" />
         <motion.div role="alertdialog" aria-modal="true" aria-labelledby="chg-pw-title"
           className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl dark:bg-night-800"
           initial={{ scale: 0.9, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }}

@@ -1,3 +1,4 @@
+import { sheetMotion, overlayMotion } from '@/lib/motion'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query'
@@ -19,6 +20,7 @@ import { KycSection } from '@/components/settings/KycSection'
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
 import { NotificationSoundRow } from '@/components/settings/NotificationSoundRow'
+import { CoinSoundRow } from '@/components/settings/CoinSoundRow'
 
 import { formatNaira, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -26,6 +28,7 @@ import toast from '@/lib/notify'
 import { PaymentPinRow } from '@/components/setup/PaymentPinRow'
 import { EmailRow } from '@/components/setup/EmailRow'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { friendlyError } from '@/lib/errorText'
 
 // ── Change withdrawal password sheet ─────────────────────────────
 function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
@@ -52,7 +55,7 @@ function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
       toast.success(isFirstTimeSetup ? 'Withdrawal password set' : 'Withdrawal password updated')
       onClose()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Failed to update password')
+      toast.error(friendlyError(err, 'Failed to update password'))
     } finally {
       setLoading(false)
     }
@@ -60,12 +63,9 @@ function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+      <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/60" />
       <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
@@ -127,12 +127,9 @@ function SignOutSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+      <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/60" />
       <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
@@ -260,7 +257,7 @@ export default function ProfilePage() {
       if (user) setUser({ ...user, sms_alerts_enabled: enabled })
       qc.invalidateQueries({ queryKey: ['me'] })
     },
-    onError: (err: unknown) => toast.error((err as any)?.response?.data?.detail ?? 'Failed to update SMS settings'),
+    onError: (err: unknown) => toast.error(friendlyError(err, 'Failed to update SMS settings')),
   })
 
   if (!user) return null
@@ -444,7 +441,7 @@ export default function ProfilePage() {
                   )}
                 </div>
                 <p className="text-xs text-green-500 dark:text-night-200 mt-0.5">
-                  {smsFee ? `₦${(smsFee.sms_fee_per_sms_kobo / 100).toLocaleString()} per SMS` : 'Pay per SMS'} · SMS when your card is marked
+                  {smsFee ? `${formatNaira(smsFee.sms_fee_per_sms_kobo)} per SMS` : 'Pay per SMS'} · SMS when your card is marked
                 </p>
               </div>
             </div>
@@ -468,6 +465,7 @@ export default function ProfilePage() {
           </div>
 
           <NotificationSoundRow />
+          <CoinSoundRow />
 
           <MenuRow
             icon={Bell}

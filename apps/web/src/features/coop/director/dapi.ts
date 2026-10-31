@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { formatNaira } from '@/lib/utils'
 
 export const useAdmin = <T = any>(key: string, url: string, params?: Record<string, unknown>, poll?: number) =>
   useQuery<T>({ queryKey: ['coop', 'admin', key, params], retry: 1, refetchInterval: poll, queryFn: async () => (await api.get(url, { params })).data })
@@ -20,7 +21,7 @@ export interface AccountantPending {
 /** Show a stored setting value in friendly units. */
 export function showValue(s: { kind: string; value: string; unit?: string }): string {
   const v = s.value
-  if (s.kind === 'kobo') return '₦' + new Intl.NumberFormat('en-NG').format(Number(v) / 100)
+  if (s.kind === 'kobo') return formatNaira(Number(v))
   if (s.kind === 'bps') return `${+(Number(v) / 100).toFixed(2)}%`
   if (s.kind === 'bool') return v === 'true' ? 'On' : 'Off'
   if (s.kind === 'int') return `${v}${s.unit ? ' ' + s.unit.replace(/^%.*/, '%') : ''}`.trim()

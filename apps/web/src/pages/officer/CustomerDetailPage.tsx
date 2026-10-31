@@ -151,7 +151,7 @@ export default function CustomerDetailPage() {
                   )}
                 </div>
                 <p className="text-xs text-green-600 dark:text-night-200 mt-0.5">
-                  {smsFee ? `₦${(smsFee.sms_fee_per_sms_kobo / 100).toLocaleString()} per SMS` : 'Pay per SMS'} · Only if the customer asks for it
+                  {smsFee ? `${formatNaira(smsFee.sms_fee_per_sms_kobo)} per SMS` : 'Pay per SMS'} · Only if the customer asks for it
                 </p>
               </div>
             </div>

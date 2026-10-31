@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Copy, Hash, KeyRound, Landmark, Lock, Mail, MinusCircle, MessageCircle, Send, Trash2 } from 'lucide-react'
+import { BadgeDollarSign, Copy, Hash, KeyRound, Landmark, Lock, Mail, MinusCircle, MessageCircle, Send, ShieldCheck, Trash2 } from 'lucide-react'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
-import { formatNaira } from '@/lib/utils'
+import { formatNaira, formatNairaAmount } from '@/lib/utils'
 import { ActionButton, DirectorModal, Notice, PinField } from './DirectorModal'
+import { KycRescueModal } from './KycRescueModal'
+import { CommissionOfficerModal } from './CommissionOfficerModal'
 
 type Which = null | 'reset' | 'password' | 'pin' | 'wpw' | 'fund' | 'debit' | 'delete'
 type PwInfo = { password: string; phone: string; email: string | null }
@@ -28,6 +30,9 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
   const [result, setResult] = useState<string | null>(null)
   const [pw, setPw] = useState<PwInfo | null>(null)
   const [sent, setSent] = useState<string | null>(null)
+  const [kycOpen, setKycOpen] = useState(false)
+  const [commOpen, setCommOpen] = useState(false)
+  const who = kind === 'officer' ? 'officer' : 'customer'
 
   const close = () => { if (busy) return; setWhich(null); setPw(null); setSent(null); setPin(''); setAmount(''); setReason(''); setTyped(''); setAck(false); setMsg(null); setRisk(null) }
   const base = `/customer-admin/${customerId}`
@@ -65,11 +70,11 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
     qc.invalidateQueries(); close()
   })
   const doDelete = () => run(async () => {
-    const r = (await api.post(`${base}/delete`, { confirm_name: typed, pin, acknowledge_money: ack })).data
-    qc.invalidateQueries(); setWhich(null); nav('/director/customers', { replace: true, state: { notice: r.message } })
+    const r = (await api.post(`${base}/delete`, { confirm_name: typed, pin, acknowledge_money: ack }, { timeout: 180_000 })).data
+    qc.invalidateQueries(); setWhich(null); nav(kind === 'officer' ? '/director/staff' : '/director/customers', { replace: true, state: { notice: r.message } })
   })
 
-  const money = risk ? risk.wallet_balance_kobo + risk.card_balance_kobo : 0
+  const money = risk ? risk.wallet_balance_kobo + risk.card_balance_kobo + (risk.commission_owed_kobo ?? 0) : 0
   const needsAck = money > 0 && !risk?.is_test
   const row = 'flex w-full items-center gap-3 border-b border-green-50 py-3 text-left last:border-0 dark:border-night-600'
 
@@ -80,13 +85,18 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
       <button className={row} onClick={() => { setResult(null); setWhich('reset') }}><KeyRound className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Reset password</span></button>
       <button className={row} onClick={() => { setResult(null); setWhich('pin') }}><Hash className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Reset payment PIN</span></button>
       <button className={row} onClick={() => { setResult(null); setWhich('wpw') }}><Lock className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Reset withdrawal password</span></button>
-      {kind === 'customer' && (
+      {(
         <>
+          <button className={row} onClick={() => { setResult(null); setKycOpen(true) }}><ShieldCheck className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Help with identity verification</span></button>
+          {kind === 'customer' && <button className={row} onClick={() => { setResult(null); setCommOpen(true) }}><BadgeDollarSign className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Commission officer</span></button>}
           <button className={row} onClick={() => { setResult(null); setWhich('fund') }}><Landmark className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Fund wallet manually</span></button>
           <button className={row} onClick={() => { setResult(null); setWhich('debit') }}><MinusCircle className="h-4 w-4 text-amber-600" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Debit wallet manually</span></button>
-          <button className={row} onClick={() => { setResult(null); openDelete() }}><Trash2 className="h-4 w-4 text-red-500" /><span className="flex-1 text-sm font-semibold text-red-600">Delete customer</span></button>
+          <button className={row} onClick={() => { setResult(null); openDelete() }}><Trash2 className="h-4 w-4 text-red-500" /><span className="flex-1 text-sm font-semibold text-red-600">Delete {who}</span></button>
         </>
       )}
+
+      <KycRescueModal open={kycOpen} onClose={() => setKycOpen(false)} personId={customerId} name={name} />
+      {kind === 'customer' && <CommissionOfficerModal open={commOpen} onClose={() => setCommOpen(false)} customerId={customerId} name={name} />}
 
       <DirectorModal open={which === 'reset'} title="Reset password" onClose={close} busy={busy}>
         <div className="space-y-3">
@@ -143,7 +153,7 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
           <label className="block text-xs font-semibold text-green-700 dark:text-night-200">Reason (required)<textarea className={field} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Bank transfer received, reference 12345" /></label>
           <PinField value={pin} onChange={setPin} />
           {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
-          <ActionButton busy={busy} disabled={!(Number(amount) > 0) || reason.trim().length < 5 || pin.length < 4} onClick={doFund}>Fund {Number(amount) > 0 ? `₦${Number(amount).toLocaleString()}` : 'wallet'}</ActionButton>
+          <ActionButton busy={busy} disabled={!(Number(amount) > 0) || reason.trim().length < 5 || pin.length < 4} onClick={doFund}>Fund {Number(amount) > 0 ? formatNairaAmount(Number(amount)) : 'wallet'}</ActionButton>
         </div>
       </DirectorModal>
 
@@ -154,17 +164,18 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
           <label className="block text-xs font-semibold text-green-700 dark:text-night-200">Reason (required)<textarea className={field} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Funded by mistake, reversed at the customer's request" /></label>
           <PinField value={pin} onChange={setPin} />
           {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
-          <ActionButton busy={busy} disabled={!(Number(amount) > 0) || reason.trim().length < 5 || pin.length < 4} onClick={doDebit}>Debit {Number(amount) > 0 ? `₦${Number(amount).toLocaleString()}` : 'wallet'}</ActionButton>
+          <ActionButton busy={busy} disabled={!(Number(amount) > 0) || reason.trim().length < 5 || pin.length < 4} onClick={doDebit}>Debit {Number(amount) > 0 ? formatNairaAmount(Number(amount)) : 'wallet'}</ActionButton>
         </div>
       </DirectorModal>
 
-      <DirectorModal open={which === 'delete'} title="Delete customer" onClose={close} busy={busy}>
+      <DirectorModal open={which === 'delete'} title={`Delete ${who}`} onClose={close} busy={busy}>
         {!risk ? <p className="text-sm text-green-700">{msg ? <Notice kind="error">{msg.text}</Notice> : 'Checking what is at stake…'}</p> : (
           <div className="space-y-3">
             <div className="rounded-xl bg-red-50 p-3 text-xs text-red-800 dark:bg-red-950/30 dark:text-red-200 space-y-1">
               <p className="font-bold">{risk.explain}</p>
               <p>Wallet balance: <b>{formatNaira(risk.wallet_balance_kobo)}</b></p>
               <p>Money on cards: <b>{formatNaira(risk.card_balance_kobo)}</b> · Cards: {risk.cards_active} active of {risk.cards_total}</p>
+              {risk.commission_owed_kobo > 0 && <p>Unpaid commission: <b>{formatNaira(risk.commission_owed_kobo)}</b></p>}
               <p>Unpaid withdrawals: <b>{risk.unpaid_withdrawals.length}</b>{risk.unpaid_withdrawals.length ? ` (${formatNaira(risk.unpaid_withdrawals.reduce((a: number, w: any) => a + w.amount_kobo, 0))})` : ''}</p>
             </div>
             {risk.blocked && <Notice kind="error">Settle or reject the unpaid withdrawals first. This customer cannot be deleted until then.</Notice>}

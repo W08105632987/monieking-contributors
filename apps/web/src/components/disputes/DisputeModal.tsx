@@ -1,3 +1,4 @@
+import { sheetMotion, overlayMotion } from '@/lib/motion'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, AlertTriangle } from 'lucide-react'
@@ -5,6 +6,7 @@ import { api } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from '@/lib/notify'
 import { DISPUTE_REASON_LABEL, type DisputeEntityType, type DisputeReason } from '@/types'
+import { friendlyError } from '@/lib/errorText'
 
 const REASONS_BY_ENTITY: Record<DisputeEntityType, DisputeReason[]> = {
   wallet_transaction: ['not_mine', 'amount_wrong', 'duplicate', 'other'],
@@ -36,7 +38,7 @@ export function DisputeModal({
       qc.invalidateQueries({ queryKey: ['my-disputes'] })
       onClose()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Could not submit dispute')
+      toast.error(friendlyError(err, 'Could not submit dispute'))
     } finally {
       setSubmitting(false)
     }
@@ -44,10 +46,9 @@ export function DisputeModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+      <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/60" />
       <motion.div
-        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 22, stiffness: 260, mass: 0.9 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >

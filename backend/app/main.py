@@ -4,14 +4,18 @@ MonieKing Contributors — FastAPI Application
 from fastapi import FastAPI, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+import logging
 import traceback
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from app.core.public_errors import GENERIC_MESSAGE, UNAVAILABLE_MESSAGE, public_message
 
 from app.core.config import settings
 from app.core.database import engine
 from app.core.timing import TimingMiddleware, instrument_engine
 from app.core.limiter import limiter
+
+logger = logging.getLogger(__name__)
 
 # ── Sentry — was installed (sentry-sdk in requirements.txt) but never
 # actually initialized anywhere. Gated on SENTRY_DSN being set so a
@@ -45,7 +49,6 @@ app = FastAPI(
 # single global limit would also throttle high-frequency legitimate
 # polling (notifications, instant-message ticker, etc). ──
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 from fastapi.responses import JSONResponse as _CoopJSON  # noqa: E402
 from app.coop.errors import CoopError as _CoopError  # noqa: E402
@@ -171,7 +174,7 @@ app.add_middleware(TrustedProxyMiddleware)
 from app.api.v1.routes import (
     auth, users, wallets, cards, notifications, admin, withdrawals,
     settings as settings_routes, instant_messages, promo_banners, zones,
-    webauthn as webauthn_routes, disputes, identity_services, bill_payments, seasonal, cleanup, zonal_customers, customer_admin, email_account, kyc,
+    webauthn as webauthn_routes, disputes, identity_services, bill_payments, seasonal, cleanup, zonal_customers, customer_admin, officer_earnings, email_account, kyc,
     customer_stats, auth_admin, admin_crm, analytics, system_health,
     food_collections,
     food_ledger,
@@ -215,6 +218,7 @@ app.include_router(bill_payments.router,     prefix=PREFIX)
 app.include_router(seasonal.router,          prefix=PREFIX)
 app.include_router(cleanup.router,           prefix=PREFIX)
 app.include_router(customer_admin.router,     prefix=PREFIX)
+app.include_router(officer_earnings.router,   prefix=PREFIX)
 app.include_router(email_account.router,      prefix=PREFIX)
 app.include_router(kyc.router,                prefix=PREFIX)
 app.include_router(zonal_customers.router,   prefix=PREFIX)
@@ -248,24 +252,59 @@ app.include_router(webhook_router,           prefix=PREFIX)
 # generic message ever goes back to the client. Returning str(exc)
 # directly used to leak query fragments, file paths, and library
 # internals to anyone probing the API. ──
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    traceback.print_exc()
-    # Starlette runs this handler in ServerErrorMiddleware, which sits OUTSIDE
-    # CORSMiddleware — so without this, every 500 reaches the browser with no
-    # Access-Control-Allow-Origin header and shows up as a misleading CORS
-    # error instead of the real "500 Internal Server Error".
+def _cors_headers(request: Request) -> dict[str, str]:
+    # Starlette runs these handlers in ServerErrorMiddleware / ExceptionMiddleware, which sit OUTSIDE (or can
+    # bypass) CORSMiddleware — so without this, error responses reach the browser with no
+    # Access-Control-Allow-Origin header and show up as a misleading CORS error.
     headers: dict[str, str] = {}
     origin = request.headers.get("origin")
     if origin and origin in settings.cors_origins_list:
         headers["Access-Control-Allow-Origin"] = origin
         headers["Access-Control-Allow-Credentials"] = "true"
         headers["Vary"] = "Origin"
+    return headers
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    traceback.print_exc()
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal server error"},
-        headers=headers,
+        content={"detail": GENERIC_MESSAGE},
+        headers=_cors_headers(request),
     )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Same body shape as FastAPI's default. Only server-side failures (5xx) are sanitised: deliberate 4xx business
+    messages ("Insufficient balance") pass through untouched, but a 502/503 carrying provider text never reaches a
+    customer."""
+    detail = exc.detail
+    if exc.status_code >= 500:
+        logger.warning("[http %s] %s %s: %s", exc.status_code, request.method, request.url.path, detail)
+        if isinstance(detail, str):
+            detail = public_message(
+                detail, UNAVAILABLE_MESSAGE if exc.status_code in (502, 503, 504) else GENERIC_MESSAGE,
+            )
+    headers = dict(getattr(exc, "headers", None) or {})
+    headers.update(_cors_headers(request))
+    return JSONResponse(status_code=exc.status_code, content={"detail": detail}, headers=headers)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    response = JSONResponse(
+        status_code=429,
+        content={"detail": "You're doing that too quickly. Please wait a moment and try again."},
+        headers=_cors_headers(request),
+    )
+    try:
+        # slowapi adds Retry-After / X-RateLimit-* headers when it can.
+        response = request.app.state.limiter._inject_headers(response, request.state.view_rate_limit)
+    except Exception:
+        pass
+    return response
 
 # ── Health & root ─────────────────────────────────────────────────
 @app.get("/health")

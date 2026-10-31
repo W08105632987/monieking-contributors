@@ -101,7 +101,7 @@ export function ViewInfoModal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="absolute inset-0 bg-green-950/70 dark:bg-night-950/80 backdrop-blur-sm"
+          className="absolute inset-0 bg-green-950/70 dark:bg-night-950/80"
         />
 
         {/* Modal Window */}

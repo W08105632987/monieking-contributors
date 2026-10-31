@@ -1,3 +1,4 @@
+import { sheetMotion } from '@/lib/motion'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -7,6 +8,7 @@ import {
   ArrowRight, RefreshCw, X, Upload, Star, Eye
 } from 'lucide-react'
 import toast from '@/lib/notify'
+import { uploadDocument, MAX_DOCUMENT_BYTES } from '@/lib/uploadDocument'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
@@ -257,28 +259,22 @@ export default function WorkerDashboardPage() {
     setTimeout(() => setCopiedCode(false), 2000)
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
-    // Preview or convert to base64 Data URL for attachment
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error('File size must be under 8MB')
+    if (file.size > MAX_DOCUMENT_BYTES) {
+      toast.error('File size must be under 5MB')
       return
     }
-
     setIsUploading(true)
-    const reader = new FileReader()
-    reader.onload = () => {
-      setResultFileUrl(reader.result as string)
-      setIsUploading(false)
+    try {
+      setResultFileUrl(await uploadDocument(file))
       toast.success('Document attached!')
-    }
-    reader.onerror = () => {
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
       setIsUploading(false)
-      toast.error('Failed to read file')
     }
-    reader.readAsDataURL(file)
   }
 
   const categories = [
@@ -640,12 +636,9 @@ export default function WorkerDashboardPage() {
       {/* ── Resolve Job Modal Sheet ── */}
       <AnimatePresence>
         {resolveModalJob && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60">
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 280 }}
+              {...sheetMotion}
               className="bg-white dark:bg-night-800 rounded-t-3xl sm:rounded-3xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto space-y-4 border border-green-100 dark:border-night-700"
             >
               <div className="flex items-center justify-between pb-2 border-b border-green-100 dark:border-night-700">

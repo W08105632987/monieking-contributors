@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from '@/lib/notify'
 import { ArrowLeft, Zap, Tv, CheckCircle2, Loader2, ShieldCheck, Building2 } from 'lucide-react'
-import { formatNaira, cn } from '@/lib/utils'
+import { formatNaira, formatNairaAmount, cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api'
 import { useWallet } from '@/hooks/useWallet'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -133,7 +133,9 @@ export default function BillPaymentPage() {
     ...(typeLabel ? [{ label: isCable ? 'Plan' : 'Meter type', value: typeLabel }] : []),
     { label: refLabel, value: customerReference },
     ...(validated?.validated_account_name ? [{ label: 'Account name', value: validated.validated_account_name }] : []),
+    ...((receiptRequest.customer_address ?? validated?.customer_address) ? [{ label: 'Address', value: (receiptRequest.customer_address ?? validated?.customer_address) as string }] : []),
     ...(receiptRequest.token ? [{ label: isCable ? 'Reference code' : 'Electricity token', value: receiptRequest.token, kind: 'token' as const }] : []),
+    ...(!isCable && receiptRequest.units ? [{ label: 'Units bought', value: `${receiptRequest.units} kWh` }] : []),
   ] : []
 
   const stepNo = (n: number) => (isCable ? n : n + 1)
@@ -250,6 +252,7 @@ export default function BillPaymentPage() {
                             <div className="min-w-0">
                               <p className="text-green-600 dark:text-night-300 text-[11px] font-semibold uppercase">Confirm this is correct</p>
                               <p className="text-green-950 dark:text-white font-bold break-words">{validated?.validated_account_name ?? 'Details verified'}</p>
+                              {validated?.customer_address && <p className="text-green-700 dark:text-night-200 text-xs mt-0.5 break-words">{validated.customer_address}</p>}
                             </div>
                           </motion.div>
                         )}
@@ -265,19 +268,19 @@ export default function BillPaymentPage() {
                           <motion.button key={a} whileTap={{ scale: 0.95 }} onClick={() => setAmountNaira(a)}
                             className={cn('py-2.5 rounded-xl text-xs font-bold border', amountNaira === a ? 'border-transparent' : 'bg-white dark:bg-night-700 text-green-800 dark:text-night-100 border-green-100 dark:border-night-500')}
                             style={amountNaira === a ? { background: brand.main, color: brand.on } : undefined}>
-                            ₦{a.toLocaleString()}
+                            {formatNairaAmount(a)}
                           </motion.button>
                         ))}
                       </div>
                       <input type="number" inputMode="numeric" value={amountNaira} onChange={(e) => setAmountNaira(e.target.value ? Number(e.target.value) : '')}
-                        placeholder={`Or enter an amount (₦${minNaira.toLocaleString()}${maxNaira ? ` – ₦${maxNaira.toLocaleString()}` : ' minimum'})`}
+                        placeholder={`Or enter an amount (${formatNairaAmount(minNaira)}${maxNaira ? ` – ${formatNairaAmount(maxNaira)}` : ' minimum'})`}
                         className="w-full bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 rounded-2xl px-4 py-3.5 outline-none text-green-950 dark:text-white font-semibold" />
                       {typeof amountNaira === 'number' && !amountOk && (
                         <p className="mt-1.5 text-[11px] font-semibold text-red-600 dark:text-red-300">
-                          {amountNaira < minNaira ? `The minimum is ₦${minNaira.toLocaleString()}.` : `The maximum is ₦${maxNaira?.toLocaleString()}.`}
+                          {amountNaira < minNaira ? `The minimum is ${formatNairaAmount(minNaira)}.` : `The maximum is ${formatNairaAmount(maxNaira ?? 0)}.`}
                         </p>
                       )}
-                      {markup !== 0 && amountOk && <p className="mt-1.5 text-[11px] text-green-600 dark:text-night-300">You pay {formatNaira(payAmountKobo)} for ₦{amountNaira.toLocaleString()} of units.</p>}
+                      {markup !== 0 && amountOk && <p className="mt-1.5 text-[11px] text-green-600 dark:text-night-300">You pay {formatNaira(payAmountKobo)} for {formatNairaAmount(amountNaira)} of units.</p>}
                     </div>
                   )}
                 </motion.div>
@@ -305,6 +308,7 @@ export default function BillPaymentPage() {
           ...(typeLabel ? [{ label: isCable ? 'Plan' : 'Meter type', value: typeLabel }] : []),
           { label: refLabel, value: customerReference },
           ...(validated?.validated_account_name ? [{ label: 'Account name', value: validated.validated_account_name }] : []),
+          ...(validated?.customer_address ? [{ label: 'Address', value: validated.customer_address }] : []),
         ]}
       />
 

@@ -134,6 +134,7 @@ describe('types (selectors)', () => {
 describe('prices', () => {
   it('parses naira text into kobo, rejecting nonsense', () => {
     expect(parseNaira('₦15,000')).toBe(1_500_000)
+    expect(parseNaira('₦50,000.00')).toBe(5_000_000)
     expect(parseNaira('15000.5')).toBe(1_500_050)
     expect(parseNaira('0')).toBeNull()
     expect(parseNaira('-5')).toBeNull()

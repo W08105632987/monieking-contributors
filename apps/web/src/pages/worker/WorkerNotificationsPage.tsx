@@ -1,3 +1,4 @@
+import { sheetMotion } from '@/lib/motion'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { NotifViewButton } from '@/components/notifications/NotifViewButton'
@@ -272,14 +273,11 @@ export default function WorkerNotificationsPage() {
       <AnimatePresence>
         {selectedNotif && (
           <div
-            className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:p-4 bg-black/50"
             onClick={() => setSelectedNotif(null)}
           >
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+              {...sheetMotion}
               className="bg-white dark:bg-night-800 rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 pb-8 max-h-[85vh] overflow-y-auto border border-green-100 dark:border-night-600 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >

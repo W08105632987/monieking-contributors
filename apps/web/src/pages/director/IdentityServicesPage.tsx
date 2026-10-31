@@ -102,7 +102,7 @@ function ChildPricingModal({
   })
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="bg-white dark:bg-night-800 rounded-t-3xl sm:rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl border border-green-100 dark:border-night-600 animate-in slide-in-from-bottom-6 duration-200">
         <div className="flex items-center justify-between p-4 border-b border-green-100 dark:border-night-700">
           <div>

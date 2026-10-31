@@ -218,7 +218,7 @@ def test_no_vnin_endpoint():
 # ── settings ──────────────────────────────────────────────────────────────
 def test_defaults_are_off_and_unpriced():
     s = S.parse({})
-    assert s.enabled is False and s.retention_hours == 24 and not s.can_enable()
+    assert s.enabled is False and s.retention_minutes == 24 * 60 and not s.can_enable()
     assert all(s.fee_for(m) == 0 for m in C.METHODS)
     assert s.slip_price("nin", "regular") == 0
 
@@ -248,7 +248,9 @@ def test_cannot_clear_a_fee_while_on():
 
 def test_validation_rules():
     cur = S.parse({})
-    for patch in ({"retention_hours": 0}, {"retention_hours": 500}, {"retention_hours": True}, {"nin_auth_url": "http://x"},
+    out_min = S.validate_update(cur, {"retention_minutes": 90})
+    assert out_min[C.K_RETENTION] == "90"
+    for patch in ({"retention_minutes": 30}, {"retention_hours": 0}, {"retention_hours": 500}, {"retention_hours": True}, {"nin_auth_url": "http://x"},
                   {"lookup_tier": {"bvn": "regular"}}, {"lookup_tier": {"nin": "vnin"}}, {"fees": {"vnin": 5}},
                   {"fees": {"nin": -1}}, {"slips": {"bvn.regular": 5}}, {"slips": {"nin.premium": "5"}}, {"bogus": 1},
                   {"enabled": "yes"}):
@@ -256,7 +258,7 @@ def test_validation_rules():
             S.validate_update(cur, patch)
     ok = S.validate_update(cur, {"retention_hours": 48, "slips": {"nin.premium": 50000}, "lookup_tier": {"nin": "standard"},
                                  "nin_auth_url": "https://example.org/auth"})
-    assert ok[C.K_RETENTION] == "48" and ok["verification.slip.nin.premium"] == "50000"
+    assert ok[C.K_RETENTION] == str(48 * 60) and ok["verification.slip.nin.premium"] == "50000"
 
 
 def test_keep_forever_setting():
@@ -264,10 +266,10 @@ def test_keep_forever_setting():
     assert cur.retention_never is False
     out = S.validate_update(cur, {"retention_never": True})
     assert out[C.K_RETENTION_NEVER] == "true"
-    assert S.parse({C.K_RETENTION_NEVER: "true", C.K_RETENTION: "48"}).retention_never is True
+    assert S.parse({C.K_RETENTION_NEVER: "true", C.K_RETENTION: "2880"}).retention_never is True
     assert S.parse({C.K_RETENTION_NEVER: "false"}).retention_never is False
     # the hours value is still validated and remembered, so switching "never" off goes back to it
-    assert S.parse({C.K_RETENTION_NEVER: "true", C.K_RETENTION: "48"}).retention_hours == 48
+    assert S.parse({C.K_RETENTION_NEVER: "true", C.K_RETENTION: "2880"}).retention_minutes == 2880
     with pytest.raises(S.SettingsError):
         S.validate_update(cur, {"retention_never": "yes"})
     assert C.K_RETENTION_NEVER in S.all_keys()
@@ -275,7 +277,7 @@ def test_keep_forever_setting():
 
 def test_garbled_stored_values_fall_back_safely():
     s = S.parse({C.K_RETENTION: "abc", C.K_FEE + "nin": "-5", C.K_ENABLED: "TRUE", C.K_LOOKUP_TIER + "bvn": "regular"})
-    assert s.retention_hours == 24 and s.fee_for("nin") == 0 and s.enabled and s.lookup_tier["bvn"] == "standard"
+    assert s.retention_minutes == 24 * 60 and s.fee_for("nin") == 0 and s.enabled and s.lookup_tier["bvn"] == "standard"
 
 
 # ── breaker ───────────────────────────────────────────────────────────────

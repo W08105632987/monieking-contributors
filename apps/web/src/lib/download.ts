@@ -1,5 +1,6 @@
 import { api } from '@/lib/api'
 import { useDownloadStore } from '@/store/download.store'
+import { friendlyError } from '@/lib/errorText'
 
 /** "Ada Obi" -> "Ada Obi", strips characters a file name cannot hold. */
 export function safeName(s: string): string {
@@ -56,7 +57,7 @@ export async function runDownload(
     useDownloadStore.getState().close()
     return true
   } catch (e: any) {
-    useDownloadStore.getState().set({ phase: 'error', error: e?.response?.data?.detail ?? e?.message ?? 'The download failed. Please try again.' })
+    useDownloadStore.getState().set({ phase: 'error', error: friendlyError(e, 'The download failed. Please try again.') })
     return false
   } finally {
     clearInterval(creep)

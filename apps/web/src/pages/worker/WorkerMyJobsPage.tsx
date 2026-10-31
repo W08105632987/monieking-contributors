@@ -8,6 +8,7 @@ import {
   Briefcase,
 } from 'lucide-react'
 import toast from '@/lib/notify'
+import { uploadDocument, MAX_DOCUMENT_BYTES } from '@/lib/uploadDocument'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatServiceCategory, formatServiceType } from '@/lib/utils'
 import { WorkerHeader } from '@/components/worker/WorkerHeader'
@@ -221,36 +222,33 @@ export default function WorkerMyJobsPage() {
     },
   })
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isForDispute = false) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isForDispute = false) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error('File size must be under 8MB')
+    if (file.size > MAX_DOCUMENT_BYTES) {
+      toast.error('File size must be under 5MB')
       return
     }
 
     if (isForDispute) setIsDisputeUploading(true)
     else setIsUploading(true)
-
-    const reader = new FileReader()
-    reader.onload = () => {
+    try {
+      // Stored in our file storage first; the job / dispute only keeps the link, never the file itself.
+      const url = await uploadDocument(file)
       if (isForDispute) {
-        setDisputeAttachmentUrl(reader.result as string)
-        setIsDisputeUploading(false)
+        setDisputeAttachmentUrl(url)
         toast.success('Dispute evidence attached!')
       } else {
-        setResultFileUrl(reader.result as string)
-        setIsUploading(false)
+        setResultFileUrl(url)
         toast.success('Resolution document attached!')
       }
-    }
-    reader.onerror = () => {
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
       if (isForDispute) setIsDisputeUploading(false)
       else setIsUploading(false)
-      toast.error('Failed to read file')
     }
-    reader.readAsDataURL(file)
   }
 
   return (
@@ -547,7 +545,7 @@ export default function WorkerMyJobsPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setResolveModalJob(null)}
-              className="absolute inset-0 bg-green-950/70 dark:bg-night-950/80 backdrop-blur-sm"
+              className="absolute inset-0 bg-green-950/70 dark:bg-night-950/80"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -685,7 +683,7 @@ export default function WorkerMyJobsPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setDisputeModalJob(null)}
-              className="absolute inset-0 bg-green-950/70 dark:bg-night-950/80 backdrop-blur-sm"
+              className="absolute inset-0 bg-green-950/70 dark:bg-night-950/80"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}

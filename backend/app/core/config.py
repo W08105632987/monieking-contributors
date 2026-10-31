@@ -127,7 +127,7 @@ class Settings(BaseSettings):
     CARD_TOTAL_DAYS: int = 372          # 12 × 31
     WITHDRAWAL_SLA_HOURS: int = 24
     MAX_FOOD_CARDS_PER_CUSTOMER: int = 2
-    MIN_REGULAR_CARD_RATE_KOBO: int = 50000   # ₦500
+    MIN_REGULAR_CARD_RATE_KOBO: int = 5000    # ₦50 — the real floor; directors can raise it in Business Settings
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_MINUTES: int = 15    # withdrawal-password lockout duration — see withdrawal_auth_service.py
     LOGIN_LOCKOUT_INITIAL_HOURS: float = 1.0

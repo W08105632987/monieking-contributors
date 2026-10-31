@@ -1,3 +1,4 @@
+import { sheetMotion } from '@/lib/motion'
 import { useMemo, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronRight, Search, X } from 'lucide-react'
@@ -58,10 +59,9 @@ export function ProviderSheet({ title = 'Select provider', placeholder = 'Choose
         {open && (
           <div className="fixed inset-0 z-50 flex items-end justify-center">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" onClick={close} />
+              className="absolute inset-0 bg-green-950/60" onClick={close} />
             <motion.div
-              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              {...sheetMotion}
               className="relative bg-white dark:bg-night-800 rounded-t-3xl w-full max-w-lg max-h-[85dvh] flex flex-col"
             >
               <div className="px-5 pt-3 pb-3">

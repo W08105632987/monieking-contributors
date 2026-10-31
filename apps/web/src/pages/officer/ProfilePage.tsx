@@ -1,3 +1,4 @@
+import { sheetMotion, overlayMotion } from '@/lib/motion'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -9,7 +10,8 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { useWallet } from '@/hooks/useWallet'
-import { api } from '@/lib/api'
+import { api, getErrorMessage } from '@/lib/api'
+import { BankDetailsEditor } from '@/components/settings/BankDetailsEditor'
 import { AvatarPicker } from '@/components/settings/AvatarPicker'
 import { BiometricSection } from '@/components/settings/BiometricSection'
 import { KycSection } from '@/components/settings/KycSection'
@@ -24,6 +26,7 @@ import { formatNaira, maskAccount, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import toast from '@/lib/notify'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { friendlyError } from '@/lib/errorText'
 
 // ── Change withdrawal password sheet ─────────────────────────────
 function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
@@ -49,7 +52,7 @@ function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
       toast.success(isFirstTimeSetup ? 'Withdrawal password set' : 'Withdrawal password updated')
       onClose()
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Failed to update password')
+      toast.error(friendlyError(err, 'Failed to update password'))
     } finally {
       setLoading(false)
     }
@@ -57,12 +60,9 @@ function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+      <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/60" />
       <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
@@ -124,12 +124,9 @@ function SignOutSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+      <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/60" />
       <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-6 pb-10"
         onClick={e => e.stopPropagation()}
       >
@@ -206,6 +203,19 @@ export default function OfficerProfilePage() {
   const { user, setUser }   = useAuthStore()
   const { wallet } = useWallet()
   const qc         = useQueryClient()
+  const [editingKin, setEditingKin] = useState(false)
+  const [kinName, setKinName]   = useState('')
+  const [kinPhone, setKinPhone] = useState('')
+  const [savingKin, setSavingKin] = useState(false)
+  const saveKin = async () => {
+    setSavingKin(true)
+    try {
+      const { data } = await api.patch('/users/me', { next_of_kin_name: kinName.trim(), next_of_kin_phone: kinPhone })
+      if (user) setUser({ ...user, next_of_kin_name: data.next_of_kin_name, next_of_kin_phone: data.next_of_kin_phone })
+      toast.success('Next of kin updated')
+      setEditingKin(false)
+    } catch (e) { toast.error(getErrorMessage(e)) } finally { setSavingKin(false) }
+  }
   const navigate   = useNavigate()
   const [showWithdrawSheet, setShowWithdrawSheet] = useState(false)
   const [showSignOutSheet,  setShowSignOutSheet]  = useState(false)
@@ -285,6 +295,20 @@ export default function OfficerProfilePage() {
           <InfoRow icon={Phone}     label="Phone number"  value={user.phone_number} />
           <InfoRow icon={Users}     label="Next of kin"   value={user.next_of_kin_name ?? '—'} />
           <InfoRow icon={Phone}     label="Next of kin phone" value={user.next_of_kin_phone ?? '—'} />
+          <button onClick={() => { setKinName(user.next_of_kin_name ?? ''); setKinPhone(user.next_of_kin_phone ?? ''); setEditingKin(true) }}
+            className="w-full text-left text-green-600 dark:text-night-200 text-xs font-bold py-2.5">
+            {user.next_of_kin_name ? 'Change next of kin' : 'Add next of kin'}
+          </button>
+          {editingKin && (
+            <div className="pb-4 space-y-2">
+              <input value={kinName} onChange={e => setKinName(e.target.value)} placeholder="Next of kin full name" className="w-full rounded-lg border-2 border-green-100 dark:border-night-500 bg-transparent px-3 py-2.5 text-sm text-green-900 dark:text-white" />
+              <input value={kinPhone} inputMode="numeric" onChange={e => setKinPhone(e.target.value.replace(/[^0-9+]/g, '').slice(0, 14))} placeholder="Phone number e.g. 08012345678" className="w-full rounded-lg border-2 border-green-100 dark:border-night-500 bg-transparent px-3 py-2.5 text-sm text-green-900 dark:text-white" />
+              <div className="flex gap-2">
+                <button onClick={() => setEditingKin(false)} className="flex-1 py-2.5 rounded-xl border-2 border-green-100 dark:border-night-500 text-green-700 dark:text-night-100 text-sm font-bold">Cancel</button>
+                <button disabled={savingKin || kinName.trim().length < 2 || kinPhone.length < 11} onClick={saveKin} className="flex-1 py-2.5 rounded-xl bg-green-900 dark:bg-night-100 text-white dark:text-night-900 text-sm font-bold disabled:opacity-40">{savingKin ? 'Saving…' : 'Save'}</button>
+              </div>
+            </div>
+          )}
 
           <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-widest pt-4 pb-2 border-t border-green-100 dark:border-night-500 mt-2">Bank details</p>
           <InfoRow icon={Building2}  label="Bank name"      value={user.bank_name ?? '—'} />
@@ -302,6 +326,12 @@ export default function OfficerProfilePage() {
                 setUser({ ...user, bvn_linked: fields.bvnLinked, nin_linked: fields.ninLinked, bvn_last4: fields.bvnLast4, nin_last4: fields.ninLast4 })
                 qc.invalidateQueries({ queryKey: ['wallet'] })
               }}
+            />
+            <BankDetailsEditor
+              currentBankName={user.bank_name}
+              currentAccountNumber={user.account_number}
+              currentAccountName={user.account_name}
+              onUpdated={(details) => setUser({ ...user, ...details })}
               isLast
             />
           </div>

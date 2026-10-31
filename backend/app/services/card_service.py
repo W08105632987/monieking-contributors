@@ -74,8 +74,18 @@ async def create_card(
     card_type: CardType,
     rate_kobo: int,
 ) -> ContributionCard:
+    from app.services.settings_service import get_config_int as _cfg_int
+    # Regular card: director-set minimum daily rate (the schema keeps the absolute ₦50 floor)
+    if card_type != CardType.FOOD:
+        min_rate = await _cfg_int(db, "min_regular_card_rate_kobo", settings.MIN_REGULAR_CARD_RATE_KOBO)
+        if rate_kobo < min_rate:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"The minimum daily rate for a card is ₦{min_rate // 100:,}.",
+            )
     # Food card: enforce max limit
     if card_type == CardType.FOOD:
+        max_food_cards = await _cfg_int(db, "max_food_cards_per_customer", settings.MAX_FOOD_CARDS_PER_CUSTOMER)
         count_result = await db.execute(
             select(func.count()).select_from(ContributionCard).where(
                 ContributionCard.owner_id == owner_id,
@@ -84,10 +94,10 @@ async def create_card(
             )
         )
         count = count_result.scalar_one()
-        if count >= settings.MAX_FOOD_CARDS_PER_CUSTOMER:
+        if count >= max_food_cards:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Maximum of {settings.MAX_FOOD_CARDS_PER_CUSTOMER} Food Cards allowed",
+                detail=f"Maximum of {max_food_cards} Food Cards allowed",
             )
         # Enforce enrollment window
         from datetime import date

@@ -1,3 +1,4 @@
+import { sheetMotion } from '@/lib/motion'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, ArrowDown } from 'lucide-react'
 import { formatNaira, cn } from '@/lib/utils'
@@ -43,12 +44,11 @@ export function PaymentConfirmSheet({
         <div className="fixed inset-0 z-50 flex items-end justify-center">
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-green-950/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-green-950/60"
             onClick={onClose}
           />
           <motion.div
-            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            {...sheetMotion}
             className="relative bg-white dark:bg-night-800 rounded-t-3xl w-full max-w-lg p-6 pb-8"
           >
             <div className="flex items-center justify-between mb-5">

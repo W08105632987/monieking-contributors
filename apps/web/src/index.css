@@ -465,3 +465,45 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 }
 .mk-fall { animation: mk-fall linear infinite; }
 @media (prefers-reduced-motion: reduce) { .mk-season { display: none; } }
+
+
+/* ── Phone keyboard: overlays and sheets rise ABOVE it instead of hiding behind it (see lib/keyboardLayout.ts) ── */
+.kb-open .fixed.inset-0 { padding-bottom: var(--kb-inset, 0px); }
+.kb-open [role="dialog"] { max-height: calc(var(--vvh, 100dvh) - 12px); overflow-y: auto; }
+/* never let a tapped field sit hard against the top or bottom edge */
+input, textarea, select { scroll-margin-block: 96px; }
+
+/* ── UX perf pass ─────────────────────────────────────────────────────── */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+a, button, [role="button"], summary, label, select { touch-action: manipulation; }
+/* Scrollable sheet/modal bodies must not chain scroll into the page behind them. */
+[role="dialog"], .overflow-y-auto { overscroll-behavior: contain; }
+img, video, canvas { -webkit-user-drag: none; }
+
+/* Skeleton shimmer (transform-only, so it stays on the compositor). */
+@keyframes mk-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.mk-skeleton { position: relative; overflow: hidden; background: rgba(20, 83, 45, 0.08); border-radius: 0.5rem; }
+.mk-skeleton::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: mk-shimmer 1.3s ease-in-out infinite;
+}
+.dark .mk-skeleton { background: rgba(255, 255, 255, 0.06); }
+.dark .mk-skeleton::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .mk-skeleton::after { animation: none; }
+}

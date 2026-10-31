@@ -24,6 +24,7 @@ Money is never touched: balances, amounts, references and dates all survive, onl
 """
 from __future__ import annotations
 
+from app.core.public_errors import public_message
 import logging
 import re
 import time
@@ -434,7 +435,7 @@ async def _remove_files(ident: Identity, rep: Report) -> None:
 
 
 # ───────────────────────────── verification ─────────────────────────────
-async def verify_clean(db: AsyncSession, ident: Identity, rep: Report, *, budget_seconds: float = 40.0) -> None:
+async def verify_clean(db: AsyncSession, ident: Identity, rep: Report, *, budget_seconds: float = 25.0) -> None:
     """Scan every text / JSON column of every table for any identifier. Fills rep.leftovers / rep.verified_clean."""
     pat = build_pattern(ident.phones, ident.emails)
     npat = name_pattern(ident.full_name)
@@ -497,7 +498,7 @@ async def erase_account(db: AsyncSession, user, *, director_id: uuid.UUID, hard_
             except ValueError as e:
                 raise HTTPException(status_code=409, detail=str(e))
     except ErasureError as e:
-        raise HTTPException(status_code=500, detail=f"Nothing was deleted. {e}")
+        raise HTTPException(status_code=500, detail=public_message(f"Nothing was deleted. {e}", "Nothing was deleted. Please try again."))
 
     # the login itself (revokes every session); if this fails the caller rolls the database back
     await supabase_admin_request(

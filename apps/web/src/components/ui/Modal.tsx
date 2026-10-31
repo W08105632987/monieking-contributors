@@ -1,7 +1,9 @@
-import { Fragment, type ReactNode } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { motion, AnimatePresence, type PanInfo } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useScrollLock } from '@/hooks/useScrollLock'
+import { sheetMotion, overlayMotion, dialogMotion, willAnimate, SWIPE_DISMISS_OFFSET, SWIPE_DISMISS_VELOCITY } from '@/lib/motion'
 
 interface ModalProps {
   open: boolean
@@ -14,41 +16,105 @@ interface ModalProps {
 
 const sizeMap = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' }
 
+const FOCUSABLE = 'a[href],button:not([disabled]),textarea,input:not([disabled]),select,[tabindex]:not([tabindex="-1"])'
+
+function useIsDesktop() {
+  const [desktop, setDesktop] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 768px)').matches : false,
+  )
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia('(min-width: 768px)')
+    const on = () => setDesktop(mq.matches)
+    mq.addEventListener?.('change', on)
+    return () => mq.removeEventListener?.('change', on)
+  }, [])
+  return desktop
+}
+
 export function Modal({ open, onClose, title, children, className, size = 'md' }: ModalProps) {
+  const titleId = useId()
+  const panelRef = useRef<HTMLDivElement>(null)
+  const desktop = useIsDesktop()
+  useScrollLock(open)
+
+  // Escape to close, focus trap, focus restore.
+  useEffect(() => {
+    if (!open) return
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const raf = requestAnimationFrame(() => {
+      const el = panelRef.current
+      if (el && !el.contains(document.activeElement)) (el.querySelector<HTMLElement>(FOCUSABLE) ?? el).focus({ preventScroll: true })
+    })
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return }
+      if (e.key !== 'Tab') return
+      const nodes = panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE)
+      if (!nodes || nodes.length === 0) return
+      const first = nodes[0], last = nodes[nodes.length - 1]
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      cancelAnimationFrame(raf)
+      document.removeEventListener('keydown', onKey)
+      previouslyFocused?.focus?.({ preventScroll: true })
+    }
+  }, [open, onClose])
+
+  function handleDragEnd(_: unknown, info: PanInfo) {
+    if (info.offset.y > SWIPE_DISMISS_OFFSET || info.velocity.y > SWIPE_DISMISS_VELOCITY) onClose()
+  }
+
+  const motionProps = desktop ? dialogMotion : sheetMotion
+
   return (
     <AnimatePresence>
       {open && (
         <Fragment>
-          {/* Backdrop */}
+          {/* Backdrop: plain dim, opacity-only (no backdrop-blur: it is very costly on mobile GPUs) */}
           <motion.div
-            className="fixed inset-0 bg-green-950/60 backdrop-blur-sm z-40"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            {...overlayMotion}
+            className="fixed inset-0 bg-green-950/60 z-40"
+            style={willAnimate}
             onClick={onClose}
+            aria-hidden
           />
-          {/* Sheet — slides up from bottom on mobile */}
+          {/* Sheet on mobile, centered dialog on desktop */}
           <motion.div
+            key={desktop ? 'dialog' : 'sheet'}
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={title ? titleId : undefined}
+            tabIndex={-1}
             className={cn(
-              'fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl p-6',
-              'md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2',
-              'md:rounded-3xl md:w-full',
+              'fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-night-800 rounded-t-3xl p-6 outline-none',
+              'pb-[max(1.5rem,env(safe-area-inset-bottom))] max-h-[92dvh] overflow-y-auto overscroll-contain',
+              // centered with auto margins (not translate) so framer's transform can't fight the layout
+              'md:top-0 md:bottom-0 md:m-auto md:h-fit',
+              'md:rounded-3xl md:w-full md:pb-6',
               sizeMap[size],
               className,
             )}
-            initial={{ y: '100%', opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: '100%', opacity: 0 }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            {...motionProps}
+            style={willAnimate}
+            drag={desktop ? false : 'y'}
+            dragDirectionLock
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.6 }}
+            onDragEnd={handleDragEnd}
           >
             {/* Drag handle — mobile only */}
-            <div className="w-10 h-1 bg-green-200 rounded-full mx-auto mb-4 md:hidden" />
+            <div className="w-10 h-1 bg-green-200 dark:bg-night-500 rounded-full mx-auto mb-4 md:hidden" />
             {title && (
               <div className="flex items-center justify-between gap-3 mb-5">
-                <h2 className="text-lg font-bold text-green-900 min-w-0 break-words">{title}</h2>
+                <h2 id={titleId} className="text-lg font-bold text-green-900 dark:text-white min-w-0 break-words">{title}</h2>
                 <button
                   onClick={onClose}
-                  className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full bg-green-50 text-green-600 hover:bg-green-100"
+                  aria-label="Close"
+                  className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full bg-green-50 text-green-600 hover:bg-green-100 active:scale-95 transition-transform"
                 >
                   <X className="w-4 h-4" />
                 </button>

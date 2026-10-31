@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.public_errors import public_message
 from app.models.job_pool_event import JobPoolEvent
 from app.models.manual_service_request import CommissionStatus, ManualServiceRequest, ManualServiceStatus
 from app.models.notification import NotificationType
@@ -184,7 +185,10 @@ async def submit_job(db: AsyncSession, actor: User, job_id: uuid.UUID) -> dict:
             await tell_directors(db, "Techhub service problem",
                                  f"{defaults.TITLES.get(job.service_category, job.service_category)}: {out.message}")
             await db.commit()
-        raise HTTPException(status_code=422 if out.kind == "rejected" else 503, detail=out.message)
+        logger.warning("[provider] submit %s: %s", out.kind, out.message)
+        if out.kind == "rejected":
+            raise HTTPException(status_code=422, detail=public_message(out.message, "Those details could not be accepted. Please check them and try again."))
+        raise HTTPException(status_code=503, detail="This service is temporarily unavailable. Please try again in a few minutes.")
 
     now = _now()
     job.status, job.expires_at = ManualServiceStatus.AWAITING_PROVIDER, None

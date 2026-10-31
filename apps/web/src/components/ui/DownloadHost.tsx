@@ -10,7 +10,7 @@ export function DownloadHost() {
     <AnimatePresence>
       {open && (
         <motion.div className="fixed inset-0 z-[10001] flex items-center justify-center px-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" onClick={phase === 'working' ? undefined : close} />
+          <div className="absolute inset-0 bg-green-950/60" onClick={phase === 'working' ? undefined : close} />
           <motion.div className="relative w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl dark:bg-night-800"
             initial={{ scale: 0.9, y: 18, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
             transition={{ type: 'spring', damping: 22, stiffness: 300 }}>

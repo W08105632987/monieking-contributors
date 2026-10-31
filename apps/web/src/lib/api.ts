@@ -1,5 +1,6 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { idempotencyKey } from './utils'
+import { friendlyError } from './errorText'
 import { useServerHealthStore } from '@/store/serverHealth.store'
 import { useAuthStore } from '@/store/auth.store'
 import { useMaintenanceStore } from '@/store/maintenance.store'
@@ -148,29 +149,6 @@ api.interceptors.response.use(
   },
 )
 
-export const getErrorMessage = (error: unknown): string => {
-  if (axios.isAxiosError(error)) {
-    const detail = (error.response?.data as any)?.detail
-    if (detail) {
-      // FastAPI/Pydantic 422 errors return an ARRAY of error objects, and
-      // the new login lockout errors return an OBJECT ({code, message}) —
-      // neither is a plain string. Passing either straight to a toast
-      // throws "Objects are not valid as a React child" and crashes the
-      // render tree. Normalize every shape down to a string here.
-      if (typeof detail === 'string') return detail
-      if (typeof detail === 'object' && detail !== null && (detail as any).code === 'kyc_required') return ''   // the KYC box is already showing
-      if (typeof detail === 'object' && detail !== null && 'message' in detail) return String((detail as any).message)
-      if (Array.isArray(detail)) return detail.map((d: any) => d?.msg ?? JSON.stringify(d)).join(', ')
-      return JSON.stringify(detail)
-    }
-    if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
-      return "This is taking longer than expected. Check your connection and try again — if it keeps happening, the request may have gone through, so check before retrying anything money-related."
-    }
-    if (error.code === 'ERR_NETWORK' || !error.response) {
-      return 'Could not reach the server. Check your connection and try again.'
-    }
-    return error.message ?? 'An error occurred'
-  }
-  if (error instanceof Error) return error.message
-  return 'An unexpected error occurred'
-}
+// Every server/Error text goes through the customer-safety filter in errorText.ts:
+// raw provider/backend wording ("login failed (HTTP 503)", SQL, URLs) is never returned.
+export const getErrorMessage = (error: unknown, fallback?: string): string => friendlyError(error, fallback)

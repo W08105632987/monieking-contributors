@@ -1,3 +1,4 @@
+import { sheetMotion } from '@/lib/motion'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -104,8 +105,8 @@ function EditSheet({ row, onClose }: { row: PriceRow; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-green-950/60" onClick={onClose} />
-      <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="relative w-full max-w-lg bg-white dark:bg-night-800 rounded-t-3xl p-5 pb-8 max-h-[90dvh] overflow-y-auto">
+      <motion.div {...sheetMotion}
+      className="relative w-full max-w-lg bg-white dark:bg-night-800 rounded-t-3xl p-5 pb-8 max-h-[90dvh] overflow-y-auto">
         <div className="flex items-start gap-3 mb-4">
           <div className="flex-1 min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-green-600 dark:text-night-300">{row.provider}</p>

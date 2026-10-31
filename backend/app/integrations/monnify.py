@@ -15,6 +15,7 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 from app.core.config import settings
+from app.core.public_errors import public_message
 from app.integrations.base_payment_provider import (
     BasePaymentProvider, ReservedAccount, WebhookEvent, TransferResult
 )
@@ -67,23 +68,25 @@ class MonnifyProvider(BasePaymentProvider):
                     headers={"Authorization": f"Basic {credentials}"},
                 )
                 resp.raise_for_status()
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="Payment provider is taking too long to respond. Please try again.")
-        except httpx.ConnectError:
-            raise HTTPException(status_code=503, detail="Could not reach the payment provider. Please try again.")
+        except httpx.TimeoutException as e:
+            logger.error("[monnify] login timed out: %s", type(e).__name__)
+            raise HTTPException(status_code=504, detail="This is taking longer than usual. Please try again in a moment.")
+        except httpx.ConnectError as e:
+            logger.error("[monnify] login could not connect: %s", e)
+            raise HTTPException(status_code=503, detail="This service is temporarily unavailable. Please try again in a few minutes.")
         except httpx.HTTPStatusError as e:
             code = e.response.status_code
             logger.error("[monnify] login failed: HTTP %s — %s", code, e.response.text[:300])
             if code in (401, 403):
-                raise HTTPException(status_code=502, detail="Payment provider rejected our credentials. Please contact support.")
-            raise HTTPException(status_code=502, detail=f"Payment provider login failed (HTTP {code}). Please try again.")
+                raise HTTPException(status_code=502, detail="This service is temporarily unavailable. Please try again later or contact support.")
+            raise HTTPException(status_code=502, detail="This service is temporarily unavailable. Please try again in a few minutes.")
 
         try:
             body = resp.json()["responseBody"]
             access_token = body["accessToken"]
         except (ValueError, KeyError, TypeError):
             logger.error("[monnify] login returned an unexpected body: %s", resp.text[:300])
-            raise HTTPException(status_code=502, detail="Payment provider returned an unexpected login response. Please try again.")
+            raise HTTPException(status_code=502, detail="This service is temporarily unavailable. Please try again in a few minutes.")
         # Refresh a minute early rather than cutting it exactly at expiry.
         expires_in = body.get("expiresIn", 3600)
         self._token_expires_at = time.monotonic() + max(expires_in - 60, 60)
@@ -195,7 +198,7 @@ class MonnifyProvider(BasePaymentProvider):
                     "contract, (2) Monnify wallet balance covers the fee, (3) API calls allowed from this server.", path, msg[:120],
                 )
                 raise HTTPException(status_code=502, detail="Identity verification is unavailable right now. Please try again later.")
-            raise HTTPException(status_code=422, detail=msg or "Could not verify those details.")
+            raise HTTPException(status_code=422, detail=public_message(msg, "Could not verify those details."))
 
         body = data.get("responseBody") or {}
         if not isinstance(body, dict):
@@ -364,7 +367,7 @@ class MonnifyProvider(BasePaymentProvider):
         message (shown to the person); only real outages bubble up as 5xx/timeouts."""
         try:
             resp = await self._get_json(
-                "/api/v1/disbursements/account/validate",
+                "/api/v2/disbursements/account/validate",
                 {"accountNumber": account_number, "bankCode": bank_code},
             )
         except httpx.TimeoutException:
@@ -377,7 +380,7 @@ class MonnifyProvider(BasePaymentProvider):
             data = {}
         if 400 <= resp.status_code < 500:
             msg = (data.get("responseMessage") or "").strip()
-            raise ValueError(msg or "Could not verify this account — check the account number and bank")
+            raise ValueError(public_message(msg, "Could not verify this account — check the account number and bank"))
         resp.raise_for_status()
         account_name = (data.get("responseBody") or {}).get("accountName")
         if not account_name:

@@ -374,7 +374,7 @@ export default function ManualServiceDetailPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsDisputeOpen(false)}
-              className="absolute inset-0 bg-green-950/70 dark:bg-night-950/80 backdrop-blur-sm"
+              className="absolute inset-0 bg-green-950/70 dark:bg-night-950/80"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}

@@ -3,6 +3,7 @@ import { api } from '@/lib/api'
 import type { Withdrawal, WithdrawForm, PaginatedResponse } from '@/types'
 import toast from '@/lib/notify'
 import { showFeedback } from '@/store/feedback.store'
+import { friendlyError } from '@/lib/errorText'
 
 export function useMyWithdrawals() {
   return useQuery({
@@ -39,7 +40,7 @@ export function useRequestWithdrawal() {
       qc.invalidateQueries({ queryKey: ['wallet-transactions'] })
       showFeedback.success('Withdrawal requested', 'A director will review and process this shortly.')
     },
-    onError: (e: Error) => showFeedback.error('Withdrawal request failed', e.message),
+    onError: (e: Error) => showFeedback.error('Withdrawal request failed', friendlyError(e)),
   })
 }
 
@@ -54,7 +55,7 @@ export function useClaimWithdrawal() {
       qc.invalidateQueries({ queryKey: ['pending-withdrawals'] })
       showFeedback.success('Withdrawal claimed', 'This request is now assigned to you.')
     },
-    onError: (e: Error) => showFeedback.error('Could not claim withdrawal', e.message),
+    onError: (e: Error) => showFeedback.error('Could not claim withdrawal', friendlyError(e)),
   })
 }
 
@@ -69,7 +70,7 @@ export function useMarkWithdrawalPaid() {
       qc.invalidateQueries({ queryKey: ['pending-withdrawals'] })
       toast.success('Withdrawal marked as paid!')
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   })
 }
 
@@ -84,6 +85,6 @@ export function useRejectWithdrawal() {
       qc.invalidateQueries({ queryKey: ['pending-withdrawals'] })
       showFeedback.success('Withdrawal rejected', 'The customer will be notified.')
     },
-    onError: (e: Error) => showFeedback.error('Could not reject withdrawal', e.message),
+    onError: (e: Error) => showFeedback.error('Could not reject withdrawal', friendlyError(e)),
   })
 }

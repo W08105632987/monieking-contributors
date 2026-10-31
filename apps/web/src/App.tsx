@@ -13,13 +13,14 @@ import { InAppNotificationBanner } from '@/components/layout/InAppNotificationBa
 import { AnalyticsTracker } from '@/components/analytics/AnalyticsTracker'
 import { useAuth } from '@/hooks/useAuth'
 import { useNotificationsPoll } from '@/hooks/useNotificationsPoll'
+import { useCreditSound } from '@/hooks/useCreditSound'
 import { useAuthStore } from '@/store/auth.store'
 import { api } from '@/lib/api'
 import { LogoLoader } from '@/components/ui/LogoLoader'
 import { SplashScreen } from '@/components/ui/SplashScreen'
 import { OnboardingCarousel } from '@/components/onboarding/OnboardingCarousel'
 import { AppLayout } from '@/components/layout/AppLayout'
-import { preloadRoleRoutes } from '@/lib/preloadRoutes'
+import { preloadRoleRoutes, prefetchWhenIdle } from '@/lib/preloadRoutes'
 import { PageContentSkeleton } from '@/components/ui/PageContentSkeleton'
 
 // ── Public / marketing ──────────────────────────────────────────────
@@ -66,6 +67,9 @@ const OfficerCardDetail     = lazy(() => import('@/pages/officer/CardDetailPage'
 const OfficerWallet         = lazy(() => import('@/pages/officer/WalletPage'))
 const OfficerTransactions   = lazy(() => import('@/pages/officer/TransactionsPage'))
 const OfficerProfile        = lazy(() => import('@/pages/officer/ProfilePage'))
+const OfficerEarnings       = lazy(() => import('@/pages/officer/EarningsPage'))
+const OfficerWelcome        = lazy(() => import('@/pages/officer/WelcomePage'))
+const DirectorOfficerPayouts = lazy(() => import('@/pages/director/OfficerPayoutsPage'))
 const OfficerNotifications  = lazy(() => import('@/pages/officer/NotificationsPage'))
 const OfficerCustomerStats  = lazy(() => import('@/pages/officer/CustomerStatsDetailPage'))
 
@@ -163,6 +167,7 @@ export default function App() {
   // that idle expiry goes through sessionLifecycle.endSession().
   useAuth()
   useNotificationsPoll()
+  useCreditSound() // coin sound when money enters the wallet
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const authLoading = useAuthStore((s) => s.isLoading)
   const user = useAuthStore((s) => s.user)
@@ -173,6 +178,7 @@ export default function App() {
   useEffect(() => {
     if (user?.role) {
       preloadRoleRoutes(user.role)
+      if (user.role === 'customer') prefetchWhenIdle(['/customer/transactions', '/customer/notifications', '/customer/withdraw'])
     }
   }, [user?.role])
 
@@ -356,6 +362,9 @@ export default function App() {
             <Route path="/officer/notifications"  element={<AuthGuard allowedRoles={['officer']}><OfficerNotifications /></AuthGuard>} />
             <Route path="/officer/customer-stats" element={<AuthGuard allowedRoles={['officer']}><OfficerCustomerStats /></AuthGuard>} />
             <Route path="/officer/profile"        element={<AuthGuard allowedRoles={['officer']}><OfficerProfile /></AuthGuard>} />
+            <Route path="/officer/earnings"       element={<AuthGuard allowedRoles={['officer']}><OfficerEarnings /></AuthGuard>} />
+            <Route path="/officer/welcome"        element={<AuthGuard allowedRoles={['officer']}><OfficerWelcome /></AuthGuard>} />
+            <Route path="/director/officer-payouts" element={<AuthGuard allowedRoles={['director']}><DirectorOfficerPayouts /></AuthGuard>} />
             <Route path="/officer/disputes"       element={<AuthGuard allowedRoles={['officer']}><DisputesListPage /></AuthGuard>} />
             <Route path="/officer/customers/:customerId/verify/:kind" element={<AuthGuard allowedRoles={['officer']}><VerifyLookupPage /></AuthGuard>} />
             <Route path="/officer/customers/:customerId/verify/:kind/:lookupId" element={<AuthGuard allowedRoles={['officer']}><VerifyLookupPage /></AuthGuard>} />

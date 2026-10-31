@@ -14,6 +14,7 @@ from app.schemas.bill_payment import (
     PayBillRequest, BillPaymentRequestItem, PricingPatch, BulkPricing,
 )
 from app.services import bill_payment_service, bill_config, bill_pricing, bill_admin
+from app.core.public_errors import public_message
 from app.integrations.monnify_bills import get_bills_provider, MonnifyBillsError
 from pydantic import BaseModel, Field
 
@@ -94,8 +95,13 @@ async def validate_phone(body: ValidatePhoneRequest, user: CustomerOrOfficer, db
                 await get_bills_provider().validate_customer(product_code=biller.product_id, customer_id=phone)
                 verified = True
             except MonnifyBillsError as e:
-                if not e.retriable:
-                    return {"valid": False, "phone": phone, "network": net, "verified": False, "message": e.message}
+                logger.info("[bills] phone check skipped for %s: %s", net, e.raw)
+                if e.retriable:
+                    # Provider outage: never block the customer or show technical text.
+                    message = "Number check skipped"
+                else:
+                    return {"valid": False, "phone": phone, "network": net, "verified": False,
+                            "message": public_message(e.raw, "That number could not be verified. Please check it and try again.")}
     return {"valid": True, "phone": phone, "network": net, "verified": verified, "message": message}
 
 
@@ -188,6 +194,9 @@ async def pay(
     if is_officer and not customer_id:
         raise HTTPException(status_code=400, detail="customer_id is required when an officer submits on a customer's behalf")
 
+    if is_officer:
+        from app.core.access import require_officer_zone_for
+        await require_officer_zone_for(db, user, customer_id)   # only customers of the officer's own zone (S-17)
     from app.services.pin_service import check_pin
     await check_pin(db, user, body.pin)   # the person tapping Pay confirms with their own PIN
 
@@ -266,7 +275,8 @@ async def _to_item(db: AsyncSession, request: BillPaymentRequest) -> BillPayment
         officer_id=request.officer_id, customer_reference=request.customer_reference,
         amount_kobo=request.amount_kobo, validated_account_name=request.validated_account_name,
         status=request.status.value, failure_reason=request.failure_reason,
-        token=request.token, amount_charged_kobo=request.amount_charged_kobo,
+        token=request.token, units=request.units, customer_address=request.customer_address,
+        amount_charged_kobo=request.amount_charged_kobo,
         monnify_transaction_reference=request.monnify_transaction_reference,
         created_at=request.created_at, completed_at=request.completed_at,
     )

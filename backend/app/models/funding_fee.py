@@ -11,6 +11,7 @@ class FundingFeeSettings(Base):
     __tablename__ = "funding_fee_settings"
     id:               Mapped[int]  = mapped_column(Integer, primary_key=True, default=1)
     charge_customers: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    fee_label:        Mapped[str]  = mapped_column(String(40), default="NIPPS charge", nullable=False)   # what the customer sees on the fee line
     pass_monnify_fee: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)   # customer pays Monnify's actual charge and sees the remainder
     tiers:            Mapped[list] = mapped_column(JSONB, nullable=False)
     updated_by:       Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))

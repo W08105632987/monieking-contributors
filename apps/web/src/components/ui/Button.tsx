@@ -1,6 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
+import { haptic } from '@/lib/haptics'
 
 type Variant = 'primary' | 'accent' | 'outline' | 'ghost' | 'danger'
 type Size    = 'sm' | 'md' | 'lg'
@@ -27,7 +28,7 @@ const sizeClasses: Record<Size, string> = {
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = 'primary', size = 'md', loading, fullWidth, className, children, disabled, ...props }, ref) => (
+  ({ variant = 'primary', size = 'md', loading, fullWidth, className, children, disabled, onClick, ...props }, ref) => (
     <button
       ref={ref}
       className={cn(
@@ -37,6 +38,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className,
       )}
       disabled={disabled || loading}
+      onClick={(e) => { haptic('tap'); onClick?.(e) }}
       {...props}
     >
       {loading && <Loader2 className="w-4 h-4 animate-spin" />}

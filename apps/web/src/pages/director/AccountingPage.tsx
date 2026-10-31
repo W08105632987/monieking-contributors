@@ -9,8 +9,8 @@ import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
 import { Period, SOURCE_TEXT, parseAmount, presetPeriod, ymd } from '@/lib/accounting'
 
-interface Totals { revenue_kobo: number; provider_cost_kobo: number; gross_profit_kobo: number; expenses_kobo: number; net_profit_kobo: number }
-interface Service { key: string; label: string; group: string; count: number; volume_kobo: number; revenue_kobo: number; cost_kobo: number; margin_kobo: number; cost_source: string; unpriced_events: number; note?: string | null }
+interface Totals { revenue_kobo: number; provider_cost_kobo: number; gross_profit_kobo: number; expenses_kobo: number; other_income_kobo?: number; net_profit_kobo: number }
+interface Service { key: string; label: string; group: string; count: number; volume_kobo: number; revenue_kobo: number; cost_kobo: number; margin_kobo: number; cost_source: string; unpriced_events: number; note?: string | null; markup_kobo?: number; commission_kobo?: number }
 interface Report {
   start: string; end: string; totals: Totals; services: Service[]
   expenses: { total_kobo: number; by_category: { category: string; total_kobo: number; count: number }[] }
@@ -19,13 +19,15 @@ interface Report {
 }
 interface RateRow { id: string; mode: 'flat' | 'percent'; value: number; cap_kobo: number | null; effective_from: string; note: string | null }
 interface Rate { key: string; label: string; group: string; provider: string; mode: 'flat' | 'percent'; hint: string; current: RateRow | null; history: RateRow[] }
+interface Income { id: string; earned_on: string; source: string; description: string; amount_kobo: number }
 interface Expense { id: string; spent_on: string; category: string; description: string; amount_kobo: number }
 interface Holdings { wallet_balances_kobo: number; pending_payouts_kobo: number; avg_daily_outgoings_kobo: number; buffer_days: number; buffer_kobo: number; should_hold_kobo: number }
 
 const card = 'rounded-2xl border border-green-100 bg-white p-4 shadow-card dark:border-night-500 dark:bg-night-700'
 const input = 'w-full rounded-xl border border-green-200 bg-white px-3 py-2 text-sm text-green-950 outline-none focus:border-green-500 dark:border-night-500 dark:bg-night-600 dark:text-white'
 const btn = 'rounded-xl bg-green-600 px-4 py-2 text-sm font-bold text-white transition-transform active:scale-95 disabled:opacity-50'
-const TABS = ['Overview', 'Services', 'Prices', 'Expenses', 'Cash'] as const
+const REPORT_TIMEOUT = 60_000
+const TABS = ['Overview', 'Services', 'Prices', 'Expenses', 'Other income', 'Cash'] as const
 type Tab = typeof TABS[number]
 const PRESETS = [['today', 'Today'], ['7d', '7 days'], ['month', 'This month'], ['lastmonth', 'Last month'], ['90d', '90 days']] as const
 
@@ -48,11 +50,17 @@ export default function AccountingPage() {
   const [period, setPeriod] = useState<Period>(() => presetPeriod('month'))
   const [custom, setCustom] = useState(false)
 
+  // Totals first (fast), then the chart points; both may be slow on a big period, so allow 60s.
   const { data: rep, isLoading } = useQuery({
     queryKey: ['acct-report', period.start, period.end],
-    queryFn: async () => (await api.get<Report>('/director/accounting/report', { params: { start: period.start, end: period.end } })).data,
+    queryFn: async () => (await api.get<Report>('/director/accounting/report', { params: { start: period.start, end: period.end, series: false }, timeout: REPORT_TIMEOUT })).data,
   })
-  const refresh = () => { qc.invalidateQueries({ queryKey: ['acct-report'] }); qc.invalidateQueries({ queryKey: ['acct-expenses'] }); qc.invalidateQueries({ queryKey: ['acct-holdings'] }) }
+  const { data: seriesData, isLoading: seriesLoading, isError: seriesError } = useQuery({
+    queryKey: ['acct-series', period.start, period.end],
+    queryFn: async () => (await api.get<Pick<Report, 'series'>>('/director/accounting/report', { params: { start: period.start, end: period.end, series_only: true }, timeout: REPORT_TIMEOUT })).data.series ?? [],
+    enabled: !!rep,
+  })
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['acct-report'] }); qc.invalidateQueries({ queryKey: ['acct-series'] }); qc.invalidateQueries({ queryKey: ['acct-expenses'] }); qc.invalidateQueries({ queryKey: ['acct-holdings'] }) }
 
   async function exportCsv() {
     try {
@@ -98,25 +106,40 @@ export default function AccountingPage() {
           ))}
         </div>
 
-        {tab === 'Overview' && <Overview rep={rep} loading={isLoading} goPrices={() => setTab('Prices')} />}
+        {tab === 'Overview' && <Overview rep={rep} series={seriesData} seriesLoading={seriesLoading || (!seriesData && !seriesError)} seriesError={seriesError} loading={isLoading} goPrices={() => setTab('Prices')} />}
         {tab === 'Services' && <Services rep={rep} loading={isLoading} />}
         {tab === 'Prices' && <Prices onChange={refresh} />}
         {tab === 'Expenses' && <Expenses period={period} onChange={refresh} />}
+        {tab === 'Other income' && <OtherIncome period={period} onChange={refresh} />}
         {tab === 'Cash' && <Cash />}
       </div>
     </div>
   )
 }
 
-function Overview({ rep, loading, goPrices }: { rep?: Report; loading: boolean; goPrices: () => void }) {
-  if (loading || !rep) return <p className="py-10 text-center text-sm text-green-600">Calculating…</p>
+function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded-xl bg-green-100 dark:bg-night-600 ${className}`} />
+}
+
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Calculating">
+      <div className={card}><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-16" />)}</div></div>
+      <div className={card}><Skeleton className="mb-2 h-4 w-40" /><Skeleton className="h-56" /></div>
+      <div className={card}><Skeleton className="mb-3 h-4 w-52" />{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="mb-2 h-5" />)}</div>
+    </div>
+  )
+}
+
+function Overview({ rep, series, seriesLoading, seriesError, loading, goPrices }: { rep?: Report; series?: Report['series']; seriesLoading: boolean; seriesError: boolean; loading: boolean; goPrices: () => void }) {
+  if (loading || !rep) return <OverviewSkeleton />
   const t = rep.totals
   const groups = useMemo(() => {
     const m = new Map<string, { revenue: number; cost: number }>()
     rep.services.forEach((s) => { const g = m.get(s.group) ?? { revenue: 0, cost: 0 }; g.revenue += s.revenue_kobo; g.cost += s.cost_kobo; m.set(s.group, g) })
     return [...m.entries()].sort((a, b) => b[1].revenue - a[1].revenue)
   }, [rep])
-  const chart = (rep.series ?? []).map((p) => ({ name: p.label, Revenue: p.revenue_kobo / 100, 'Provider cost': p.provider_cost_kobo / 100, Expenses: p.expenses_kobo / 100, Net: p.net_profit_kobo / 100 }))
+  const chart = (series ?? []).map((p) => ({ name: p.label, Revenue: p.revenue_kobo / 100, 'Provider cost': p.provider_cost_kobo / 100, Expenses: p.expenses_kobo / 100, Net: p.net_profit_kobo / 100 }))
   return (
     <div className="space-y-4">
       {rep.warnings.length > 0 && (
@@ -127,14 +150,17 @@ function Overview({ rep, loading, goPrices }: { rep?: Report; loading: boolean; 
       )}
       <div className={card}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <Tile label="Revenue" value={money(t.revenue_kobo)} sub="what customers paid us in charges" />
-          <Tile label="Provider costs" value={money(t.provider_cost_kobo)} sub="Monnify, Techhub, Termii, workers" />
+          <Tile label="Revenue" value={money(t.revenue_kobo)} sub="our charges, plus markup and commission on bills" />
+          <Tile label="Provider costs" value={money(t.provider_cost_kobo)} sub="what providers charge us (not bills: we earn on those)" />
           <Tile label="Gross profit" value={money(t.gross_profit_kobo)} tone={tone(t.gross_profit_kobo)} sub="revenue minus provider costs" />
           <Tile label="Expenses" value={money(t.expenses_kobo)} sub="entered by directors" />
-          <Tile label="Net profit" value={money(t.net_profit_kobo)} tone={tone(t.net_profit_kobo)} sub="after expenses" />
+          <Tile label="Other income" value={money(t.other_income_kobo ?? 0)} sub="earned outside the app" />
+          <Tile label="Net profit" value={money(t.net_profit_kobo)} tone={tone(t.net_profit_kobo)} sub="after expenses, plus other income" />
         </div>
       </div>
-      {chart.length > 0 && (
+      {seriesLoading && <div className={card}><Skeleton className="mb-2 h-4 w-40" /><Skeleton className="h-56" /></div>}
+      {seriesError && !seriesLoading && <div className={card}><p className="text-xs text-amber-700">The chart could not be loaded. The totals above are still correct. Change the period or reload to try again.</p></div>}
+      {!seriesLoading && chart.length > 0 && (
         <div className={card}>
           <p className="mb-2 text-sm font-extrabold text-green-950 dark:text-white">Over the period (₦)</p>
           <div className="h-56">
@@ -183,7 +209,7 @@ function Overview({ rep, loading, goPrices }: { rep?: Report; loading: boolean; 
 }
 
 function Services({ rep, loading }: { rep?: Report; loading: boolean }) {
-  if (loading || !rep) return <p className="py-10 text-center text-sm text-green-600">Calculating…</p>
+  if (loading || !rep) return <div className="space-y-4" aria-busy="true"><div className={card}>{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="mb-2 h-10" />)}</div></div>
   const groups = [...new Set(rep.services.map((s) => s.group))]
   return (
     <div className="space-y-4">
@@ -197,8 +223,10 @@ function Services({ rep, loading }: { rep?: Report; loading: boolean }) {
                 <span className={`text-sm font-extrabold ${tone(s.margin_kobo)}`}>{money(s.margin_kobo)}</span>
               </div>
               <p className="text-[11px] text-green-600 dark:text-night-300">
-                {s.count.toLocaleString()} done · charged {money(s.revenue_kobo)} · our cost {money(s.cost_kobo)}
-                {s.volume_kobo > 0 && <> · volume {money(s.volume_kobo)}</>}
+                {s.cost_source === 'commission'
+                  ? <>{s.count.toLocaleString()} done · we earned {money(s.revenue_kobo)} (markup {money(s.markup_kobo ?? 0)} + commission {money(s.commission_kobo ?? 0)})</>
+                  : <>{s.count.toLocaleString()} done · charged {money(s.revenue_kobo)} · our cost {money(s.cost_kobo)}</>}
+                {s.volume_kobo > 0 && <> · {s.cost_source === 'commission' ? 'sales' : 'volume'} {money(s.volume_kobo)}</>}
               </p>
               <p className={`text-[10px] ${s.cost_source === 'missing' ? 'font-bold text-amber-600' : 'text-green-500 dark:text-night-400'}`}>
                 {SOURCE_TEXT[s.cost_source] ?? s.cost_source}{s.unpriced_events > 0 && ` (${s.unpriced_events} without a price)`}
@@ -321,6 +349,58 @@ function Expenses({ period, onChange }: { period: Period; onChange: () => void }
             <b className="text-sm">{money(x.amount_kobo)}</b>
             <button aria-label="Edit expense" onClick={() => edit(x)} className="rounded-lg p-1.5 text-green-700 hover:bg-green-100 dark:text-night-200"><Pencil className="h-4 w-4" /></button>
             <button aria-label="Delete expense" onClick={() => { if (window.confirm(`Remove "${x.description}" (${money(x.amount_kobo)})?`)) del.mutate(x.id) }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function OtherIncome({ period, onChange }: { period: Period; onChange: () => void }) {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['acct-income', period.start, period.end],
+    queryFn: async () => (await api.get<{ income: Income[]; total_kobo: number; sources: string[] }>('/director/accounting/income', { params: { start: period.start, end: period.end } })).data,
+  })
+  const blank = { earned_on: ymd(new Date()), source: 'Other business', description: '', amount: '' }
+  const [form, setForm] = useState(blank)
+  const [editId, setEditId] = useState<string | null>(null)
+  const amount = parseAmount(form.amount)
+  const valid = !!form.description.trim() && !!form.source.trim() && amount !== null && amount > 0
+  const done = () => { qc.invalidateQueries({ queryKey: ['acct-income'] }); onChange(); setForm(blank); setEditId(null) }
+  const body = () => ({ earned_on: form.earned_on, source: form.source, description: form.description, amount_naira: amount })
+  const add = useMutation({ mutationFn: () => (editId ? api.put(`/director/accounting/income/${editId}`, body()) : api.post('/director/accounting/income', body())), onSuccess: () => { toast.success(editId ? 'Income updated' : 'Income added'); done() }, onError: (e) => toast.error(getErrorMessage(e)) })
+  const del = useMutation({ mutationFn: (id: string) => api.delete(`/director/accounting/income/${id}`), onSuccess: () => { toast.success('Income removed'); done() }, onError: (e) => toast.error(getErrorMessage(e)) })
+  const edit = (x: Income) => { setEditId(x.id); setForm({ earned_on: x.earned_on, source: x.source, description: x.description, amount: String(x.amount_kobo / 100) }) }
+  return (
+    <div className="space-y-4">
+      <div className={card}>
+        <p className="mb-2 text-sm font-extrabold text-green-950 dark:text-white">{editId ? 'Edit income' : 'Add income earned outside the app'}</p>
+        <p className="mb-2 text-[11px] text-green-600 dark:text-night-300">For profit from any other business or deal. It is added to your net profit for the date you pick. Any date works, and you can edit or remove an entry at any time.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <input type="date" className={input} value={form.earned_on} onChange={(e) => setForm({ ...form, earned_on: e.target.value })} aria-label="Date earned" />
+          <input className={input} inputMode="decimal" placeholder="Amount made ₦" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} aria-label="Amount" />
+          <input className={`${input} col-span-2`} list="acct-income-sources" placeholder="Source (e.g. Other business)" value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} aria-label="Source" />
+          <datalist id="acct-income-sources">{(data?.sources ?? []).map((c) => <option key={c} value={c} />)}</datalist>
+          <input className={`${input} col-span-2`} placeholder="Short description" maxLength={300} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} aria-label="Description" />
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button className={`${btn} flex items-center gap-1`} disabled={!valid || add.isPending} onClick={() => add.mutate()}><Plus className="h-4 w-4" />{editId ? 'Save changes' : 'Add income'}</button>
+          {editId && <button className="rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold dark:bg-night-600 dark:text-white" onClick={() => { setEditId(null); setForm(blank) }}>Cancel</button>}
+        </div>
+      </div>
+      <div className={card}>
+        <div className="mb-2 flex justify-between"><p className="text-sm font-extrabold text-green-950 dark:text-white">Other income in this period</p><b className="text-sm">{money(data?.total_kobo ?? 0)}</b></div>
+        {data && data.income.length === 0 && <p className="py-4 text-center text-xs text-green-600">No outside income recorded for these dates.</p>}
+        {data?.income.map((x) => (
+          <div key={x.id} className="flex items-center gap-2 border-t border-green-100 py-2 first:border-0 dark:border-night-500">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-green-950 dark:text-white">{x.description}</p>
+              <p className="text-[11px] text-green-600 dark:text-night-300">{x.earned_on} · {x.source}</p>
+            </div>
+            <b className="text-sm">{money(x.amount_kobo)}</b>
+            <button aria-label="Edit income" onClick={() => edit(x)} className="rounded-lg p-1.5 text-green-700 hover:bg-green-100 dark:text-night-200"><Pencil className="h-4 w-4" /></button>
+            <button aria-label="Delete income" onClick={() => { if (window.confirm(`Remove "${x.description}" (${money(x.amount_kobo)})?`)) del.mutate(x.id) }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
           </div>
         ))}
       </div>

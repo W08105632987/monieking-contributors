@@ -281,7 +281,7 @@ export default function CustomerOverviewPage() {
 
       {composing && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setComposing(null)}>
-          <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-green-950/60" />
           <div className="relative bg-white dark:bg-night-700 rounded-t-3xl w-full max-w-lg p-5 pb-8" onClick={e => e.stopPropagation()}>
             <p className="text-green-900 dark:text-white font-extrabold text-base mb-1">{composing === 'kin' ? `SMS to ${extra?.next_of_kin.name ?? 'next of kin'}` : `Message ${profile.full_name}`}</p>
             <p className="text-green-500 dark:text-night-200 text-xs mb-3">{composing === 'kin' ? 'Sent as an SMS to their next of kin.' : 'Appears in their notifications.'}</p>

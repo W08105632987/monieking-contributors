@@ -1,3 +1,4 @@
+import { sheetMotion, overlayMotion } from '@/lib/motion'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
@@ -43,13 +44,10 @@ export function FoodCardRulesModal({ isOpen, onClose, onAccept }: FoodCardRulesM
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/70 backdrop-blur-md" />
+      <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/70" />
 
       <motion.div
-        initial={{ y: '100%', opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: '100%', opacity: 0 }}
-        transition={{ type: 'spring', damping: 26, stiffness: 280 }}
+        {...sheetMotion}
         className="relative bg-white dark:bg-night-700 rounded-t-3xl sm:rounded-3xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >

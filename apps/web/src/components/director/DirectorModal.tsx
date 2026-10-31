@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PinBoxes } from '@/components/ui/PinHost'
 
 /** A calm centred dialog for director tools. Sits above everything, closes on Escape, blocks the page behind it. */
 export function DirectorModal({ open, title, onClose, children, busy }: { open: boolean; title: string; onClose: () => void; children: ReactNode; busy?: boolean }) {
@@ -13,7 +14,7 @@ export function DirectorModal({ open, title, onClose, children, busy }: { open: 
   }, [open, busy, onClose])
   if (!open) return null
   return createPortal(
-    <div className="fixed inset-0 z-[10001] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-0 sm:px-4" onClick={() => !busy && onClose()}>
+    <div className="fixed inset-0 z-[10001] flex items-end sm:items-center justify-center bg-black/60 px-0 sm:px-4" onClick={() => !busy && onClose()}>
       <div role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-white dark:bg-night-700 p-5 pb-8 shadow-2xl">
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -29,12 +30,10 @@ export function DirectorModal({ open, title, onClose, children, busy }: { open: 
 
 export function PinField({ value, onChange, label = 'Your PIN', autoFocus }: { value: string; onChange: (v: string) => void; label?: string; autoFocus?: boolean }) {
   return (
-    <label className="block">
-      <span className="text-xs font-semibold text-green-700 dark:text-night-200">{label}</span>
-      <input type="password" inputMode="numeric" autoComplete="off" maxLength={4} autoFocus={autoFocus} value={value}
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 4))} aria-label={label}
-        className="mt-1 w-full rounded-xl border border-green-200 dark:border-night-500 bg-white dark:bg-night-800 px-3 py-3 text-center text-lg tracking-[0.5em] text-green-950 dark:text-white outline-none focus:border-green-500" />
-    </label>
+    <div className="block">
+      <span className="mb-1.5 block text-xs font-semibold text-green-700 dark:text-night-200">{label}</span>
+      <PinBoxes value={value} onChange={onChange} label={label} autoFocus={autoFocus ?? false} />
+    </div>
   )
 }
 

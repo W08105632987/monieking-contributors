@@ -6,6 +6,7 @@ import { BigButton, Field, Sheet, inputCls } from './ui'
 import { setStepUpHandler } from './stepup-bus'
 import { useAuthStore } from '@/store/auth.store'
 import { requestPin } from '@/lib/pin'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 
 export type AuthPayload = { auth_method: 'password' | 'biometric'; withdrawal_password?: string; pin?: string; webauthn_assertion?: object }
 export type Secret = 'pin' | 'password'
@@ -54,8 +55,8 @@ export function useAuthPrompt() {
       <p className="mb-3 text-sm text-green-700 dark:text-night-200">This moves money, so please confirm with your {word}{bio ? ' or your fingerprint' : ''}.</p>
       {bio && <div className="mb-3"><BigButton tone="ghost" loading={busy} onClick={useBio}><Fingerprint className="h-4 w-4" />Use fingerprint or face</BigButton></div>}
       <Field label={isStaff ? 'Your PIN' : 'Withdrawal password'}>
-        <input
-          type="password" autoComplete="current-password" value={pw} aria-label={isStaff ? 'PIN' : 'Withdrawal password'}
+        <PasswordInput
+          reveal={!isStaff} autoComplete="current-password" value={pw} aria-label={isStaff ? 'PIN' : 'Withdrawal password'}
           inputMode={isStaff ? 'numeric' : undefined} maxLength={isStaff ? 6 : undefined} autoFocus
           onChange={(e) => setPw(isStaff ? e.target.value.replace(/\D/g, '').slice(0, 6) : e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && pw) finish({ auth_method: 'password', withdrawal_password: pw }) }}

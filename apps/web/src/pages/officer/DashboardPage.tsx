@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { sheetMotion } from '@/lib/motion'
+import { useState, useEffect } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import {
   Users, Wallet, ArrowUpRight, ArrowDownLeft,
   TrendingUp, UserPlus, ClipboardList,
-  Eye, EyeOff, Lock, AlertCircle, X, Copy, MapPin, Scan,
+  Eye, EyeOff, Lock, AlertCircle, X, Copy, MapPin, Scan, BadgeDollarSign,
 } from 'lucide-react'
 import { FoodQrScannerModal } from '@/components/food/FoodQrScannerModal'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -61,8 +62,7 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <motion.div
-      initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-      transition={{ type: 'spring', damping: 18, stiffness: 260, mass: 0.9 }}
+      {...sheetMotion}
       className="fixed inset-0 z-50 bg-white dark:bg-night-700 overflow-y-auto"
     >
       <div className="sticky top-0 bg-white dark:bg-night-700 flex items-center gap-3 px-5 pt-5 pb-3 border-b border-green-50 z-10">
@@ -173,6 +173,16 @@ export default function OfficerDashboardPage() {
   const [showWalletWithdraw, setShowWalletWithdraw] = useState(false)
   const [showFoodScanner, setShowFoodScanner] = useState(false)
 
+  // Affiliated (commission) officers: the welcome tour on first login, and an earnings card.
+  const affiliated = user?.officer_type === 'affiliated'
+  useEffect(() => {
+    if (affiliated && !user?.officer_welcome_seen_at) navigate('/officer/welcome', { replace: true })
+  }, [affiliated, user?.officer_welcome_seen_at, navigate])
+  const { data: earnings } = useQuery({
+    queryKey: ['officer-earnings-me'], enabled: affiliated,
+    queryFn: async () => (await api.get<{ available_kobo: number; pending_payout_kobo: number; percent: number }>('/officer-earnings/me')).data,
+  })
+
   // Fetch zone customers
   const { data: customers = [], isLoading: customersLoading } = useQuery({
     queryKey: ['officer-customers'],
@@ -211,6 +221,17 @@ export default function OfficerDashboardPage() {
 
       <div className="flex-1 overflow-y-auto pb-safe-nav px-4">
         <SetupChecklist />
+
+        {affiliated && (
+          <button onClick={() => navigate('/officer/earnings')} className="mb-4 flex w-full items-center gap-3 rounded-2xl bg-green-900 p-4 text-left text-white shadow-card dark:bg-night-600 active:scale-[0.99] transition">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-400"><BadgeDollarSign className="h-6 w-6 text-green-950" /></div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-300">My earnings</p>
+              <p className="text-2xl font-extrabold">{formatNaira(earnings?.available_kobo ?? 0)}</p>
+              <p className="text-[11px] text-green-200">{earnings && earnings.pending_payout_kobo > 0 ? `${formatNaira(earnings.pending_payout_kobo)} payout on the way · ` : ''}You earn {earnings?.percent ?? '…'}% of the company's profit</p>
+            </div>
+          </button>
+        )}
 
         {/* Greeting */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2 mb-4">

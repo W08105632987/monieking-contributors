@@ -20,6 +20,7 @@ export const SOURCE_TEXT: Record<string, string> = {
   rate: 'Calculated from the prices you entered',
   'measured + rate': 'Measured where the provider told us, otherwise your prices',
   missing: 'No price entered yet: cost shown as ₦0',
+  commission: 'We earn this (markup + commission). No provider cost.',
 }
 
 /** "1.5" naira-or-percent text -> number, or null when it is not a usable non-negative number. */

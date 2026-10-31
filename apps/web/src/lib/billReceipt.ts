@@ -72,7 +72,9 @@ export function buildBillReceipt(req: BillPaymentRequest): BillReceiptView {
       ...(typeLabel ? [{ label: isCable ? 'Plan' : 'Meter type', value: typeLabel }] : []),
       { label: isCable ? 'Smartcard / IUC number' : 'Meter number', value: req.customer_reference },
       ...(req.validated_account_name ? [{ label: 'Account name', value: req.validated_account_name }] : []),
+      ...(req.customer_address ? [{ label: 'Address', value: req.customer_address }] : []),
       ...(req.token ? [{ label: isCable ? 'Reference code' : 'Electricity token', value: req.token, kind: 'token' as const }] : []),
+      ...(!isCable && req.units ? [{ label: 'Units bought', value: `${req.units} kWh` }] : []),
     ],
     brand: resolveBrand(provider),
   }

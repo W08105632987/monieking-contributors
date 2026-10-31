@@ -1,16 +1,18 @@
+import { sheetMotion, overlayMotion } from '@/lib/motion'
 import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { api, getErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
-import { PinBoxes } from '@/components/ui/PinHost'
+import { PinFields } from '@/components/ui/PinHost'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 
 function Sheet({ title, sub, onClose, children }: { title: string; sub: string; onClose: () => void; children: ReactNode }) {
   return createPortal(
     <div className="fixed inset-0 z-[10005] flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-green-950/60 backdrop-blur-sm" />
-      <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="relative w-full max-w-lg rounded-t-3xl bg-white p-6 pb-10 dark:bg-night-700 max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <motion.div {...overlayMotion} className="absolute inset-0 bg-green-950/60" />
+      <motion.div {...sheetMotion}
+      className="relative w-full max-w-lg rounded-t-3xl bg-white p-6 pb-10 dark:bg-night-700 max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-green-200 dark:bg-night-500" />
         <h2 className="text-xl font-extrabold text-green-900 dark:text-white">{title}</h2>
         <p className="mb-5 mt-1 text-sm text-green-600 dark:text-night-200">{sub}</p>
@@ -50,9 +52,11 @@ export function PinSheet({ onClose }: { onClose: () => void }) {
       sub="Your 4-digit PIN approves airtime, bills, identity services and other actions in the app.">
       {done ? <p className="py-8 text-center text-sm font-bold text-green-700">PIN saved ✓</p> : (
         <div className="space-y-5 text-center">
-          {has && <div><p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-green-600 dark:text-night-300">Current PIN</p><PinBoxes value={current} onChange={setCurrent} label="Current PIN" /></div>}
-          <div><p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-green-600 dark:text-night-300">New PIN</p><PinBoxes value={pin} onChange={setPin} autoFocus={!has} label="New PIN" /></div>
-          <div><p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-green-600 dark:text-night-300">Type it again</p><PinBoxes value={again} onChange={setAgain} autoFocus={false} label="Confirm PIN" error={again.length === 4 && again !== pin} /></div>
+          <PinFields fields={[
+            ...(has ? [{ label: 'Current PIN', value: current, onChange: setCurrent }] : []),
+            { label: 'New PIN', value: pin, onChange: setPin },
+            { label: 'Type it again', value: again, onChange: setAgain, error: again.length === 4 && again !== pin },
+          ]} />
           {err && <p role="alert" className="text-xs font-semibold text-red-600">{err}</p>}
           <button disabled={!ready || busy} onClick={save} className={primary}>{busy ? 'Please wait…' : 'Save PIN'}</button>
         </div>
@@ -88,8 +92,8 @@ export function WithdrawalPasswordSheet({ onClose }: { onClose: () => void }) {
     <Sheet title="Set withdrawal password" onClose={onClose} sub="You will enter this every time you withdraw from your card or your cooperative. Keep it different from your login password and your PIN.">
       {done ? <p className="py-8 text-center text-sm font-bold text-green-700">Withdrawal password saved ✓</p> : (
         <div className="space-y-3">
-          <input type="password" autoComplete="new-password" className={input} placeholder="Withdrawal password" value={pw} onChange={(e) => setPw(e.target.value)} />
-          <input type="password" autoComplete="new-password" className={input} placeholder="Type it again" value={again} onChange={(e) => setAgain(e.target.value)} />
+          <PasswordInput autoComplete="new-password" className={input} placeholder="Withdrawal password" value={pw} onChange={(e) => setPw(e.target.value)} />
+          <PasswordInput autoComplete="new-password" className={input} placeholder="Type it again" value={again} onChange={(e) => setAgain(e.target.value)} />
           {err && <p role="alert" className="text-xs font-semibold text-red-600">{err}</p>}
           <button disabled={busy || !pw || !again} onClick={save} className={primary}>{busy ? 'Please wait…' : 'Save withdrawal password'}</button>
         </div>

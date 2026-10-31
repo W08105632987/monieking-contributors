@@ -22,7 +22,8 @@ export function setSoundMuted(muted: boolean): void {
 
 let ctx: AudioContext | null = null
 
-function getCtx(): AudioContext | null {
+/** Shared AudioContext (also used by the coin sound) so one unlock covers every sound. */
+export function getAudioContext(): AudioContext | null {
   try {
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctor) return null
@@ -36,7 +37,7 @@ function getCtx(): AudioContext | null {
 /** Call once at app start: the first user gesture unlocks audio for later chimes. */
 export function installAudioUnlock(): () => void {
   const unlock = () => {
-    const c = getCtx()
+    const c = getAudioContext()
     if (c && c.state === 'suspended') void c.resume().catch(() => {})
   }
   const events = ['pointerdown', 'keydown', 'touchstart'] as const
@@ -60,7 +61,7 @@ function note(c: AudioContext, freq: number, start: number, dur: number): void {
 
 export function playChime(): void {
   if (isSoundMuted()) return
-  const c = getCtx()
+  const c = getAudioContext()
   if (!c) return
   try {
     if (c.state === 'suspended') void c.resume().catch(() => {})
