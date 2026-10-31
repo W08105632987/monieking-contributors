@@ -482,8 +482,14 @@ html {
   overscroll-behavior-y: none;
 }
 a, button, [role="button"], summary, label, select { touch-action: manipulation; }
-/* Scrollable sheet/modal bodies must not chain scroll into the page behind them. */
-[role="dialog"], .overflow-y-auto { overscroll-behavior: contain; }
+/* Scrollable sheet/modal bodies must not chain scroll into the page behind them.
+   Scoped to real overlays (role=dialog, or anything inside a `.fixed` panel) on purpose:
+   nearly every PAGE wraps its content in `flex-1 overflow-y-auto` inside a `min-h-dvh` column.
+   That box never overflows (the document is what scrolls) but it IS a scroll container, so
+   `contain` on it swallows touch drags that start over the content instead of passing them
+   to the page. Do not put a bare `.overflow-y-auto` selector back here. */
+[role="dialog"],
+.fixed .overflow-y-auto { overscroll-behavior: contain; }
 img, video, canvas { -webkit-user-drag: none; }
 
 /* Skeleton shimmer (transform-only, so it stays on the compositor). */
