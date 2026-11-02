@@ -3,7 +3,7 @@ per-card detail (contributions, withdrawals, disputes) and direct messaging."""
 import uuid
 from collections import OrderedDict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -159,3 +159,46 @@ async def message_kin(user_id: str, body: KinBody, director: DirectorOnly, db: A
     if not ok:
         raise HTTPException(status_code=502, detail="The SMS could not be sent right now")
     return {"ok": True}
+
+
+@router.get("/{user_id}/wallet-history")
+async def wallet_history(
+    user_id: str, director: DirectorOnly, db: AsyncSession = Depends(get_db),
+    kind: str = Query(default="all", pattern="^(all|funding)$"),
+    limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0),
+):
+    """A customer's wallet story for the director: every funding (automatic bank transfer, or manual by a director) and, with
+    kind=all, every other transaction too. Each row says who did it."""
+    from sqlalchemy import func
+    from sqlalchemy.orm import aliased
+    from app.models.wallet import Wallet, WalletTransaction, TxCategory, TxType
+
+    customer = await _customer(db, user_id)
+    wallet = (await db.execute(select(Wallet).where(Wallet.owner_id == customer.id))).scalar_one_or_none()
+    if not wallet:
+        return {"balance_kobo": 0, "total_funded_kobo": 0, "manual_funded_kobo": 0, "total": 0, "items": []}
+    cond = [WalletTransaction.wallet_id == wallet.id]
+    if kind == "funding":
+        cond.append(WalletTransaction.category == TxCategory.WALLET_FUNDING)
+    Actor = aliased(User)
+    total = (await db.execute(select(func.count()).select_from(WalletTransaction).where(*cond))).scalar_one()
+    rows = (await db.execute(
+        select(WalletTransaction, Actor.full_name, Actor.role).join(Actor, Actor.id == WalletTransaction.initiated_by, isouter=True)
+        .where(*cond).order_by(WalletTransaction.created_at.desc()).limit(limit).offset(offset))).all()
+    funded = (await db.execute(select(func.coalesce(func.sum(WalletTransaction.amount_kobo), 0)).where(
+        WalletTransaction.wallet_id == wallet.id, WalletTransaction.category == TxCategory.WALLET_FUNDING, WalletTransaction.type == TxType.CREDIT))).scalar_one()
+    manual = (await db.execute(select(func.coalesce(func.sum(WalletTransaction.amount_kobo), 0)).where(
+        WalletTransaction.wallet_id == wallet.id, WalletTransaction.category == TxCategory.WALLET_FUNDING,
+        WalletTransaction.reference.like("MANUAL-%")))).scalar_one()
+    items = []
+    for tx, actor_name, actor_role in rows:
+        is_manual = tx.reference.startswith("MANUAL-")
+        items.append({
+            "id": str(tx.id), "type": tx.type.value, "category": tx.category.value, "amount_kobo": tx.amount_kobo,
+            "balance_after_kobo": tx.balance_after_kobo, "reference": tx.reference, "description": tx.description,
+            "created_at": tx.created_at.isoformat(), "manual": is_manual,
+            "by": (actor_name if is_manual or tx.category == TxCategory.MANUAL_DEBIT else None),
+            "by_role": (actor_role.value if hasattr(actor_role, "value") else actor_role) if is_manual else None,
+            "source": "Manual funding" if is_manual else ("Bank transfer" if tx.category == TxCategory.WALLET_FUNDING else tx.category.value.replace("_", " ").title()),
+        })
+    return {"balance_kobo": wallet.balance_kobo, "total_funded_kobo": int(funded), "manual_funded_kobo": int(manual), "total": total, "items": items}

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, BadgeCheck, Check, Fingerprint, Lock, Phone, ScanLine, ShieldCheck, SkipForward, User } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Check, Fingerprint, Phone, Pencil, ScanLine, ShieldCheck, SkipForward, User } from 'lucide-react'
 import { api, getErrorMessage } from '@/lib/api'
 import { withPin, isPinCancelled } from '@/lib/pin'
 import { fireConfetti } from '@/lib/confetti'
@@ -48,6 +48,8 @@ export default function KycPage() {
   const [err, setErr] = useState('')
   const [shake, setShake] = useState(0)
   const [info, setInfo] = useState('')
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
 
   const fail = (e: unknown) => { setErr(getErrorMessage(e)); setShake((n) => n + 1) }
   const maskedPhone = useMemo(() => (user?.phone_number ? user.phone_number.replace(/^(\d{4})\d{3}(\d{4})$/, '$1•••$2') : ''), [user?.phone_number])
@@ -81,6 +83,20 @@ export default function KycPage() {
       setPreview(data)
     } catch (e) { await minimum; fail(e) } finally { setBusy(false); setScanning(false) }
   }
+
+  const saveName = async () => {
+    const next = nameDraft.trim().replace(/\s+/g, ' ')
+    if (busy || next.length < 3) return
+    setBusy(true); setErr('')
+    try {
+      await withPin((pin) => api.post('/wallets/me/kyc/correct-name', { new_name: next, pin }),
+        { title: 'Confirm with your PIN', message: `Enter your 4-digit payment PIN to change your name to ${next}.`, skipKyc: true })
+      if (user) setUser({ ...user, full_name: next })
+      qc.invalidateQueries({ queryKey: ['wallet'] })
+      setEditingName(false); setPreview(null); setNin('')
+    } catch (e) { if (!isPinCancelled(e)) fail(e) } finally { setBusy(false) }
+  }
+  const startEditName = () => { setNameDraft(user?.full_name ?? ''); setErr(''); setEditingName(true); setStep(0) }
 
   const confirm = async () => {
     if (busy || !preview?.name_matches) return
@@ -157,17 +173,28 @@ export default function KycPage() {
             <motion.div key="s0" {...slide} transition={{ type: 'spring', damping: 24, stiffness: 260 }}
               className="rounded-3xl bg-white/95 p-5 shadow-2xl dark:bg-night-700/95">
               <h2 className="text-lg font-extrabold text-green-950 dark:text-white">Is this your name?</h2>
-              <p className="mt-1 text-xs text-green-600 dark:text-night-300">Taken from your registration. It must match the name on your NIN, so it can't be edited here.</p>
-              <div className="relative mt-4 overflow-hidden rounded-2xl border border-green-200 bg-green-50 px-4 py-4 dark:border-night-500 dark:bg-night-600">
-                <motion.span aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-white/60 to-transparent dark:via-white/10"
-                  animate={{ x: ['0%', '420%'] }} transition={{ duration: 2.4, repeat: Infinity, repeatDelay: 1.2 }} />
-                <div className="relative flex items-center gap-3">
-                  <Lock className="h-4 w-4 shrink-0 text-green-500" />
-                  <span className="truncate text-base font-extrabold text-green-950 dark:text-white">{user?.full_name}</span>
+              <p className="mt-1 text-xs text-green-600 dark:text-night-300">Taken from your registration. It must be spelt exactly as on your NIN. Wrong or a nickname? Edit it now, before you verify.</p>
+              {editingName ? (
+                <div className="mt-4">
+                  <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} autoFocus maxLength={200} placeholder="Full name as on your NIN"
+                    className="w-full rounded-2xl border border-green-300 bg-white px-4 py-3.5 text-base font-bold text-green-950 dark:border-night-400 dark:bg-night-800 dark:text-white" />
+                  {err && <p role="alert" className="mt-2 text-xs font-semibold text-red-600">{err}</p>}
+                  <button onClick={saveName} disabled={busy || nameDraft.trim().length < 3} className="mt-4 w-full rounded-2xl bg-green-900 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50 dark:bg-copper-400 dark:text-green-950">{busy ? 'Saving…' : 'Save name (confirm with PIN)'}</button>
+                  <button onClick={() => { setEditingName(false); setErr('') }} disabled={busy} className="mt-2 w-full py-2.5 text-xs font-semibold text-green-700 dark:text-night-200">Cancel</button>
                 </div>
-              </div>
-              <p className="mt-3 text-[11px] text-green-600 dark:text-night-300">Wrong name? Ask your officer to correct it before you verify.</p>
-              <button onClick={() => setStep(1)} className="mt-5 w-full rounded-2xl bg-green-900 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] dark:bg-copper-400 dark:text-green-950">Yes, continue</button>
+              ) : (
+                <>
+                  <div className="relative mt-4 overflow-hidden rounded-2xl border border-green-200 bg-green-50 px-4 py-4 dark:border-night-500 dark:bg-night-600">
+                    <motion.span aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-white/60 to-transparent dark:via-white/10"
+                      animate={{ x: ['0%', '420%'] }} transition={{ duration: 2.4, repeat: Infinity, repeatDelay: 1.2 }} />
+                    <div className="relative flex items-center gap-3">
+                      <span className="min-w-0 flex-1 truncate text-base font-extrabold text-green-950 dark:text-white">{user?.full_name}</span>
+                      <button onClick={startEditName} className="flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-green-800 shadow-sm dark:bg-night-500 dark:text-white"><Pencil className="h-3.5 w-3.5" /> Edit</button>
+                    </div>
+                  </div>
+                  <button onClick={() => setStep(1)} className="mt-5 w-full rounded-2xl bg-green-900 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] dark:bg-copper-400 dark:text-green-950">Yes, continue</button>
+                </>
+              )}
             </motion.div>
           )}
 
@@ -260,6 +287,9 @@ export default function KycPage() {
                     <button onClick={confirm} disabled={busy} className="mt-4 w-full rounded-2xl bg-green-900 py-3.5 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50 dark:bg-copper-400 dark:text-green-950">
                       {busy ? 'Completing…' : "Yes, that's me — confirm with PIN"}
                     </button>
+                  )}
+                  {!preview.name_matches && (
+                    <button onClick={startEditName} disabled={busy} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-2xl border border-green-300 py-3 text-sm font-bold text-green-900 dark:border-night-400 dark:text-white"><Pencil className="h-4 w-4" /> My name is spelt wrong — edit it</button>
                   )}
                   <button onClick={() => { setPreview(null); setErr(''); setNin('') }} disabled={busy} className="mt-2 w-full py-2.5 text-xs font-semibold text-green-700 dark:text-night-200">
                     {preview.name_matches ? 'Not me / use a different NIN' : 'Try a different NIN'}

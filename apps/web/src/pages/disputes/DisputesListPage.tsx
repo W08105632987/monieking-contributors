@@ -130,7 +130,9 @@ export default function DisputesListPage() {
                   <span className="text-green-300 dark:text-night-400 text-xs">{timeAgo(d.created_at)}</span>
                 </div>
                 <p className="text-green-900 dark:text-white font-semibold text-sm">
-                  {d.entity_type === 'manual_service'
+                  {d.entity_type === 'contribution_marking'
+                    ? 'Wrong marking'
+                    : d.entity_type === 'manual_service'
                     ? 'Manual Identity Service'
                     : d.entity_type === 'wallet_transaction'
                     ? 'Wallet transaction'

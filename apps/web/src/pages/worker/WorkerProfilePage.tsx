@@ -1,3 +1,4 @@
+import { ForgotContactSupport } from '@/components/support/ContactSupport'
 import { sheetMotion, overlayMotion } from '@/lib/motion'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -104,6 +105,7 @@ function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
+        {!isFirstTimeSetup && <ForgotContactSupport thing="withdrawal password" className="mb-4" />}
         <button
           onClick={handleSubmit}
           disabled={loading || (!isFirstTimeSetup && !current) || !newPwd || !confirm}

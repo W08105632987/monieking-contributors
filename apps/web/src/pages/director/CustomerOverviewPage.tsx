@@ -7,6 +7,7 @@ import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatDate, cn } from '@/lib/utils'
 import { CustomerAdminPanel } from '@/components/director/CustomerAdminPanel'
+import { WalletHistoryPanel } from '@/components/director/WalletHistoryPanel'
 import { Avatar } from '@/components/ui/Avatar'
 import { ManageMemberSheet } from '@/components/settings/ManageMemberSheet'
 import type { CustomerOverview } from '@/types'
@@ -134,6 +135,7 @@ export default function CustomerOverviewPage() {
           </button>
         </div>
 
+        <WalletHistoryPanel customerId={customerId!} />
         <CustomerAdminPanel customerId={customerId!} name={profile.full_name} />
 
         {/* Everything about them */}

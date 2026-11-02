@@ -6,6 +6,9 @@ from app.models.card import ContributionCard, ContributionRecord, CardType, Card
 from app.models.withdrawal import Withdrawal, WithdrawalStatus
 from app.models.notification import Notification, Broadcast
 from app.models.audit import AuditLog
+from app.models.director_activity import DirectorActivity
+from app.models.food_conversion import FoodConversionReminder
+from app.models.marking_correction import MarkingCorrection
 from app.models.webhook import PaymentWebhook
 from app.models.settings import SystemConfig, PendingRateChange, PendingRateChangeStatus
 from app.models.instant_message import InstantMessage, InstantMessagePriority

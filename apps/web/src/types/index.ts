@@ -53,6 +53,8 @@ export interface User {
   officer_type?: 'salary' | 'affiliated' | null
   officer_commission_percent?: number | null
   officer_welcome_seen_at?: string | null
+  /** Customers: set by the server only when the 'Join WhatsApp group' tap was received. */
+  whatsapp_joined_at?: string | null
   /** Customers only: the one officer who earns commission on this customer's withdrawals. */
   commission_officer_id?: string | null
   bvn_last4?: string | null
@@ -430,12 +432,13 @@ export interface InactiveCustomersPage {
   page_size: number
 }
 
-export type DisputeEntityType = 'wallet_transaction' | 'withdrawal' | 'manual_service'
+export type DisputeEntityType = 'wallet_transaction' | 'withdrawal' | 'manual_service' | 'contribution_marking'
 export type DisputeStatus = 'open' | 'under_review' | 'escalated' | 'resolved'
 export type DisputeReason =
   | 'not_mine' | 'amount_wrong' | 'duplicate'
   | 'money_not_received' | 'rejected_in_error' | 'other'
   | 'customer_info_incorrect' | 'portal_unavailable' | 'commission_dispute'
+  | 'over_marked' | 'wrong_card_marked'
 
 export const DISPUTE_REASON_LABEL: Record<string, string> = {
   not_mine:                 "I didn't make/request this",
@@ -447,6 +450,8 @@ export const DISPUTE_REASON_LABEL: Record<string, string> = {
   portal_unavailable:       'Government / Bank portal unavailable',
   commission_dispute:       'Commission payout discrepancy',
   other:                    'Something else',
+  over_marked:              'I marked more than the customer paid',
+  wrong_card_marked:        'I marked the wrong card',
 }
 
 export interface DisputeMessage {

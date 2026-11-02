@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { BadgeDollarSign, Copy, Hash, KeyRound, Landmark, Lock, Mail, MinusCircle, MessageCircle, Send, ShieldCheck, Trash2 } from 'lucide-react'
+import { BadgeDollarSign, Copy, Hash, KeyRound, Landmark, Lock, Mail, MinusCircle, Phone, MessageCircle, Send, ShieldCheck, Trash2 } from 'lucide-react'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatNairaAmount } from '@/lib/utils'
@@ -9,7 +9,7 @@ import { ActionButton, DirectorModal, Notice, PinField } from './DirectorModal'
 import { KycRescueModal } from './KycRescueModal'
 import { CommissionOfficerModal } from './CommissionOfficerModal'
 
-type Which = null | 'reset' | 'password' | 'pin' | 'wpw' | 'fund' | 'debit' | 'delete'
+type Which = null | 'reset' | 'password' | 'pin' | 'wpw' | 'fund' | 'debit' | 'delete' | 'phone'
 type PwInfo = { password: string; phone: string; email: string | null }
 const waNumber = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.startsWith('234') ? d : `234${d.replace(/^0/, '')}` }
 const field = 'mt-1 w-full rounded-xl border border-green-200 dark:border-night-500 bg-white dark:bg-night-800 px-3 py-2.5 text-sm text-green-950 dark:text-white'
@@ -32,9 +32,10 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
   const [sent, setSent] = useState<string | null>(null)
   const [kycOpen, setKycOpen] = useState(false)
   const [commOpen, setCommOpen] = useState(false)
+  const [newPhone, setNewPhone] = useState('')
   const who = kind === 'officer' ? 'officer' : 'customer'
 
-  const close = () => { if (busy) return; setWhich(null); setPw(null); setSent(null); setPin(''); setAmount(''); setReason(''); setTyped(''); setAck(false); setMsg(null); setRisk(null) }
+  const close = () => { if (busy) return; setWhich(null); setPw(null); setSent(null); setPin(''); setAmount(''); setReason(''); setTyped(''); setAck(false); setMsg(null); setRisk(null); setNewPhone('') }
   const base = `/customer-admin/${customerId}`
   const run = async (fn: () => Promise<void>) => {
     if (busy) return
@@ -43,6 +44,12 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
   }
 
   const openDelete = () => { setWhich('delete'); run(async () => setRisk((await api.get(`${base}/delete-preview`)).data)) }
+  const doPhone = () => run(async () => {
+    const r = (await api.post(`${base}/change-phone`, { new_phone: newPhone, reason, pin })).data
+    setResult(r.message)
+    qc.invalidateQueries()
+    close()
+  })
   const doReset = () => run(async () => {
     const r = (await api.post(`${base}/reset-password`, { pin })).data
     setPw({ password: r.temporary_password, phone: r.phone_number, email: r.email ?? null })
@@ -82,6 +89,7 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
     <div className="mb-4 rounded-2xl border border-green-100 bg-white px-4 shadow-card dark:border-night-500 dark:bg-night-700">
       <p className="pb-1 pt-4 text-xs font-bold uppercase tracking-widest text-green-500 dark:text-night-200">Director controls</p>
       {result && <div className="mb-2"><Notice kind="ok">{result}</Notice></div>}
+      <button className={row} onClick={() => { setResult(null); setWhich('phone') }}><Phone className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Change phone number</span></button>
       <button className={row} onClick={() => { setResult(null); setWhich('reset') }}><KeyRound className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Reset password</span></button>
       <button className={row} onClick={() => { setResult(null); setWhich('pin') }}><Hash className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Reset payment PIN</span></button>
       <button className={row} onClick={() => { setResult(null); setWhich('wpw') }}><Lock className="h-4 w-4 text-green-700 dark:text-night-100" /><span className="flex-1 text-sm font-semibold text-green-900 dark:text-white">Reset withdrawal password</span></button>
@@ -126,6 +134,17 @@ export function CustomerAdminPanel({ customerId, name, kind = 'customer' }: { cu
             <p className="text-center text-[11px] text-green-600 dark:text-night-300">This password is only shown now. Close this window and it is gone.</p>
           </div>
         )}
+      </DirectorModal>
+
+      <DirectorModal open={which === 'phone'} title="Change phone number" onClose={close} busy={busy}>
+        <div className="space-y-3">
+          <p className="text-sm text-green-800 dark:text-night-100">Changes the number {name} signs in with. Their password, wallet and cards stay the same, and they are notified. Call the old and the new number first to be sure it is really them.</p>
+          <label className="block text-xs font-semibold text-green-700 dark:text-night-200">New phone number<input className={field} inputMode="numeric" value={newPhone} onChange={(e) => setNewPhone(e.target.value.replace(/[^\d]/g, ''))} placeholder="08012345678" /></label>
+          <label className="block text-xs font-semibold text-green-700 dark:text-night-200">Reason (required)<textarea className={field} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Customer lost the old SIM" /></label>
+          <PinField value={pin} onChange={setPin} />
+          {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+          <ActionButton busy={busy} disabled={newPhone.length < 10 || reason.trim().length < 5 || pin.length < 4} onClick={doPhone}>Change phone number</ActionButton>
+        </div>
       </DirectorModal>
 
       <DirectorModal open={which === 'pin'} title="Reset payment PIN" onClose={close} busy={busy}>

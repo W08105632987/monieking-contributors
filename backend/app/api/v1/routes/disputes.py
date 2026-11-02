@@ -566,18 +566,24 @@ async def add_message(
     ))
     if dispute.status == DisputeStatus.OPEN and current_user.id != dispute.raised_by:
         dispute.status = DisputeStatus.UNDER_REVIEW
-    if current_user.role == UserRole.OFFICER and dispute.assigned_to != current_user.id:
+    # An officer who answers a customer's dispute takes it over. An officer who RAISED the dispute (marking corrections)
+    # must never become its handler, or the director could no longer claim or resolve it.
+    if current_user.role == UserRole.OFFICER and dispute.assigned_to != current_user.id and dispute.raised_by != current_user.id:
         dispute.assigned_to = current_user.id
     await db.flush()
 
-    notify_id = dispute.raised_by if current_user.id != dispute.raised_by else dispute.assigned_to
-    if notify_id and not is_internal:
-        await send_notification(
-            db, user_id=notify_id, type=NotificationType.INFO,
-            title="New reply on your dispute",
-            body=f"{current_user.full_name} replied — tap to view.",
-            related_entity_id=dispute.id, deep_link_url=f"/disputes/{dispute.id}",
-        )
+    if not is_internal:
+        notify_id = dispute.raised_by if current_user.id != dispute.raised_by else dispute.assigned_to
+        if notify_id:
+            await send_notification(
+                db, user_id=notify_id, type=NotificationType.INFO,
+                title="New reply on your dispute" if notify_id == dispute.raised_by else "New reply on a dispute",
+                body=f"{current_user.full_name} replied — tap to view.",
+                related_entity_id=dispute.id, deep_link_url=f"/disputes/{dispute.id}",
+            )
+        else:
+            # Nobody has claimed it yet: the directors' queue must hear the reply, otherwise the conversation goes silent.
+            await _notify_all_directors(db, dispute, "New reply on an unclaimed dispute", f"{current_user.full_name} replied — tap to open it.")
 
     dispute = await _load_dispute(db, dispute.id)
     job_context = None

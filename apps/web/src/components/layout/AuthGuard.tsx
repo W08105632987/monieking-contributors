@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth.store'
 import { LogoLoader } from '@/components/ui/LogoLoader'
 import { Seo } from '@/components/seo/Seo'
+import { WhatsAppGate } from '@/components/community/WhatsAppGate'
 import type { UserRole } from '@/types'
 
 interface AuthGuardProps {
@@ -44,6 +45,11 @@ export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to={roleDashboard[user.role]} replace />
+  }
+
+  // Customers must tap "Join WhatsApp group" once (confirmed by the server) before they see anything else.
+  if (user.role === 'customer' && !user.whatsapp_joined_at) {
+    return <WhatsAppGate>{<Seo title="MonieKing" noindex />}{children}</WhatsAppGate>
   }
 
   return <>{<Seo title="MonieKing" noindex />}{children}</>

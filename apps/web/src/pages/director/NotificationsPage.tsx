@@ -4,7 +4,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Bell, CheckCheck, Wallet, CreditCard,
+  BookOpen, Bell, CheckCheck, Wallet, CreditCard,
   ArrowUpRight, Megaphone, AlertCircle, Info, X, Clock,
 } from 'lucide-react'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -247,6 +247,13 @@ export default function DirectorNotificationsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
+        {/* Always at the top: the journal of everything directors do. Other directors' sensitive actions also arrive below as notifications that open it. */}
+        <button onClick={() => navigate('/director/journal')} className="relative mb-3 flex w-full items-center gap-3 overflow-hidden rounded-2xl p-4 text-left shadow-card active:scale-[0.98]"
+          style={{ background: 'linear-gradient(135deg,#3b2415,#5a3a22)' }}>
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-300 text-[#3b2415]"><BookOpen className="h-6 w-6" /></span>
+          <span className="min-w-0 flex-1"><span className="block font-serif text-base font-bold text-amber-50">Director Journal</span><span className="block text-xs text-amber-100/70">See everything each director did, day by day.</span></span>
+          <span className="rounded-full bg-amber-300 px-3 py-1.5 text-[11px] font-extrabold text-[#3b2415]">Open Journal</span>
+        </button>
         {isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3, 4].map(i => (

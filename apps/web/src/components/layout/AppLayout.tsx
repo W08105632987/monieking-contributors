@@ -2,6 +2,7 @@ import { Suspense, useEffect, useRef } from 'react'
 import { Outlet } from 'react-router-dom'
 import { BottomNav } from './BottomNav'
 import { PageContentSkeleton } from '@/components/ui/PageContentSkeleton'
+import { PullToRefresh } from './PullToRefresh'
 
 export function AppLayout() {
   const navRef = useRef<HTMLElement | null>(null)
@@ -33,6 +34,7 @@ export function AppLayout() {
 
   return (
     <>
+      <PullToRefresh />
       <Suspense fallback={<PageContentSkeleton />}>
         <Outlet />
       </Suspense>

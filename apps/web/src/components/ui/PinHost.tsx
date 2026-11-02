@@ -1,3 +1,4 @@
+import { ForgotContactSupport } from '@/components/support/ContactSupport'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Delete, Lock, ShieldCheck } from 'lucide-react'
@@ -20,6 +21,32 @@ function useDigitKeys(enabled: boolean, onDigit: (d: string) => void, onBackspac
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   }, [enabled, onDigit, onBackspace])
+}
+
+/** The keypad is hidden until a PIN box is tapped (like focusing an input) and hides again when the person taps anywhere else. */
+function useKeypadFocus() {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const h = (e: Event) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('pointerdown', h, true)
+    return () => document.removeEventListener('pointerdown', h, true)
+  }, [open])
+  return { open, setOpen, ref }
+}
+
+function KeypadSlot({ open, children }: { open: boolean; children: React.ReactNode }) {
+  return (
+    <AnimatePresence initial={false}>
+      {open && (
+        <motion.div key="pad" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
+          <div className="pt-1">{children}</div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
 }
 
 /** Four boxes that run the full width. Each fills with the theme green, with a small pop, as a digit goes in. */
@@ -91,10 +118,12 @@ export function PinBoxes({ value, onChange, onComplete, label = 'PIN', error, ke
   }, [onChange, onComplete])
   const back = useCallback(() => { const v = valueRef.current.slice(0, -1); valueRef.current = v; onChange(v) }, [onChange])
   useDigitKeys(autoFocus, add, back)
+  const { open, setOpen, ref: padRef } = useKeypadFocus()
   return (
-    <div className="w-full space-y-5">
-      <PinDisplay value={value} error={error} label={label} />
-      {keypad && <PinPad onDigit={add} onBackspace={back} />}
+    <div ref={padRef} className="w-full space-y-4">
+      <PinDisplay value={value} error={error} label={label} active={open} onTap={() => setOpen(true)} />
+      {!open && value.length < 4 && <p className="text-xs font-semibold text-green-600 dark:text-night-300">Tap the boxes to enter your PIN</p>}
+      {keypad && <KeypadSlot open={open}><PinPad onDigit={add} onBackspace={back} /></KeypadSlot>}
     </div>
   )
 }
@@ -120,15 +149,16 @@ export function PinFields({ fields }: { fields: { label: string; value: string; 
     f.onChange(f.value.slice(0, -1))
   }, [])
   useDigitKeys(true, add, back)
+  const { open, setOpen, ref: padRef } = useKeypadFocus()
   return (
-    <div className="w-full space-y-4">
+    <div ref={padRef} className="w-full space-y-4">
       {fields.map((f, i) => (
         <div key={f.label} className="text-center">
           <p className={cn('mb-1.5 text-[11px] font-bold uppercase tracking-wide', i === active ? 'text-green-700 dark:text-green-300' : 'text-green-600/70 dark:text-night-300')}>{f.label}</p>
-          <PinDisplay value={f.value} active={i === active} error={f.error} label={f.label} onTap={() => setActive(i)} />
+          <PinDisplay value={f.value} active={open && i === active} error={f.error} label={f.label} onTap={() => { setActive(i); setOpen(true) }} />
         </div>
       ))}
-      <PinPad onDigit={add} onBackspace={back} />
+      <KeypadSlot open={open}><PinPad onDigit={add} onBackspace={back} /></KeypadSlot>
     </div>
   )
 }
@@ -209,6 +239,7 @@ export function PinHost() {
                   <PasswordInput autoComplete="current-password" placeholder="Login password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)}
                     className="w-full rounded-xl border border-green-200 bg-white px-3 py-3 text-sm dark:border-night-500 dark:bg-night-700 dark:text-white" />
                 )}
+                {mode === 'reset' && <ForgotContactSupport thing="login password" />}
                 <PinFields fields={[
                   { label: 'New PIN', value: pin, onChange: (v) => { setPin(v); setErr('') } },
                   { label: 'Type it again', value: again, onChange: (v) => { setAgain(v); setErr('') }, error: again.length === 4 && again !== pin },

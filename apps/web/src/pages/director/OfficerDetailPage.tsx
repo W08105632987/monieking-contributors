@@ -11,6 +11,7 @@ import { CustomerStatsPanel } from '@/components/dashboard/CustomerStatsPanel'
 import { OfficerContributionCard } from '@/components/dashboard/OfficerContributionCard'
 import { CustomerAdminPanel } from '@/components/director/CustomerAdminPanel'
 import { OfficerCommissionPanel } from '@/components/director/OfficerCommissionPanel'
+import { ZoneCustomersOverview } from '@/components/director/ZoneCustomersOverview'
 import type { User, Zone, ZoneAssignmentHistory } from '@/types'
 
 export default function OfficerDetailPage() {
@@ -213,6 +214,8 @@ export default function OfficerDetailPage() {
             )}
           </div>
         )}
+        {/* The very end of the officer's page: every customer in their zone, with analytics, filters and moves between zones. */}
+        {officer && <ZoneCustomersOverview officerId={officer.id} affiliated={officer.officer_type === 'affiliated'} />}
       </div>
 
       {showZonePicker && (

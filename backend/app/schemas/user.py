@@ -122,6 +122,7 @@ class UserResponse(BaseModel):
     officer_type: Optional[str] = None
     officer_commission_percent: Optional[int] = None
     officer_welcome_seen_at: Optional[datetime] = None
+    whatsapp_joined_at: Optional[datetime] = None
     commission_officer_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime

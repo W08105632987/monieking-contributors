@@ -400,6 +400,46 @@ async def correct_name(user_id: str, body: CorrectNameBody, director: DirectorOn
         "Their virtual account number was opened in the old name and stays that way." if wallet.virtual_account_number else None)}
 
 
+class ChangePhoneBody(BaseModel):
+    new_phone: str = Field(min_length=7, max_length=20)
+    reason: str = Field(min_length=5, max_length=300)
+    pin: str
+
+
+@router.post("/{user_id}/change-phone")
+async def change_phone(user_id: str, body: ChangePhoneBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Change the phone number a person signed up with, at any time (verified or not). The sign-in login uses the phone
+    number, so the login is changed too; their password and sessions stay as they are."""
+    from app.utils.supabase_admin_client import supabase_admin_request
+    await check_pin(db, director, body.pin)
+    user = await _person(db, user_id)
+    new = "".join(body.new_phone.split())
+    if not new.isdigit() or not (10 <= len(new) <= 15):
+        raise HTTPException(status_code=400, detail="Enter the phone number using digits only, for example 08012345678.")
+    old = user.phone_number
+    if new == old:
+        raise HTTPException(status_code=400, detail="That is already their phone number.")
+    taken = (await db.execute(select(User.id).where(User.phone_number == new, User.id != user.id))).first()
+    if taken:
+        raise HTTPException(status_code=409, detail="Another account already uses that phone number.")
+    # login first: if it fails nothing in the database has changed yet
+    await supabase_admin_request(
+        "PUT", f"/auth/v1/admin/users/{user.id}",
+        json={"email": f"{new}@monieking.app", "email_confirm": True, "user_metadata": {"phone": new}},
+        failure_detail="Could not update the sign-in login. Nothing was changed — please try again.",
+    )
+    user.phone_number = new
+    await db.execute(text("UPDATE pending_offline_customers SET phone_number = :n WHERE phone_number = :o AND claimed_at IS NULL"), {"n": new, "o": old})
+    await log_action(db, actor_id=director.id, action="user.phone_changed", entity_type="user", entity_id=str(user.id),
+                     old_value={"phone_number": old}, new_value={"phone_number": new, "reason": body.reason.strip()})
+    await send_notification(db, user_id=user.id, title="Your phone number was updated",
+                            body=f"Your MonieKing phone number is now {new}. Use it to sign in.", type=NotificationType.INFO)
+    await db.flush()
+    from app.core.dependencies import invalidate_user_cache
+    await invalidate_user_cache(str(user.id))
+    return {"phone_number": new, "message": "Phone number updated. They sign in with the new number and the same password."}
+
+
 class KycCompleteBody(BaseModel):
     nin: str
     proof: str

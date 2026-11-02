@@ -1,5 +1,6 @@
-import { MessageCircle, Mail, ExternalLink } from 'lucide-react'
+import { MessageCircle, Mail, ExternalLink, Phone } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
+import { useSupportContact } from '@/components/support/ContactSupport'
 
 const WHATSAPP_NUMBER = '2348038995252'
 const SUPPORT_EMAIL = 'joinmonieking@gmail.com'
@@ -15,11 +16,24 @@ interface ContactSupportSheetProps {
  * duplicating the WhatsApp number / email address in three places.
  */
 export function ContactSupportSheet({ open, onClose }: ContactSupportSheetProps) {
+  // The director sets these in Business Settings; the built-in WhatsApp number is only a fallback while that loads.
+  const { data } = useSupportContact()
+  const wa = data?.whatsapp || WHATSAPP_NUMBER
   return (
     <Modal open={open} onClose={onClose} title="Contact support" size="sm">
       <div className="space-y-3">
+        {data?.tel_url && (
+          <a href={data.tel_url} className="flex items-center gap-3 bg-green-50 dark:bg-night-600 rounded-2xl p-4 active:scale-[0.98] transition-all">
+            <div className="w-10 h-10 rounded-full bg-green-900 flex items-center justify-center shrink-0"><Phone className="w-5 h-5 text-white" /></div>
+            <div className="flex-1 min-w-0">
+              <p className="text-green-950 dark:text-white font-bold text-sm">Call support</p>
+              <p className="text-green-500 dark:text-night-300 text-xs">{data.phone}</p>
+            </div>
+            <ExternalLink className="w-4 h-4 text-green-400 dark:text-night-300 shrink-0" />
+          </a>
+        )}
         <a
-          href={`https://wa.me/${WHATSAPP_NUMBER}`}
+          href={`https://wa.me/${wa}`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 bg-green-50 dark:bg-night-600 rounded-2xl p-4 active:scale-[0.98] transition-all"
@@ -29,7 +43,7 @@ export function ContactSupportSheet({ open, onClose }: ContactSupportSheetProps)
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-green-950 dark:text-white font-bold text-sm">WhatsApp</p>
-            <p className="text-green-500 dark:text-night-300 text-xs">+{WHATSAPP_NUMBER}</p>
+            <p className="text-green-500 dark:text-night-300 text-xs">+{wa}</p>
           </div>
           <ExternalLink className="w-4 h-4 text-green-400 dark:text-night-300 shrink-0" />
         </a>

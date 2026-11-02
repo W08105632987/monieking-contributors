@@ -501,10 +501,28 @@ async def erase_account(db: AsyncSession, user, *, director_id: uuid.UUID, hard_
         raise HTTPException(status_code=500, detail=public_message(f"Nothing was deleted. {e}", "Nothing was deleted. Please try again."))
 
     # the login itself (revokes every session); if this fails the caller rolls the database back
-    await supabase_admin_request(
-        "DELETE", f"/auth/v1/admin/users/{uid}", ok_statuses=(200, 204), not_found_ok=True,
-        failure_detail="Could not remove the login. Nothing was changed — please try again.",
-    )
+    # Deleting the auth user cascades to public.users (users.id REFERENCES auth.users ON DELETE CASCADE). For an
+    # archived person that row must stay (money records point at it), so Supabase refuses with "Database error
+    # deleting user". Migration 068 drops that link; until it is applied, or if the delete fails for any other reason,
+    # we kill the login instead (new random email + password, permanent ban) so the person can never sign in again
+    # and their phone number is free to register again.
+    try:
+        await supabase_admin_request(
+            "DELETE", f"/auth/v1/admin/users/{uid}", ok_statuses=(200, 204), not_found_ok=True,
+            failure_detail="Could not remove the login. Nothing was changed — please try again.",
+        )
+    except HTTPException as first:
+        import secrets
+        try:
+            await supabase_admin_request(
+                "PUT", f"/auth/v1/admin/users/{uid}",
+                json={"email": f"erased-{uid}@erased.invalid", "password": secrets.token_urlsafe(32),
+                      "email_confirm": True, "ban_duration": "876000h"},
+                failure_detail="Could not switch the login off.",
+            )
+            rep.needs_review.append("login switched off (not removed from the sign-in service) — apply migration 068, then delete it there")
+        except HTTPException:
+            raise first
     await db.flush()
     await verify_clean(db, ident, rep)
 

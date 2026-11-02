@@ -17,6 +17,7 @@ import { FEATURE_FLAGS } from '@/config/featureFlags'
 import { PleaseHold } from '@/components/ui/PleaseHold'
 import type { ContributionCard, CardGrid, GridCell, User, ContributionRecord } from '@/types'
 import { ContributionHistoryModal } from '@/components/cards/ContributionHistoryModal'
+import { MarkingDisputeModal } from '@/components/disputes/MarkingDisputeModal'
 
 interface WithdrawalPreview {
   days_to_withdraw: number
@@ -32,6 +33,7 @@ export default function OfficerCardDetailPage() {
   const qc = useQueryClient()
 
   const [flipped, setFlipped]         = useState(false)
+  const [reportOpen, setReportOpen]   = useState(false)
   const [activePanel, setActivePanel] = useState<'none' | 'contribute' | 'withdraw'>('none')
   const [amountNaira, setAmountNaira] = useState('')
   const [withdrawNaira, setWithdrawNaira] = useState('')
@@ -445,6 +447,12 @@ export default function OfficerCardDetailPage() {
           </div>
         </div>
 
+        {/* Wrong marking? tell the director */}
+        <button onClick={() => setReportOpen(true)}
+          className="w-full mb-5 flex items-center justify-center gap-2 rounded-2xl border-2 border-amber-300 bg-amber-50 py-3 text-sm font-bold text-amber-800 active:scale-[0.98] dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+          Marked too much or on the wrong card? Report it
+        </button>
+
         {/* Food card conversion warning */}
         {isFood && !isComplete && (
           <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-4 mb-5">
@@ -676,6 +684,7 @@ export default function OfficerCardDetailPage() {
         )}
       </div>
 
+      {reportOpen && <MarkingDisputeModal cardId={card.id} cardNumber={card.card_number} onClose={() => setReportOpen(false)} />}
       <ContributionHistoryModal
         open={showHistory}
         onClose={() => setShowHistory(false)}

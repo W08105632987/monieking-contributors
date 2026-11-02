@@ -129,6 +129,12 @@ export default function FoodOversightPage() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 pb-safe-nav space-y-4">
+        {/* Deadline, auto-conversion and reminders for food contributors who have not finished their card */}
+        <button onClick={() => navigate('/director/food/conversion')} className="flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left active:scale-[0.98] dark:border-amber-500/30 dark:bg-amber-950/30">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-400 text-green-950"><Bell className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-extrabold text-green-900 dark:text-white">Food Conversion &amp; Reminders</span><span className="block text-xs text-amber-700 dark:text-amber-300">Set the completion deadline, warn unfinished food contributors, and see who gets converted to Regular.</span></span>
+        </button>
+
         {/* Stats */}
         {stats && (
           <div className="grid grid-cols-3 gap-2.5">

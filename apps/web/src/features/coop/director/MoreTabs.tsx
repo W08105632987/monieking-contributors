@@ -10,6 +10,7 @@ import { Bar, BigButton, Card, Empty, Field, MoneyInput, Pill, SectionTitle, She
 import { useAdmin } from './dapi'
 import { WithdrawalsPanel } from './WithdrawalsPanel'
 import { ChatThread } from '../chat'
+import { DividendDisputeThread } from '../DividendDisputeThread'
 
 const chip = (on: boolean) => `flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${on ? 'bg-green-700 text-white' : 'border border-green-200 bg-white text-green-800 dark:border-night-400 dark:bg-night-700 dark:text-night-100'}`
 const Chips = <T extends string>({ value, onChange, items }: { value: T; onChange: (v: T) => void; items: [T, string][] }) => (
@@ -306,20 +307,30 @@ function RunSheet({ id, stepUp, onClose }: { id: string; stepUp: boolean; onClos
 
 function Disputes({ data }: { data: any }) {
   const [d, setD] = useState<any>(null)
+  const [deciding, setDeciding] = useState(false)
   const [f, setF] = useState({ uphold: true, adjust: '', resolution: '', fund_from: 'pool' })
   const run = useCoopAction(() => post(`/coop/admin/disputes/${d.id}/resolve`, { uphold: f.uphold, adjust_kobo: f.uphold ? toKobo(f.adjust) : 0, resolution: f.resolution, fund_from: f.fund_from }), { success: 'Dispute resolved', onSuccess: () => setD(null) })
   if (!data) return <Skel />
   return (
     <>
       {!data.disputes.length ? <Empty icon={<ShieldCheck className="h-7 w-7" />} title="No disputes" text="Members can dispute an approved dividend within the window set in Rules." /> : <div className="space-y-2">{data.disputes.map((x: any) => (
-        <Card key={x.id} onClick={x.status === 'open' ? () => setD(x) : undefined}><div className="flex items-start justify-between"><div><p className="font-bold text-green-900 dark:text-white">{x.member} · {x.year}</p><p className="text-sm text-green-800 dark:text-night-100">{x.body}</p></div><Pill tone={x.status === 'open' ? 'amber' : 'green'}>{x.status}</Pill></div>{x.resolution && <p className="mt-1 text-xs text-green-700 dark:text-night-200">{x.resolution}</p>}</Card>))}</div>}
-      <Sheet open={!!d} onClose={() => setD(null)} title="Resolve the dispute">
+        <Card key={x.id} onClick={() => { setD(x); setDeciding(false) }}><div className="flex items-start justify-between"><div><p className="font-bold text-green-900 dark:text-white">{x.member} · {x.year}</p><p className="text-sm text-green-800 dark:text-night-100">{x.body}</p></div><Pill tone={x.status === 'open' ? 'amber' : 'green'}>{x.status}</Pill></div>{x.resolution && <p className="mt-1 text-xs text-green-700 dark:text-night-200">{x.resolution}</p>}</Card>))}</div>}
+      <Sheet open={!!d} onClose={() => setD(null)} title={deciding ? 'Resolve the dispute' : `${d?.member ?? 'Member'} · dividend dispute`}>
+        {d && !deciding && (
+          <div className="space-y-3">
+            <DividendDisputeThread disputeId={d.id} viewer="director" firstAuthor={d.member} />
+            {d.status === 'open' && <BigButton tone="ghost" onClick={() => setDeciding(true)}>Resolve this dispute</BigButton>}
+          </div>
+        )}
+        {d && deciding && (
         <div className="space-y-3"><p className="text-sm text-green-800 dark:text-night-100">{d?.body}</p>
           <div className="grid grid-cols-2 gap-2"><button onClick={() => setF({ ...f, uphold: true })} className={chip(f.uphold)}>Member is right</button><button onClick={() => setF({ ...f, uphold: false })} className={chip(!f.uphold)}>Reject</button></div>
           {f.uphold && <><Field label="Extra amount to pay the member"><MoneyInput value={f.adjust} onChange={(v) => setF({ ...f, adjust: v })} /></Field>
             <Field label="Pay it from"><select className={inputCls} value={f.fund_from} onChange={(e) => setF({ ...f, fund_from: e.target.value })}><option value="pool">Dividend pool</option><option value="running_cost">Running-cost fund</option></select></Field></>}
           <Field label="Decision and reason"><Area value={f.resolution} onChange={(v) => setF({ ...f, resolution: v })} /></Field>
-          <BigButton loading={run.isPending} disabled={!f.resolution.trim()} onClick={() => run.mutate(undefined)}>Save decision</BigButton></div>
+          <BigButton loading={run.isPending} disabled={!f.resolution.trim()} onClick={() => run.mutate(undefined)}>Save decision</BigButton>
+          <BigButton tone="ghost" onClick={() => setDeciding(false)}>Back to the conversation</BigButton></div>
+        )}
       </Sheet>
     </>
   )

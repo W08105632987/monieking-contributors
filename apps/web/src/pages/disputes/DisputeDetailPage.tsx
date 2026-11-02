@@ -13,6 +13,7 @@ import toast from '@/lib/notify'
 import type { DisputeDetail, DisputeMessage } from '@/types'
 import { DISPUTE_REASON_LABEL } from '@/types'
 import { friendlyError } from '@/lib/errorText'
+import { MarkingCorrectionPanel } from '@/components/disputes/MarkingCorrectionPanel'
 
 type PendingMessage = {
   localId: string
@@ -208,12 +209,17 @@ export default function DisputeDetailPage() {
   const isDirector  = user?.role === 'director' || user?.role === 'admin'
   const isWorker    = user?.role === 'service_worker' && dispute.assigned_worker_id === user?.id
   const isUnclaimed = !dispute.assigned_to
-  const canResolve  = dispute.status !== 'resolved' && dispute.can_resolve
+  // Resolve only appears after a real conversation: the person handling it must have replied at least once
+  // (a marking correction posts its own message, so it counts too).
+  const discussed   = dispute.messages.some(m => !m.is_internal && m.sender_id !== dispute.raised_by && m.sender_id !== null)
+  const canResolve  = dispute.status !== 'resolved' && dispute.can_resolve && (discussed || !!dispute.is_escalated)
   const canReply    = dispute.status !== 'resolved' && (isOwner || isDirector || isWorker || dispute.can_resolve)
   const canClaim    = isDirector && isUnclaimed
   const canEscalate = (isOwner || isWorker) && dispute.status !== 'escalated'
 
-  const titleText = dispute.service_request_id
+  const titleText = dispute.entity_type === 'contribution_marking'
+    ? 'Wrong marking dispute'
+    : dispute.service_request_id
     ? 'Manual Service Dispute'
     : dispute.entity_type === 'wallet_transaction'
     ? 'Wallet transaction dispute'
@@ -248,6 +254,7 @@ export default function DisputeDetailPage() {
 
       {/* Chat scroll area */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+        {dispute.entity_type === 'contribution_marking' && <MarkingCorrectionPanel disputeId={dispute.id} isDirector={isDirector} />}
         {/* 4.2 Director Context Card */}
         {dispute.job_context && (
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-200 dark:border-night-600 p-4 shadow-sm mb-3 space-y-2.5">
@@ -395,6 +402,10 @@ export default function DisputeDetailPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {dispute.status !== 'resolved' && dispute.can_resolve && !canResolve && (
+        <p className="px-4 pb-2 text-center text-xs font-semibold text-green-700 dark:text-night-200 shrink-0">Talk it through below first. The Resolve button appears after the first reply.</p>
       )}
 
       {canResolve && !showResolveBox && (

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Search, ChevronRight, Wallet } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -105,6 +105,9 @@ export default function AllCustomersPage() {
                 )}>
                   {customer.status === 'active' ? 'Active' : customer.status}
                 </span>
+                <span role="button" aria-label={`Wallet history of ${customer.full_name}`} title="Wallet funding history"
+                  onClick={(e) => { e.stopPropagation(); navigate(`/director/customers/${customer.customer_number}#wallet`) }}
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"><Wallet className="h-4 w-4" /></span>
                 <ChevronRight className="w-4 h-4 text-green-300 dark:text-night-300 flex-shrink-0" />
               </button>
             ))}

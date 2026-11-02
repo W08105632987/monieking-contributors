@@ -168,6 +168,35 @@ async def nin_preview(request: Request, body: NinBody, current_user: CurrentUser
             "id_masked": mask_id(fields["nin"]), "proof": proof, "message": message}
 
 
+class CorrectOwnNameBody(BaseModel):
+    new_name: str
+    pin: str
+
+
+@router.post("/correct-name")
+@limiter.limit("5/minute")
+async def correct_own_name(request: Request, body: CorrectOwnNameBody, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Let a customer fix their own name (nickname -> legal name) while their identity is NOT yet verified,
+    so the name matches their NIN. Once verified the name is locked."""
+    if current_user.nin_linked or current_user.bvn_linked or current_user.kyc_complete:
+        raise HTTPException(status_code=409, detail="Your identity is already verified, so your name is locked to the verified name.")
+    new_name = " ".join(body.new_name.split())
+    if len(new_name) < 3 or len(new_name) > 200 or not any(ch.isalpha() for ch in new_name):
+        raise HTTPException(status_code=400, detail="Enter your full name as it appears on your NIN.")
+    from app.services.pin_service import check_pin
+    await check_pin(db, current_user, body.pin, need_kyc=False)
+    old = current_user.full_name
+    if new_name.lower() == (old or "").lower():
+        raise HTTPException(status_code=400, detail="That is already the name on your account.")
+    user = await db.get(User, current_user.id)
+    user.full_name = new_name
+    await log_action(db, actor_id=user.id, action="user.name_corrected_by_self", entity_type="user", entity_id=str(user.id),
+                     old_value={"full_name": old}, new_value={"full_name": new_name})
+    await db.commit()
+    await invalidate_user_cache(str(user.id))
+    return {"full_name": new_name}
+
+
 @router.post("/nin/confirm", response_model=WalletResponse)
 @limiter.limit("6/minute")
 async def nin_confirm(request: Request, body: NinConfirmBody, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):

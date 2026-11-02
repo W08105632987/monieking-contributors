@@ -41,6 +41,7 @@ _DATETIME_COLUMNS = {
     "withdrawal_password_locked_until", "pin_locked_until", "login_locked_until",
     "login_password_reset_otp_expires_at", "last_contacted_at",
     "two_factor_otp_expires_at", "terms_accepted_at",
+    "officer_welcome_seen_at", "whatsapp_joined_at",
 }
 # UUID-typed columns — MUST be reconstructed as real uuid.UUID objects on
 # read, not left as the plain strings _serialize_user stores them as.
@@ -198,6 +199,13 @@ async def get_current_user(
         if st["on"]:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                                 detail={"code": "maintenance", "message": st["message"], "eta": st["eta"]})
+
+    # Director journal: mark this request as made by a director/admin so core/journal.py records it.
+    if role in ("director", "admin"):
+        try:
+            request.scope.setdefault("state", {})["journal_actor"] = {"id": str(user.id), "name": user.full_name, "role": role}
+        except Exception:
+            pass
 
     return user
 

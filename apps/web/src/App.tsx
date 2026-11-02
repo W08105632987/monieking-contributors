@@ -96,6 +96,8 @@ const DirectorBroadcast      = lazy(() => import('@/pages/director/BroadcastPage
 const DirectorNotifications  = lazy(() => import('@/pages/director/NotificationsPage'))
 const DirectorProfile        = lazy(() => import('@/pages/director/ProfilePage'))
 const DirectorMore           = lazy(() => import('@/pages/director/MorePage'))
+const DirectorJournal        = lazy(() => import('@/pages/director/JournalPage'))
+const DirectorFoodConversion = lazy(() => import('@/pages/director/FoodConversionPage'))
 const DirectorServiceWorkers = lazy(() => import('@/pages/director/ServiceWorkersPage'))
 
 // ── Service Worker portal ──────────────────────────────────────────
@@ -304,6 +306,9 @@ export default function App() {
             <Route path="/bill-payments/:id/receipt" element={<AuthGuard><BillReceipt /></AuthGuard>} />
             <Route path="/officer/food-ledger"            element={<AuthGuard allowedRoles={['officer']}><OfficerFoodLedger /></AuthGuard>} />
             <Route path="/director/sms"                  element={<AuthGuard allowedRoles={['director', 'admin']}><DirectorSmsCenter /></AuthGuard>} />
+            <Route path="/director/journal"               element={<AuthGuard allowedRoles={['director']}><DirectorJournal /></AuthGuard>} />
+            <Route path="/director/journal/:directorId"   element={<AuthGuard allowedRoles={['director']}><DirectorJournal /></AuthGuard>} />
+            <Route path="/director/food/conversion"       element={<AuthGuard allowedRoles={['director']}><DirectorFoodConversion /></AuthGuard>} />
             <Route path="/director/food/oversight"        element={<AuthGuard allowedRoles={['director']}><DirectorFoodOversight /></AuthGuard>} />
             <Route path="/director/food/close-year"       element={<AuthGuard allowedRoles={['director']}><DirectorFoodCloseYear /></AuthGuard>} />
             <Route path="/director/food/archives"         element={<AuthGuard allowedRoles={['director']}><DirectorFoodArchives /></AuthGuard>} />

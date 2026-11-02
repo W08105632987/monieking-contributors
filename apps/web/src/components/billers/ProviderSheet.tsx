@@ -1,5 +1,5 @@
 import { sheetMotion } from '@/lib/motion'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, ChevronRight, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -25,6 +25,15 @@ export function ProviderSheet({ title = 'Select provider', placeholder = 'Choose
   const [query, setQuery] = useState('')
   const selected = groups.find(g => g.key === selectedKey)
   const brand: BillerBrand | null = selected ? resolveBrand(selected.name) : null
+
+  // Decode every logo up front so the list never waits on the network or the image decoder while it slides up.
+  useEffect(() => {
+    groups.forEach((g) => {
+      const src = resolveBrand(g.name).logo
+      if (!src) return
+      const im = new Image(); im.src = src; im.decode?.().catch(() => {})
+    })
+  }, [groups])
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -63,6 +72,7 @@ export function ProviderSheet({ title = 'Select provider', placeholder = 'Choose
             <motion.div
               {...sheetMotion}
               className="relative bg-white dark:bg-night-800 rounded-t-3xl w-full max-w-lg max-h-[85dvh] flex flex-col"
+              style={{ willChange: 'transform' }}
             >
               <div className="px-5 pt-3 pb-3">
                 <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-green-100 dark:bg-night-500" />
@@ -76,32 +86,30 @@ export function ProviderSheet({ title = 'Select provider', placeholder = 'Choose
                   <div className="flex items-center gap-2 bg-green-50 dark:bg-night-700 rounded-xl px-3 py-2.5">
                     <Search className="w-4 h-4 text-green-500 dark:text-night-300" />
                     <input
-                      value={query} onChange={e => setQuery(e.target.value)} placeholder={`Search ${groups.length} providers`} autoFocus
+                      value={query} onChange={e => setQuery(e.target.value)} placeholder={`Search ${groups.length} providers`}
                       className="flex-1 bg-transparent outline-none text-sm font-semibold text-green-950 dark:text-white placeholder:text-green-400"
                     />
                   </div>
                 )}
               </div>
 
-              <div className="overflow-y-auto px-3 pb-8">
+              <div className="overflow-y-auto overscroll-contain px-3 pb-8" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {groups.length === 0 && <p className="text-sm text-green-500 dark:text-night-300 text-center py-8">{emptyText}</p>}
                 {groups.length > 0 && shown.length === 0 && <p className="text-sm text-green-500 dark:text-night-300 text-center py-8">Nothing matches “{query}”.</p>}
-                {shown.map((g, i) => {
+                {shown.map((g) => {
                   const b = resolveBrand(g.name)
                   const on = g.key === selectedKey
                   return (
-                    <motion.button
+                    <button
                       key={g.key}
-                      initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i, 12) * 0.02 }}
-                      whileTap={{ scale: 0.985 }}
                       onClick={() => { onSelect(g); close() }}
-                      className="w-full flex items-center gap-3 rounded-2xl px-3 py-3 text-left"
+                      className="w-full flex items-center gap-3 rounded-2xl px-3 py-3 text-left active:bg-green-50 dark:active:bg-night-700"
                       style={on ? { background: rgba(b.main, 0.12) } : undefined}
                     >
                       <BillerLogo brand={b} size={42} glow={on} />
                       <span className="flex-1 min-w-0 text-sm font-bold text-green-950 dark:text-white">{g.name}</span>
                       {on ? <Check className="w-5 h-5 shrink-0" style={{ color: b.main }} strokeWidth={3} /> : <ChevronRight className="w-4 h-4 text-green-300 dark:text-night-400 shrink-0" />}
-                    </motion.button>
+                    </button>
                   )
                 })}
               </div>

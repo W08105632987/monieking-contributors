@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle2, XCircle, Info } from 'lucide-react'
 import { useNoticeStore } from '@/store/notice.store'
+import { ContactSupportButton } from '@/components/support/ContactSupport'
 
 /** Mounted once in main.tsx. Errors: a centred box with an OK button. Everything else: a small self-closing card. */
 export function NoticeHost() {
@@ -14,6 +15,8 @@ export function NoticeHost() {
   }, [open, seq, durationMs, close])
 
   const isError = kind === 'error'
+  // Any error that tells the person to contact support (or says a dispute is no longer eligible) gets a real Contact Support button.
+  const wantsSupport = isError && /contact (our )?support|no longer eligible/i.test(text)
   return (
     <AnimatePresence>
       {open && isError && (
@@ -28,8 +31,15 @@ export function NoticeHost() {
               <XCircle className="h-7 w-7 text-red-600 dark:text-red-400" />
             </div>
             <p className="text-sm font-semibold leading-relaxed text-green-950 dark:text-white">{text}</p>
-            <button onClick={close} autoFocus
-              className="mt-5 w-full rounded-2xl bg-red-600 py-3 text-sm font-bold text-white transition-all active:scale-95">OK</button>
+            {wantsSupport ? (
+              <div className="mt-5 space-y-2">
+                <ContactSupportButton label="Contact support" />
+                <button onClick={close} className="w-full py-2 text-xs font-bold text-green-600 dark:text-night-200">Close</button>
+              </div>
+            ) : (
+              <button onClick={close} autoFocus
+                className="mt-5 w-full rounded-2xl bg-red-600 py-3 text-sm font-bold text-white transition-all active:scale-95">OK</button>
+            )}
           </motion.div>
         </motion.div>
       )}

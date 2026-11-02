@@ -20,6 +20,7 @@ export function BillerLogo({ brand, size = 48, glow = false, className }: {
         alt={brand.label}
         width={size}
         height={size}
+        decoding="async"
         onError={() => setFailed(true)}
         className={cn('rounded-full object-cover bg-white shrink-0', className)}
         style={{ width: size, height: size, boxShadow: shadow }}

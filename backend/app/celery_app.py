@@ -19,7 +19,7 @@ celery_app = Celery(
     "monieking",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry", "app.tasks.provider_poll"],
+    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry", "app.tasks.provider_poll", "app.tasks.food_conversion"],
 )
 
 celery_app.conf.update(
@@ -61,6 +61,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.job_expiry.expire_unclaimed_jobs",
         # Every 30 minutes: fail + refund manual jobs nobody claimed within the director-set days.
         "schedule": crontab(minute="*/30"),
+    },
+    "convert-overdue-food-cards": {
+        "task": "app.tasks.food_conversion.convert_overdue_food_cards",
+        # 23:10 UTC = 00:10 in Lagos: just after the deadline day ends, and again every night (it only acts once the deadline has passed).
+        "schedule": crontab(hour=23, minute=10),
     },
     "poll-provider-tickets": {
         "task": "app.tasks.provider_poll.poll_provider_tickets",

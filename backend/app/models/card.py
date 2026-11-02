@@ -58,6 +58,7 @@ class ContributionCard(Base):
 
     food_collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # food package handed over
     food_eligibility_lost_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    auto_converted_at:        Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # set when the deadline job converted it
     created_at:  Mapped[datetime]       = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     completed_at:Mapped[datetime | None]= mapped_column(DateTime(timezone=True), nullable=True)
 

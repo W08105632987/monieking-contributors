@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth.store'
 import { ChatThread } from '../chat'
+import { DividendDisputeThread } from '../DividendDisputeThread'
 import { EntryDetailSheet, EntryRow, ViewAll } from '../lists'
 import { Download, Landmark, Mail, MessageSquare, ShieldCheck, UserCheck } from 'lucide-react'
 import { formatNaira } from '@/lib/utils'
@@ -178,6 +179,7 @@ export function ConsentsPage() {
 export function MyDividendsPage() {
   const { data } = useCoopQ<any[]>('my-dividends', '/coop/dividends')
   const [d, setD] = useState<any>(null)
+  const [talk, setTalk] = useState<any>(null)
   const [body, setBody] = useState('')
   const dispute = useCoopAction(() => post(`/coop/dividends/${d.run_id}/dispute`, { body }), { success: 'Your dispute was sent', onSuccess: () => { setD(null); setBody('') } })
   return (
@@ -187,9 +189,12 @@ export function MyDividendsPage() {
           <Card key={x.run_id}>
             <div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-green-500 dark:text-night-300">{x.year}</p><p className="text-2xl font-extrabold text-green-900 dark:text-white">{formatNaira(x.total_kobo)}</p></div><Pill tone={x.paid_at ? 'green' : 'amber'}>{x.paid_at ? 'Paid' : 'Approved'}</Pill></div>
             {x.qualified ? <p className="mt-1 text-xs text-green-700 dark:text-night-200">Contribution share {formatNaira(x.contribution_kobo)} · guarantee share {formatNaira(x.guarantee_kobo)}</p> : <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">Not qualified: {x.reason}</p>}
-            {x.dispute ? <p className="mt-2 rounded-xl bg-green-100 p-2 text-sm dark:bg-night-600"><b>Your dispute ({x.dispute.status}):</b> {x.dispute.resolution ?? 'waiting for the directors'}</p>
+            {x.dispute ? <div className="mt-2"><p className="rounded-xl bg-green-100 p-2 text-sm dark:bg-night-600"><b>Your dispute ({x.dispute.status}):</b> {x.dispute.resolution ?? 'waiting for the directors'}</p><div className="mt-2"><BigButton tone="ghost" onClick={() => setTalk(x.dispute)}>{x.dispute.status === 'open' ? 'Open conversation' : 'View conversation'}</BigButton></div></div>
               : x.can_dispute ? <div className="mt-3"><BigButton tone="ghost" onClick={() => setD(x)}>Something is wrong</BigButton><p className="mt-1 text-center text-[11px] text-green-600 dark:text-night-300">You can dispute until {x.dispute_deadline ? dShort(x.dispute_deadline) : 'the window closes'}.</p></div> : null}
           </Card>))}</div>)}
+      <Sheet open={!!talk} onClose={() => setTalk(null)} title="Your dividend dispute">
+        {talk && <DividendDisputeThread disputeId={talk.id} viewer="member" firstAuthor="You" />}
+      </Sheet>
       <Sheet open={!!d} onClose={() => setD(null)} title="Dispute my dividend">
         <Field label="What do you think is wrong?"><textarea className={inputCls} rows={5} value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} /></Field>
         <div className="mt-3"><BigButton loading={dispute.isPending} disabled={body.length < 3} onClick={() => dispute.mutate(undefined)}>Send to the directors</BigButton></div>

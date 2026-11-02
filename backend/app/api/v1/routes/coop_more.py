@@ -170,6 +170,58 @@ async def dispute(run_id: uuid.UUID, body: DisputeBody, user: CurrentUser, rules
     return {"id": str(d.id), "status": d.status}
 
 
+# ── dividend dispute conversation (members and directors talk here until a director resolves it) ──
+class DisputeMsgBody(BaseModel):
+    body: str = Field(min_length=1, max_length=1000)
+
+
+async def _dispute_for(db: AsyncSession, user, dispute_id: uuid.UUID):
+    from app.coop.models import CoopDividendDispute, CoopMember
+    from fastapi import HTTPException
+    d = await db.get(CoopDividendDispute, dispute_id)
+    if not d:
+        raise HTTPException(404, "Dispute not found")
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    m = await db.get(CoopMember, d.member_id)
+    if role not in ("director", "admin") and (not m or m.user_id != user.id):
+        raise HTTPException(403, "Access denied")
+    return d, m, role
+
+
+@router.get("/dividend-disputes/{dispute_id}")
+async def dispute_thread(dispute_id: uuid.UUID, user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    from app.coop.models import CoopDividendDisputeMessage
+    from app.models.user import User
+    d, m, role = await _dispute_for(db, user, dispute_id)
+    msgs = (await db.execute(select(CoopDividendDisputeMessage).where(CoopDividendDisputeMessage.dispute_id == d.id)
+                             .order_by(CoopDividendDisputeMessage.created_at))).scalars().all()
+    names = {u.id: u.full_name for u in (await db.execute(select(User).where(User.id.in_({x.sender_id for x in msgs} or {user.id})))).scalars().all()}
+    return {"id": str(d.id), "status": d.status, "resolution": d.resolution, "opened_message": d.body, "created_at": d.created_at.isoformat(),
+            "can_reply": d.status == "open",
+            "messages": [{"id": str(x.id), "mine": x.sender_id == user.id, "from": names.get(x.sender_id, "—"), "role": x.sender_role,
+                          "body": x.body, "at": x.created_at.isoformat()} for x in msgs]}
+
+
+@router.post("/dividend-disputes/{dispute_id}/messages")
+async def dispute_reply(dispute_id: uuid.UUID, body: DisputeMsgBody, user: CurrentUser, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):
+    from app.coop.models import CoopDividendDisputeMessage
+    from app.models.notification import NotificationType
+    from app.services.notification_service import send_notification
+    from fastapi import HTTPException
+    d, m, role = await _dispute_for(db, user, dispute_id)
+    if d.status != "open":
+        raise HTTPException(409, "This dispute is already resolved.")
+    is_dir = role in ("director", "admin")
+    db.add(CoopDividendDisputeMessage(dispute_id=d.id, sender_id=user.id, sender_role="director" if is_dir else "member", body=body.body.strip()))
+    await db.flush()
+    if is_dir and m:
+        await send_notification(db, user_id=m.user_id, type=NotificationType.INFO, title="Reply on your dividend dispute",
+                                body=f"{user.full_name} replied — tap to read it.", related_entity_id=d.id, deep_link_url="/coop")
+    elif not is_dir:
+        await service.notify_directors(db, rules, "Reply on a dividend dispute", f"{user.full_name} replied to their dividend dispute.")
+    return {"ok": True}
+
+
 # ── statements ──
 @router.get("/statement")
 async def statement(user: CurrentUser, year: Optional[int] = None, rules: Rules = Ctx, db: AsyncSession = Depends(get_db)):

@@ -11,6 +11,7 @@ class DisputeEntityType(str, enum.Enum):
     WALLET_TRANSACTION      = "wallet_transaction"
     WITHDRAWAL              = "withdrawal"
     MANUAL_SERVICE_REQUEST  = "manual_service_request"   # ← 4.1.3 fix
+    CONTRIBUTION_MARKING    = "contribution_marking"     # officer says a card was marked wrongly (entity_id = the card)
 
 
 class DisputeStatus(str, enum.Enum):
@@ -34,6 +35,9 @@ class DisputeReason(str, enum.Enum):
     PORTAL_UNAVAILABLE              = "portal_unavailable"
     COMMISSION_DISPUTE              = "commission_dispute"
     COMMUNICATION_ISSUE             = "communication_issue"
+    # Marking corrections (raised by the officer who marked)
+    OVER_MARKED                     = "over_marked"          # marked more days than the customer paid for
+    WRONG_CARD_MARKED               = "wrong_card_marked"    # the days went on the wrong card
 
 
 class Dispute(Base):
@@ -82,6 +86,7 @@ class Dispute(Base):
     is_escalated:    Mapped[bool]             = mapped_column(Boolean, nullable=False, default=False)
     escalated_at:    Mapped[datetime | None]  = mapped_column(DateTime(timezone=True), nullable=True)
     escalation_reason: Mapped[str | None]    = mapped_column(Text, nullable=True)
+    marking_ref:     Mapped[str | None]      = mapped_column(String(100), nullable=True)   # posting reference of a disputed marking
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Clock, Pencil, Ban, MapPin, Plus, Trash2, Users, Search, ChevronDown, Info,
-  AlertTriangle, ExternalLink, CreditCard, Wallet, Briefcase, Scale, ShieldCheck, MessageSquare,
+  AlertTriangle, ExternalLink, CreditCard, Wallet, Briefcase, Scale, ShieldCheck, MessageSquare, MessageCircle,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -12,6 +12,7 @@ import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatDate, nairaToKobo, koboToNaira } from '@/lib/utils'
 import type { PendingRateChange, RateChangePreview, Zone } from '@/types'
+import { CommunitySettings } from '@/components/director/CommunitySettings'
 
 function labelFor(key: string): string {
   if (key === 'food_card_rate_kobo') return 'Food Card daily rate'
@@ -31,7 +32,7 @@ interface Registry { groups: RegGroup[]; settings: RegSetting[]; retired: { key:
 
 const GROUP_ICONS: Record<string, LucideIcon> = {
   contributions: CreditCard, wallet: Wallet, workers: Briefcase, disputes: Scale,
-  verification: ShieldCheck, sms: MessageSquare, zones: MapPin,
+  verification: ShieldCheck, sms: MessageSquare, zones: MapPin, community: MessageCircle,
 }
 
 // ── Formatting: whole numbers only, time always as hours + minutes ──
@@ -516,11 +517,12 @@ export default function BusinessSettingsPage() {
   })
   const pendingByKey = new Map(rateChanges.filter(c => c.status === 'scheduled').map(c => [c.setting_key, c]))
 
-  const groups = useMemo(() => [...(registry?.groups ?? []), { id: 'zones', label: 'Officer Zones', blurb: 'The areas officers are assigned to.' }], [registry])
+  const groups = useMemo(() => [...(registry?.groups ?? []), { id: 'zones', label: 'Officer Zones', blurb: 'The areas officers are assigned to.' }, { id: 'community', label: 'WhatsApp & Support', blurb: 'The WhatsApp pop-up customers see once, and the support phone number.' }], [registry])
   const q = query.trim().toLowerCase()
   const visible = (registry?.settings ?? []).filter(s =>
     (group === 'all' || group === s.group) && (!q || `${s.label} ${s.what}`.toLowerCase().includes(q)))
   const showZones = (group === 'all' || group === 'zones') && (!q || 'zones officer areas'.includes(q))
+  const showCommunity = (group === 'all' || group === 'community') && (!q || 'whatsapp community support contact phone group link'.includes(q))
 
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
@@ -559,7 +561,8 @@ export default function BusinessSettingsPage() {
             {groups.map(g => {
               const items = visible.filter(s => s.group === g.id)
               const isZones = g.id === 'zones'
-              if (isZones ? !showZones : items.length === 0) return null
+              const isCommunity = g.id === 'community'
+              if (isZones ? !showZones : isCommunity ? !showCommunity : items.length === 0) return null
               const Icon = GROUP_ICONS[g.id] ?? Info
               return (
                 <section key={g.id} className="mb-5">
@@ -570,14 +573,14 @@ export default function BusinessSettingsPage() {
                       <p className="text-green-500 dark:text-night-300 text-[11px]">{g.blurb}</p>
                     </div>
                   </div>
-                  {isZones ? <ZonesSection /> : items.map(s => (
+                  {isZones ? <ZonesSection /> : isCommunity ? <CommunitySettings /> : items.map(s => (
                     <SettingCard key={s.key} s={s} allSettings={registry!.settings} pending={pendingByKey.get(s.key)}
                       isOpen={openKey === s.key} onToggle={() => setOpenKey(openKey === s.key ? null : s.key)} />
                   ))}
                 </section>
               )
             })}
-            {visible.length === 0 && !showZones && <p className="text-green-400 dark:text-night-300 text-sm text-center py-8">No settings match “{query}”.</p>}
+            {visible.length === 0 && !showZones && !showCommunity && <p className="text-green-400 dark:text-night-300 text-sm text-center py-8">No settings match “{query}”.</p>}
 
             {(registry?.retired.length ?? 0) > 0 && group === 'all' && !q && (
               <div className="rounded-2xl border border-dashed border-green-200 dark:border-night-500 p-4 mb-6">
