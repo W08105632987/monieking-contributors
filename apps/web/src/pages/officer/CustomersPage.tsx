@@ -368,7 +368,6 @@ function RegisterCustomerSheet({ onClose }: { onClose: () => void }) {
     try {
       const { data } = await api.post<{ temporary_password?: string | null }>('/users/customers', {
         ...form,
-        password:            'x',   // ignored: the server generates a random one-time password
         // The backend requires this on every registration (self-signup
         // included) — it was never being sent here at all, which is
         // exactly the "field required" 422 you were hitting. An

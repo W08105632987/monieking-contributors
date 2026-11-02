@@ -58,6 +58,23 @@ class RegisterCustomerRequest(UserBase):
         return v
 
 
+class OfficerRegisterCustomerRequest(RegisterCustomerRequest):
+    """An officer registering a cash customer. The server creates a random one-time password, so none is sent, and the bank
+    / next-of-kin details may be left empty and filled in later."""
+    password: Optional[str] = None
+    bank_name: str = ""
+    account_number: str = ""
+    account_name: str = ""
+    next_of_kin_name: str = ""
+    next_of_kin_phone: str = ""
+    accepted_terms: bool = True
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v):   # type: ignore[override]
+        return v   # ignored by the server
+
+
 class CreateOfficerRequest(BaseModel):
     full_name:    str
     phone_number: str

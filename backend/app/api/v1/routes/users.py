@@ -20,7 +20,7 @@ from app.models.card import ContributionCard
 from app.models.withdrawal import Withdrawal, WithdrawalStatus
 from app.schemas.user import (
     UserResponse, CreateOfficerRequest, CreateDirectorRequest, UpdateUserStatusRequest,
-    RegisterCustomerRequest, LocationUpdateRequest, UpdateBankDetailsRequest,
+    RegisterCustomerRequest, OfficerRegisterCustomerRequest, LocationUpdateRequest, UpdateBankDetailsRequest,
     UpdateSmsAlertsRequest,
 )
 from app.services.wallet_service import get_or_create_wallet
@@ -216,7 +216,7 @@ class CustomerCreatedResponse(UserResponse):
 
 @router.post("/customers", response_model=CustomerCreatedResponse, status_code=status.HTTP_201_CREATED)
 async def create_customer(
-    body: RegisterCustomerRequest,
+    body: OfficerRegisterCustomerRequest,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
@@ -297,7 +297,15 @@ async def create_customer(
         withdrawal_password_hash= hash_withdrawal_password(body.withdrawal_password) if body.withdrawal_password else None,
     )
     db.add(customer)
-    await db.flush()
+    try:
+        await db.flush()
+    except Exception:
+        # Do not leave a login behind with no profile: it would block every later attempt for this phone number.
+        try:
+            await supabase_admin_request("DELETE", f"/auth/v1/admin/users/{customer_id}", ok_statuses=(200, 204), not_found_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+        raise
 
     # Wallet + immediate account provisioning — same as self-registration,
     # capped/unverified until KYC raises the limit, never gated on it.
