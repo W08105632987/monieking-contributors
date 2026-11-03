@@ -113,7 +113,7 @@ export default function WorkerDashboardPage() {
       const res = await api.get('/worker/jobs/active')
       return res.data
     },
-    refetchInterval: 8000,
+    refetchInterval: 15000,
   })
 
   // Fetch Worker's own jobs (safe normalization: handles both array and { data: [...], total })

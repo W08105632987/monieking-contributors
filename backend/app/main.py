@@ -74,6 +74,8 @@ app.add_middleware(TimingMiddleware)
 # reflects the actual Origin header back, defeating the purpose of an
 # allowlist entirely. Add real deployed frontend origins here as they're
 # known, never re-add "*". ──
+from app.core.origin_guard import OriginGuardMiddleware
+app.add_middleware(OriginGuardMiddleware)   # inside CORS, so its 403 still carries CORS headers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,

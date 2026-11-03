@@ -13,6 +13,7 @@ Live-metrics routes. Two very different trust levels on purpose:
   matching who the two dashboards consuming it are restricted to.
 """
 from datetime import date
+from app.core.cache import cache_report
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,6 +55,7 @@ async def track(request: Request, body: TrackEventRequest):
 
 
 @router.get("/overview")
+@cache_report(ttl=30)
 async def overview(
     staff: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),

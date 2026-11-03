@@ -24,7 +24,7 @@ export function MarkingCorrectionPanel({ disputeId, isDirector }: { disputeId: s
   const [count, setCount] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const { data } = useQuery({ queryKey: ['marking', disputeId], queryFn: async () => (await api.get<Ctx>(`/disputes/${disputeId}/marking`)).data, refetchInterval: 8000 })
+  const { data } = useQuery({ queryKey: ['marking', disputeId], queryFn: async () => (await api.get<Ctx>(`/disputes/${disputeId}/marking`)).data, refetchInterval: 15000 })
   if (!data) return null
 
   const correct = async (mode: 'remove_days' | 'remove_all') => {

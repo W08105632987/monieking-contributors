@@ -7,7 +7,7 @@ import { Skel } from './ui'
 /** Two-way conversation on a dividend dispute. Both sides keep talking until a director resolves it. */
 export function DividendDisputeThread({ disputeId, viewer, firstAuthor }: { disputeId: string; viewer: 'member' | 'director'; firstAuthor: string }) {
   const { data, refetch } = useQuery<any>({
-    queryKey: ['coop', 'dividend-dispute', disputeId], refetchInterval: 4000,
+    queryKey: ['coop', 'dividend-dispute', disputeId], refetchInterval: 6000,
     queryFn: async () => (await api.get(`/coop/dividend-disputes/${disputeId}`)).data,
   })
   const send = useCoopAction((t: string) => post(`/coop/dividend-disputes/${disputeId}/messages`, { body: t }), { onSuccess: () => { refetch() } })

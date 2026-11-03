@@ -57,7 +57,7 @@ export default function DisputeDetailPage() {
       return data
     },
     enabled: !!disputeId,
-    refetchInterval: 3000,
+    refetchInterval: 5000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   })

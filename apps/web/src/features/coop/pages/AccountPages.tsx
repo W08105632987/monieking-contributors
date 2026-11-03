@@ -143,7 +143,7 @@ export function ComplaintsPage() {
 
 export function ComplaintThreadPage() {
   const { id } = useParams()
-  const { data, error, refetch } = useQuery<any>({ queryKey: ['coop', 'complaint', id], enabled: !!id, refetchInterval: 4000, retry: 1, queryFn: async () => (await api.get(`/coop/complaints/${id}`)).data })
+  const { data, error, refetch } = useQuery<any>({ queryKey: ['coop', 'complaint', id], enabled: !!id, refetchInterval: 6000, retry: 1, queryFn: async () => (await api.get(`/coop/complaints/${id}`)).data })
   const send = useCoopAction((t: string) => post(`/coop/complaints/${id}/messages`, { body: t }), { onSuccess: () => { refetch() } })
   return (
     <CoopPage title={data?.subject ?? 'Complaint'} subtitle="Conversation with the directors" back="/coop/complaints"

@@ -1,6 +1,7 @@
 """Director control of the wallet funding fee: on/off, price ranges, what we lose when it's off, funding statistics."""
 from datetime import datetime, timedelta, timezone
 
+from app.core.cache import cache_report
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
@@ -64,6 +65,7 @@ def _window(start: datetime | None, end: datetime | None):
 
 
 @router.get("/summary")
+@cache_report(ttl=30)
 async def summary(director: DirectorOnly, db: AsyncSession = Depends(get_db), start: datetime | None = None, end: datetime | None = None):
     """What fundings cost us in a period: fees we absorbed (charging off), fees collected, and the per-fee breakdown."""
     start, end = _window(start, end)
@@ -92,6 +94,7 @@ async def summary(director: DirectorOnly, db: AsyncSession = Depends(get_db), st
 
 
 @router.get("/stats")
+@cache_report(ttl=60)
 async def stats(director: DirectorOnly, db: AsyncSession = Depends(get_db), months: int = Query(3, ge=1, le=12)):
     """How customers fund: monthly totals/averages, size distribution, overall averages for the last N months."""
     since = datetime.now(timezone.utc) - timedelta(days=30 * months)

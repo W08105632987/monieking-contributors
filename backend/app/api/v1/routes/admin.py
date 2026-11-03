@@ -1,5 +1,6 @@
 """Admin-only analytics, audit log, and system config routes."""
 from datetime import date, datetime, timezone, timedelta
+from app.core.cache import cache_report
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
@@ -32,6 +33,7 @@ def _date_range_filters(start_date: date | None, end_date: date | None):
 
 
 @router.get("/analytics")
+@cache_report(ttl=20)
 async def get_system_analytics(
     director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
@@ -111,6 +113,7 @@ async def get_system_analytics(
 
 
 @router.get("/profit-report")
+@cache_report(ttl=30)
 async def get_profit_report(
     director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),
@@ -163,6 +166,7 @@ async def get_profit_report(
 
 
 @router.get("/zone-analytics")
+@cache_report(ttl=30)
 async def get_zone_analytics(
     director: DirectorOrAdmin,
     db: AsyncSession = Depends(get_db),

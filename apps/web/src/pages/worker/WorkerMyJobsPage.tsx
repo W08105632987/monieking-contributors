@@ -112,7 +112,7 @@ export default function WorkerMyJobsPage() {
       const res = await api.get('/worker/jobs/active')
       return res.data
     },
-    refetchInterval: 8000,
+    refetchInterval: 15000,
   })
 
   // Fetch claimed jobs for this worker

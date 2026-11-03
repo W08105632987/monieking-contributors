@@ -1,5 +1,3 @@
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
 import { runDownload } from '@/lib/download'
 
 /**
@@ -12,6 +10,8 @@ import { runDownload } from '@/lib/download'
  * soft/blurry when shared to WhatsApp at full size.
  */
 async function captureNode(node: HTMLElement): Promise<HTMLCanvasElement> {
+  // Loaded only when someone actually exports a receipt, so these two large libraries never slow down normal pages.
+  const html2canvas = (await import('html2canvas')).default
   return html2canvas(node, {
     scale: 2,
     backgroundColor: null,   // preserves the receipt's own light/dark background rather than forcing white
@@ -42,6 +42,7 @@ export async function exportReceiptAsPdf(node: HTMLElement, filename: string): P
     // around a narrow receipt looks like an export bug, not a real document.
     const widthMm = 100
     const heightMm = (canvas.height / canvas.width) * widthMm
+    const { jsPDF } = await import('jspdf')
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [widthMm, heightMm] })
     pdf.addImage(imgData, 'PNG', 0, 0, widthMm, heightMm)
     report(90)
