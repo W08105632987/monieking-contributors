@@ -6,6 +6,7 @@ import { formatNaira } from '@/lib/utils'
 import { useCoopStatus, useLoan } from '../api'
 import { Bar, Card, CoopPage, Empty, LoadError, loanTone, Pill, SectionTitle, Skel, Stat, pctText } from '../ui'
 import { TopUpSheet, WithdrawSheet } from '../parts'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 export default function CoopHomePage() {
   const nav = useNavigate()
@@ -64,7 +65,7 @@ export default function CoopHomePage() {
       <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className="relative overflow-hidden rounded-3xl bg-hero-gradient p-5 text-white dark:bg-night-gradient">
         <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-green-600/30" />
         <p className="relative text-xs font-semibold uppercase tracking-widest text-green-300">Your contribution</p>
-        <p className="relative mt-1 text-4xl font-extrabold tracking-tight">{formatNaira(m.contribution_kobo)}</p>
+        <FitAmount className="relative mt-1 text-4xl font-extrabold tracking-tight">{formatNaira(m.contribution_kobo)}</FitAmount>
         <div className="relative mt-3 grid grid-cols-2 gap-3 text-sm">
           <div><p className="text-green-300">Free to use</p><p className="font-bold">{formatNaira(m.free_kobo)}</p></div>
           <div><p className="flex items-center gap-1 text-green-300"><Lock className="h-3 w-3" />Locked</p><p className="font-bold">{formatNaira(m.locked_kobo)}</p></div>
@@ -94,7 +95,7 @@ export default function CoopHomePage() {
       {loan && lt ? (
         <Card onClick={() => nav(`/coop/loans/${loan.id}`)}>
           <div className="flex items-start justify-between">
-            <div><p className="text-xs font-semibold text-green-500 dark:text-night-300">{loan.loan_no}</p><p className="text-xl font-extrabold text-green-900 dark:text-white">{formatNaira(loan.principal_kobo)}</p></div>
+            <div><p className="text-xs font-semibold text-green-500 dark:text-night-300">{loan.loan_no}</p><FitAmount className="text-xl font-extrabold text-green-900 dark:text-white">{formatNaira(loan.principal_kobo)}</FitAmount></div>
             <Pill tone={lt.tone}>{lt.label}</Pill>
           </div>
           {loan.status === 'seeking_guarantors' && (

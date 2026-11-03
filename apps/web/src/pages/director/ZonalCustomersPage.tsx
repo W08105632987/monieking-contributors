@@ -181,7 +181,7 @@ export default function ZonalCustomersPage() {
                   <p className="truncate text-sm font-semibold text-green-950 dark:text-white">{p.full_name}</p>
                   <p className="truncate text-[11px] text-green-600 dark:text-night-300">{p.phone_number} · {p.zone} · {p.card_type} · {p.days_contributed} days{p.days_withdrawn ? `, ${p.days_withdrawn} withdrawn` : ''} · {p.handled_by === 'self' ? 'Self' : 'Officer'}</p>
                 </div>
-                {p.claimed ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-800">Signed up</span>
+                {p.claimed ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-800 dark:bg-night-600">Signed up</span>
                   : <button disabled={!!busy} onClick={() => removeWaiting(p.id, p.full_name)} className="text-[11px] font-bold text-red-600 disabled:opacity-40">Remove</button>}
               </div>
             ))}

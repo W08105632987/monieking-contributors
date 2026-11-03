@@ -20,6 +20,7 @@ import { DisputeModal } from '@/components/disputes/DisputeModal'
 import type { WalletTransaction } from '@/types'
 import { FEATURE_FLAGS } from '@/config/featureFlags'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 const OFFICER_WALLET_WITHDRAWAL_CHARGE_KOBO = 5_000 // ₦50, flat
 
@@ -115,7 +116,7 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <div className="bg-green-50 border border-green-200 dark:border-night-500 rounded-2xl p-4 mb-5">
+        <div className="bg-green-50 border border-green-200 dark:border-night-500 rounded-2xl p-4 mb-5 dark:bg-night-600">
           <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-wide mb-2">Payout to</p>
           <p className="text-green-900 dark:text-white font-bold text-sm">{user?.account_name}</p>
           <p className="text-green-700 dark:text-night-100 text-sm font-semibold tracking-widest mt-0.5">{user?.account_number}</p>
@@ -446,7 +447,7 @@ export default function OfficerWalletPage() {
               </div>
               <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-wide">Total funded</p>
             </div>
-            <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(totalIn)}</p>
+            <FitAmount className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(totalIn)}</FitAmount>
             <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">Money added</p>
           </div>
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4">
@@ -456,7 +457,7 @@ export default function OfficerWalletPage() {
               </div>
               <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-wide">Contributions</p>
             </div>
-            <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(totalOut)}</p>
+            <FitAmount className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(totalOut)}</FitAmount>
             <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">Posted for customers</p>
           </div>
         </div>

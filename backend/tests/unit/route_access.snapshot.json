@@ -1,5 +1,6 @@
 {
  "DELETE /api/v1/auth/email": "ANY LOGIN",
+ "DELETE /api/v1/cards/{card_id}": "ANY LOGIN",
  "DELETE /api/v1/coop/admin/pilot/{user_id}": "director",
  "DELETE /api/v1/director/accounting/expenses/{expense_id}": "director",
  "DELETE /api/v1/director/accounting/income/{income_id}": "director",
@@ -189,6 +190,7 @@
  "GET /api/v1/users/{officer_id}/zone-history": "admin,director",
  "GET /api/v1/users/{user_id}": "ANY LOGIN",
  "GET /api/v1/users/{user_id}/overview": "director",
+ "GET /api/v1/users/{user_id}/wallet-summary": "director",
  "GET /api/v1/verifications/admin/settings": "director",
  "GET /api/v1/verifications/lookups": "customer,officer",
  "GET /api/v1/verifications/lookups/{lookup_id}": "customer,officer",

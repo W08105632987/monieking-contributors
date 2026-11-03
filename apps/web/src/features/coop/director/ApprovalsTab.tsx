@@ -4,6 +4,7 @@ import { formatNaira } from '@/lib/utils'
 import { post, useCoopAction } from '../api'
 import { Bar, BigButton, Card, Empty, Pill, SectionTitle, Sheet, Skel, dShort, inputCls, loanTone, pctText } from '../ui'
 import { useAdmin } from './dapi'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 const FLAG: Record<string, string> = { above_first_loan_limit: 'Above the first-loan limit', nin_not_linked: 'Joined without a linked NIN' }
 
@@ -22,7 +23,7 @@ export default function ApprovalsTab() {
       {!data ? <Skel h="h-40" /> : !data.length ? <Empty icon={<Check className="h-7 w-7" />} title="Nothing here" text="No loans in this stage." /> : (
         <div className="space-y-3">{data.map((l) => { const t = loanTone(l.status); return (
           <Card key={l.id}>
-            <div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-green-500 dark:text-night-300">{l.loan_no} · {dShort(l.created_at)}</p><p className="text-2xl font-extrabold text-green-900 dark:text-white">{formatNaira(l.principal_kobo)}</p>
+            <div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-green-500 dark:text-night-300">{l.loan_no} · {dShort(l.created_at)}</p><FitAmount className="text-2xl font-extrabold text-green-900 dark:text-white">{formatNaira(l.principal_kobo)}</FitAmount>
               <p className="text-xs text-green-700 dark:text-night-200">{l.term_months} months · {pctText(l.rate_bps)} · total {formatNaira(l.total_kobo)}</p></div><Pill tone={t.tone}>{t.label}</Pill></div>
             {l.purpose && <p className="mt-1 text-sm italic text-green-700 dark:text-night-200">"{l.purpose}"</p>}
             <div className="mt-3 rounded-xl bg-green-100/70 p-3 text-sm dark:bg-night-600">

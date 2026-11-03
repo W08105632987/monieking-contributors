@@ -1,28 +1,20 @@
 import { useState } from 'react'
 import { ask } from '@/lib/dialog'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, MapPin, Phone, Calendar, History, ChevronRight, X } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Calendar, History, ChevronRight, X, Users, Banknote, TrendingUp, BarChart3, Settings2, Wallet } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
-import { formatDate, formatDateTime, cn } from '@/lib/utils'
+import { formatDate, formatNaira } from '@/lib/utils'
+import { FitAmount } from '@/components/ui/FitAmount'
 import { Avatar } from '@/components/ui/Avatar'
-import { CustomerStatsPanel } from '@/components/dashboard/CustomerStatsPanel'
-import { OfficerContributionCard } from '@/components/dashboard/OfficerContributionCard'
-import { CustomerAdminPanel } from '@/components/director/CustomerAdminPanel'
-import { OfficerCommissionPanel } from '@/components/director/OfficerCommissionPanel'
-import { ZoneCustomersOverview } from '@/components/director/ZoneCustomersOverview'
-import type { User, Zone, ZoneAssignmentHistory } from '@/types'
+import type { User, Zone } from '@/types'
 
 export default function OfficerDetailPage() {
   const { officerId } = useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [showZonePicker, setShowZonePicker] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
-  const [historyStart, setHistoryStart] = useState('')
-  const [historyEnd, setHistoryEnd] = useState('')
-
   const { data: officer, isLoading } = useQuery({
     queryKey: ['officer', officerId],
     queryFn: async () => { const { data } = await api.get<User>(`/users/${officerId}`); return data },
@@ -34,15 +26,10 @@ export default function OfficerDetailPage() {
     queryFn: async () => { const { data } = await api.get<Zone[]>('/zones'); return data },
   })
 
-  const { data: history = [], isLoading: historyLoading } = useQuery({
-    queryKey: ['officer-zone-history', officerId, historyStart, historyEnd],
-    queryFn: async () => {
-      const { data } = await api.get<ZoneAssignmentHistory[]>(`/users/${officerId}/zone-history`, {
-        params: { start_date: historyStart || undefined, end_date: historyEnd || undefined },
-      })
-      return data
-    },
-    enabled: !!officerId && showHistory,
+  const { data: walletInfo } = useQuery({
+    queryKey: ['officer-wallet-summary', officerId],
+    queryFn: async () => (await api.get<{ wallet_balance_kobo: number; is_frozen: boolean; commission_balance_kobo: number }>(`/users/${officerId}/wallet-summary`)).data,
+    enabled: !!officerId,
   })
 
   const currentZone = zones.find(z => z.id === officer?.zone_id)
@@ -102,6 +89,19 @@ export default function OfficerDetailPage() {
           </div>
         </div>
 
+        {/* Wallet */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4">
+            <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase mb-2 flex items-center gap-1.5"><Wallet className="w-4 h-4" /> Wallet balance</p>
+            {walletInfo ? <FitAmount className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(walletInfo.wallet_balance_kobo)}</FitAmount> : <div className="h-7 w-24 rounded bg-green-100 dark:bg-night-600 animate-pulse" />}
+            {walletInfo?.is_frozen && <p className="mt-1 text-[11px] font-bold text-red-500">Frozen</p>}
+          </div>
+          <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4">
+            <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase mb-2 flex items-center gap-1.5"><Banknote className="w-4 h-4" /> Commission</p>
+            {walletInfo ? <FitAmount className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(walletInfo.commission_balance_kobo)}</FitAmount> : <div className="h-7 w-24 rounded bg-green-100 dark:bg-night-600 animate-pulse" />}
+          </div>
+        </div>
+
         {/* Current zone */}
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4">
           <div className="flex items-center gap-2 mb-3">
@@ -139,83 +139,26 @@ export default function OfficerDetailPage() {
           </div>
         </div>
 
-        {/* How this officer is paid: salary or affiliated (commission) */}
-        <OfficerCommissionPanel officer={officer} />
-
-        {/* Per-officer contribution gathered, day/week/custom */}
-        {currentZone && <OfficerContributionCard officerId={officer.id} />}
-
-        {/* Customer statistics, scoped to this officer's zone */}
-        {currentZone && (
-          <CustomerStatsPanel
-            scope={{ kind: 'officer_zone', officerId: officer.id }}
-            title={`Customer statistics — ${currentZone.name}`}
-          />
-        )}
-
-        {/* Director controls: reset login password, payment PIN, withdrawal password */}
-        <CustomerAdminPanel customerId={officer.id} name={officer.full_name} kind="officer" />
-
-        {/* Coverage history */}
-        <button
-          onClick={() => setShowHistory(v => !v)}
-          className="w-full bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 flex items-center justify-between mb-4"
-        >
-          <div className="flex items-center gap-2">
-            <History className="w-4 h-4 text-green-600 dark:text-night-200" />
-            <p className="text-green-900 dark:text-white font-bold text-sm">Coverage history</p>
-          </div>
-          <ChevronRight className={cn('w-4 h-4 text-green-300 dark:text-night-300 transition-transform', showHistory && 'rotate-90')} />
-        </button>
-
-        {showHistory && (
-          <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4">
-            <div className="flex gap-2 mb-3">
-              <input
-                type="date"
-                value={historyStart}
-                onChange={e => setHistoryStart(e.target.value)}
-                className="flex-1 border border-green-200 dark:border-night-500 rounded-lg px-2 py-1.5 text-xs text-green-900 dark:text-white bg-white dark:bg-night-700"
-              />
-              <input
-                type="date"
-                value={historyEnd}
-                onChange={e => setHistoryEnd(e.target.value)}
-                className="flex-1 border border-green-200 dark:border-night-500 rounded-lg px-2 py-1.5 text-xs text-green-900 dark:text-white bg-white dark:bg-night-700"
-              />
-              {(historyStart || historyEnd) && (
-                <button onClick={() => { setHistoryStart(''); setHistoryEnd('') }} className="text-green-400 dark:text-night-300 text-xs px-2">Clear</button>
-              )}
-            </div>
-
-            {historyLoading ? (
-              <div className="h-16 bg-green-50 dark:bg-night-600 rounded-xl animate-pulse" />
-            ) : history.length === 0 ? (
-              <p className="text-green-400 dark:text-night-300 text-xs text-center py-3">No coverage history in this range.</p>
-            ) : (
-              <div className="space-y-2">
-                {history.map(h => (
-                  <div key={h.id} className="bg-green-50 dark:bg-night-600 rounded-xl px-3 py-2.5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-green-900 dark:text-white text-sm font-semibold">{h.zone_name}</p>
-                      {!h.ended_at && (
-                        <span className="text-[10px] font-bold text-green-700 dark:text-night-100 bg-green-100 dark:bg-night-600 px-2 py-0.5 rounded-full">Current</span>
-                      )}
-                    </div>
-                    <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">
-                      {formatDateTime(h.started_at)} → {h.ended_at ? formatDateTime(h.ended_at) : 'now'}
-                    </p>
-                    {h.assigned_by_director_name && (
-                      <p className="text-green-300 dark:text-night-300 text-[11px] mt-0.5">Assigned by {h.assigned_by_director_name}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {/* The very end of the officer's page: every customer in their zone, with analytics, filters and moves between zones. */}
-        {officer && <ZoneCustomersOverview officerId={officer.id} affiliated={officer.officer_type === 'affiliated'} />}
+        {/* Each section opens on its own page so this one stays light */}
+        <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card divide-y divide-green-50 dark:divide-night-600 mb-4">
+          {([
+            { key: 'customers', label: 'Zone customers', hint: 'Everyone in their zone, analytics and moves', Icon: Users },
+            { key: 'pay', label: 'Pay & commission', hint: officer.officer_type === 'affiliated' ? 'Affiliated, earns commission' : officer.officer_type === 'salary' ? 'Salary' : 'Not chosen yet', Icon: Banknote },
+            { key: 'contributions', label: 'Contributions gathered', hint: 'Day, week or custom range', Icon: TrendingUp },
+            { key: 'stats', label: 'Customer statistics', hint: 'Scoped to their zone', Icon: BarChart3 },
+            { key: 'history', label: 'Coverage history', hint: 'Zones they have covered over time', Icon: History },
+            { key: 'admin', label: 'Admin tools', hint: 'Reset password, PIN, withdrawal password', Icon: Settings2 },
+          ] as const).map(({ key, label, hint, Icon }) => (
+            <button key={key} onClick={() => navigate(`/director/officers/${officerId}/${key}`)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-green-50/50 dark:active:bg-night-600/50">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700 dark:bg-night-600 dark:text-night-100"><Icon className="h-4 w-4" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-bold text-green-900 dark:text-white">{label}</span>
+                <span className="block truncate text-xs text-green-500 dark:text-night-200">{hint}</span>
+              </span>
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-green-300 dark:text-night-300" />
+            </button>
+          ))}
+        </div>
       </div>
 
       {showZonePicker && (

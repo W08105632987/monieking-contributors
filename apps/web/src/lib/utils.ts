@@ -281,3 +281,15 @@ export const MONTH_NAMES = [
 export function monthLabel(month: number): string {
   return MONTH_NAMES[month - 1] ?? String(month)
 }
+
+/** Short money for tight spots: ₦950, ₦12.5K, ₦3.4M, ₦1.2B. Input in kobo. */
+export function formatNairaCompact(kobo: number): string {
+  const n = (Number.isFinite(kobo) ? kobo : 0) / 100
+  const abs = Math.abs(n)
+  const sign = n < 0 ? '-' : ''
+  const trim = (v: number) => v.toFixed(1).replace(/\.0$/, '')
+  if (abs >= 1e9) return `${sign}₦${trim(abs / 1e9)}B`
+  if (abs >= 1e6) return `${sign}₦${trim(abs / 1e6)}M`
+  if (abs >= 1e4) return `${sign}₦${trim(abs / 1e3)}K`
+  return `${sign}₦${abs.toLocaleString('en-NG', { maximumFractionDigits: 2 })}`
+}

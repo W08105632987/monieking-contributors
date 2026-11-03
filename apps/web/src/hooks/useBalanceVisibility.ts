@@ -10,8 +10,8 @@ const STORAGE_PREFIX = 'monieking-balance-visible:'
  * their balance shouldn't leak into someone else's session on a shared
  * device.
  */
-export function useBalanceVisibility(userId: string | undefined) {
-  const storageKey = userId ? `${STORAGE_PREFIX}${userId}` : null
+export function useBalanceVisibility(userId: string | undefined, scope?: string) {
+  const storageKey = userId ? `${STORAGE_PREFIX}${scope ? scope + ':' : ''}${userId}` : null
 
   const [visible, setVisible] = useState<boolean>(() => {
     if (!storageKey) return true

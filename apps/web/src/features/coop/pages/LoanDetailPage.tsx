@@ -8,6 +8,7 @@ import { post, postIdem, useCoopAction, useCoopStatus, useLoan, usePool, type Lo
 import { newKey, useAuthPrompt } from '../auth'
 import { Bar, BigButton, Card, CoopPage, Field, MoneyInput, Pill, SectionTitle, Sheet, Skel, dShort, loanTone, pctText, toKobo, useCountdown } from '../ui'
 import { ReliabilityBadge, SafetyNote } from '../parts'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 const STEP_LABEL: Record<string, string> = { requested: 'Requested', guaranteed: 'Guaranteed', approved: 'Approved', accepted: 'Accepted', paid_out: 'Paid out', repaid: 'Repaid' }
 const G_TONE: Record<string, any> = { signed: 'green', invited: 'amber', viewed: 'blue', declined: 'red', expired: 'grey', cancelled: 'grey', released: 'grey' }
@@ -30,7 +31,7 @@ export default function LoanDetailPage() {
     <CoopPage title={l.loan_no} subtitle={l.purpose ?? undefined} back="/coop/loans" right={<Pill tone={t.tone}>{t.label}</Pill>}>
       <div className="rounded-3xl bg-hero-gradient p-5 text-white dark:bg-night-gradient">
         <p className="text-xs font-semibold uppercase tracking-widest text-green-300">Loan amount</p>
-        <p className="text-4xl font-extrabold">{formatNaira(l.principal_kobo)}</p>
+        <FitAmount className="text-4xl font-extrabold">{formatNaira(l.principal_kobo)}</FitAmount>
         <p className="mt-1 text-sm text-green-200">{l.term_months} month{l.term_months > 1 ? 's' : ''} · interest {formatNaira(l.interest_kobo)} ({pctText(l.rate_bps)}) · total {formatNaira(l.total_kobo)}</p>
       </div>
 
@@ -95,7 +96,7 @@ function Repaying({ l, onRepay }: { l: LoanDetail; onRepay: () => void }) {
         </Card>)}
       <SectionTitle>Repayment</SectionTitle>
       <Card>
-        <div className="flex items-end justify-between"><div><p className="text-xs font-semibold uppercase text-green-500 dark:text-night-300">Still to pay</p><p className="text-3xl font-extrabold text-green-900 dark:text-white">{formatNaira(l.total_due_kobo)}</p></div>
+        <div className="flex items-end justify-between"><div><p className="text-xs font-semibold uppercase text-green-500 dark:text-night-300">Still to pay</p><FitAmount className="text-3xl font-extrabold text-green-900 dark:text-white">{formatNaira(l.total_due_kobo)}</FitAmount></div>
           {l.next_instalment && <p className="text-right text-xs text-green-700 dark:text-night-200">Next: {formatNaira(l.next_instalment.amount_kobo - l.next_instalment.paid_kobo)}<br />{dShort(l.next_instalment.due_date)}</p>}</div>
         <div className="mt-3"><Bar value={paid} max={l.principal_kobo + l.interest_kobo} /></div>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs"><div><p className="text-green-500">Principal left</p><b>{formatNaira(l.principal_due_kobo)}</b></div><div><p className="text-green-500">Interest left</p><b>{formatNaira(l.interest_due_kobo)}</b></div><div><p className="text-green-500">Charges due</p><b>{formatNaira(l.charges_due_kobo)}</b></div></div>

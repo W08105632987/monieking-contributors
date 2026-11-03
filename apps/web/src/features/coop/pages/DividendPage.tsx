@@ -3,6 +3,7 @@ import { CalendarClock, CheckCircle2, Info, Lock, Sparkles, XCircle } from 'luci
 import { formatNaira } from '@/lib/utils'
 import { useDividend } from '../api'
 import { Bar, Card, CoopPage, Field, MoneyInput, SectionTitle, Skel, Stat, dShort, toKobo } from '../ui'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 export default function DividendPage() {
   const [extra, setExtra] = useState('')
@@ -16,7 +17,7 @@ export default function DividendPage() {
         <>
           <div className="rounded-3xl bg-hero-gradient p-5 text-white dark:bg-night-gradient">
             <p className="text-xs font-semibold uppercase tracking-widest text-green-300">Estimated for {d.year}</p>
-            <p className="mt-1 text-4xl font-extrabold">{formatNaira(me.total_kobo)}</p>
+            <FitAmount className="mt-1 text-4xl font-extrabold">{formatNaira(me.total_kobo)}</FitAmount>
             <p className="mt-1 flex items-center gap-1.5 text-sm text-green-200"><CalendarClock className="h-4 w-4" />Year ends {dShort(d.year_end)} · {d.days_left} days left</p>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div><p className="text-green-300">As contributor</p><p className="font-bold">{formatNaira(me.contribution_share_kobo)}</p></div>
@@ -40,7 +41,7 @@ export default function DividendPage() {
             {me.with_extra && (
               <div className="mt-3 rounded-xl bg-green-100/70 p-3 dark:bg-night-600">
                 <p className="text-sm text-green-800 dark:text-night-100">Your estimate would become</p>
-                <p className="text-2xl font-extrabold text-green-900 dark:text-white">{formatNaira(me.with_extra.total_kobo)}</p>
+                <FitAmount className="text-2xl font-extrabold text-green-900 dark:text-white">{formatNaira(me.with_extra.total_kobo)}</FitAmount>
                 <p className="text-sm font-bold text-green-700 dark:text-green-300">{me.with_extra.gain_kobo >= 0 ? '+' : '−'}{formatNaira(Math.abs(me.with_extra.gain_kobo))} more than now</p>
                 {!me.with_extra.qualifies && <p className="mt-1 text-xs text-amber-700">You must qualify first for this to count.</p>}
               </div>

@@ -8,6 +8,7 @@ import { api, getErrorMessage } from '@/lib/api'
 import { withPin } from '@/lib/pin'
 import { formatDate, formatNaira, cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 interface Earnings {
   earned_kobo: number; paid_out_kobo: number; pending_payout_kobo: number; available_kobo: number
@@ -62,7 +63,7 @@ export default function OfficerEarningsPage() {
           <>
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-3xl bg-green-900 dark:bg-night-600 p-5 text-white shadow-card">
               <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-amber-300"><BadgeDollarSign className="h-4 w-4" />Available to withdraw</p>
-              <p className="mt-1 text-4xl font-extrabold">{formatNaira(data.available_kobo)}</p>
+              <FitAmount className="mt-1 text-4xl font-extrabold">{formatNaira(data.available_kobo)}</FitAmount>
               <p className="mt-1 text-xs text-green-200">You earn {data.percent}% of the company's profit on your customers' withdrawals · {data.customers} customer{data.customers === 1 ? '' : 's'}</p>
               {!asking ? (
                 <button disabled={data.available_kobo <= 0} onClick={() => setAsking(true)} className="mt-4 w-full rounded-full bg-amber-400 py-3 text-sm font-bold text-green-950 disabled:opacity-40">Request payout</button>

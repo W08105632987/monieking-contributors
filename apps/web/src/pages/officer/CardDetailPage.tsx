@@ -18,6 +18,10 @@ import { PleaseHold } from '@/components/ui/PleaseHold'
 import type { ContributionCard, CardGrid, GridCell, User, ContributionRecord } from '@/types'
 import { ContributionHistoryModal } from '@/components/cards/ContributionHistoryModal'
 import { MarkingDisputeModal } from '@/components/disputes/MarkingDisputeModal'
+import { FitAmount } from '@/components/ui/FitAmount'
+import { FlipCard } from '@/components/cards/FlipCard'
+import { GridBack } from '@/components/cards/GridBack'
+import { FullGridSheet } from '@/components/cards/FullGridSheet'
 
 interface WithdrawalPreview {
   days_to_withdraw: number
@@ -32,6 +36,8 @@ export default function OfficerCardDetailPage() {
   const { customerId, cardId } = useParams<{ customerId: string; cardId: string }>()
   const qc = useQueryClient()
 
+  const [gridOpen, setGridOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [flipped, setFlipped]         = useState(false)
   const [reportOpen, setReportOpen]   = useState(false)
   const [activePanel, setActivePanel] = useState<'none' | 'contribute' | 'withdraw'>('none')
@@ -295,6 +301,18 @@ export default function OfficerCardDetailPage() {
   const remaining  = 372 - card.total_days_contributed
   const isComplete = card.status === 'completed'
 
+  const deleteEmptyCard = async () => {
+    if (deleting) return
+    if (!(await ask(`Delete card #${card.card_number}? It has no contributions. This cannot be undone.`, { title: 'Delete empty card', tone: 'danger', confirmLabel: 'Delete card' }))) return
+    setDeleting(true)
+    try {
+      await api.delete(`/cards/${card.id}`)
+      toast.success('Card deleted')
+      qc.invalidateQueries()
+      navigate(`/officer/customers/${customerId}`)
+    } catch (e) { toast.error(getErrorMessage(e)) } finally { setDeleting(false) }
+  }
+
   const cellGrid: (GridCell | undefined)[][] = Array.from({ length: 12 }, (_, m) =>
     Array.from({ length: 31 }, (_, d) => grid?.[m]?.[d])
   )
@@ -325,14 +343,11 @@ export default function OfficerCardDetailPage() {
       <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
 
         {/* Flippable card */}
-        <div className="w-full mb-5 mt-2 cursor-pointer flip-card" style={{ perspective: '1000px', height: '200px' }}
-          onClick={() => setFlipped(f => !f)}>
-          <motion.div className="w-full h-full relative"
-            animate={{ rotateY: flipped ? 180 : 0 }}
-            transition={{ duration: 0.55, type: 'spring', stiffness: 200, damping: 25 }}
-            style={{ transformStyle: 'preserve-3d' }}
-          >
-            <div className="absolute inset-0 rounded-3xl overflow-hidden" style={{ backfaceVisibility: 'hidden' }}>
+        <div className="mb-5 mt-2">
+          <FlipCard flipped={flipped} onToggle={() => setFlipped(f => !f)} height={200}
+            backClassName="bg-green-50 dark:bg-night-600 border border-green-200 dark:border-night-500"
+            front={<>
+
               <div className="w-full h-full p-5 flex flex-col justify-between relative overflow-hidden"
                 style={{ background: 'linear-gradient(135deg, #052E16 0%, #064E3B 55%, #065F46 100%)' }}>
                 <div className="absolute rounded-full opacity-25" style={{ width: 150, height: 150, background: '#059669', top: -40, right: -30 }} />
@@ -350,7 +365,7 @@ export default function OfficerCardDetailPage() {
                 </div>
                 <div className="relative z-10">
                   <p className="text-green-400 dark:text-night-300 text-xs uppercase tracking-wide mb-1">Daily Rate</p>
-                  <p className="text-amber-400 text-3xl font-extrabold tracking-tight">{formatNaira(card.rate_kobo)}</p>
+                  <FitAmount className="text-amber-400 text-3xl font-extrabold tracking-tight">{formatNaira(card.rate_kobo)}</FitAmount>
                   <div className="mt-3 h-1.5 bg-green-800 rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-500"
                       style={{ width: `${progress}%`, background: isFood ? '#34D399' : '#F59E0B' }} />
@@ -365,48 +380,19 @@ export default function OfficerCardDetailPage() {
                   </div>
                 </div>
               </div>
-            </div>
-
-            <div className="absolute inset-0 rounded-3xl overflow-hidden bg-green-50 border border-green-200 dark:border-night-500"
-              style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
-              <div className="w-full h-full p-3 flex flex-col">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide">Contribution Grid</p>
-                  <div className="flex items-center gap-2 text-xs text-green-500 dark:text-night-200">
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-600 inline-block" /> Filled</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400 inline-block" /> Withdrawn</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-100 dark:bg-night-600 inline-block" /> Empty</span>
-                  </div>
-                </div>
-                <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar" onClick={e => e.stopPropagation()} style={{ WebkitOverflowScrolling: 'touch' }}>
-                  <div className="flex gap-0.5 mb-1 ml-6">
-                    {Array.from({ length: 31 }, (_, i) => (
-                      <div key={i} className="flex-1 text-center text-green-400 dark:text-night-300" style={{ fontSize: '5px' }}>{i + 1}</div>
-                    ))}
-                  </div>
-                  {MONTH_NAMES.map((month, mIdx) => (
-                    <div key={mIdx} className="flex items-center gap-0.5 mb-0.5">
-                      <span className="text-green-600 dark:text-night-200 font-semibold w-5 shrink-0 text-right" style={{ fontSize: '6px' }}>{month}</span>
-                      <div className="flex gap-0.5 flex-1">
-                        {Array.from({ length: 31 }, (_, dIdx) => (
-                          <div key={dIdx}
-                            className={cn(
-                              'flex-1 rounded-sm',
-                              cellGrid[mIdx]?.[dIdx]?.withdrawn ? 'bg-red-400' :
-                              cellGrid[mIdx]?.[dIdx]?.filled    ? 'bg-green-600' : 'bg-green-100 dark:bg-night-600'
-                            )}
-                            style={{ aspectRatio: '1' }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-center text-green-400 dark:text-night-300 mt-1" style={{ fontSize: '9px' }}>Tap to flip back</p>
-              </div>
-            </div>
-          </motion.div>
+            </>}
+            back={<GridBack grid={cellGrid} onExpand={() => setGridOpen(true)} />} />
         </div>
+        <FullGridSheet open={gridOpen} onClose={() => setGridOpen(false)} grid={cellGrid} title={`Card #${card.card_number} · contribution grid`} />
+
+        {/* Empty card: can be removed */}
+        {card.total_days_contributed === 0 && card.status === 'active' && (
+          <div className="mb-5 flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-3 dark:border-red-900/50 dark:bg-red-950/20">
+            <p className="text-xs font-medium text-red-700 dark:text-red-300">This card is empty. Opened by mistake? You can remove it.</p>
+            <button onClick={deleteEmptyCard} disabled={deleting}
+              className="shrink-0 rounded-full bg-red-600 px-4 py-2 text-xs font-bold text-white active:scale-95 disabled:opacity-60">{deleting ? 'Deleting…' : 'Delete card'}</button>
+          </div>
+        )}
 
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-3 mb-5">
@@ -569,7 +555,7 @@ export default function OfficerCardDetailPage() {
             </div>
 
             {withdrawKobo > 0 && (
-              <div className="bg-green-50 border border-green-100 dark:border-night-500 rounded-2xl p-3 mb-4">
+              <div className="bg-green-50 border border-green-100 dark:border-night-500 rounded-2xl p-3 mb-4 dark:bg-night-600">
                 {!isValidWithdrawMultiple ? (
                   <p className="text-red-400 dark:text-red-300 text-xs font-semibold">
                     Amount must be a multiple of {formatNaira(card.rate_kobo)}

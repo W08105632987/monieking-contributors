@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { formatNaira, cn } from '@/lib/utils'
 import { useStatsRangeFilter } from '@/hooks/useStatsRangeFilter'
 import type { OfficerContributionStats } from '@/types'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 export function OfficerContributionCard({ officerId }: { officerId: string }) {
   const filter = useStatsRangeFilter()
@@ -65,7 +66,7 @@ export function OfficerContributionCard({ officerId }: { officerId: string }) {
       ) : (
         <div className="flex items-end justify-between">
           <div>
-            <p className="text-green-900 dark:text-white text-2xl font-extrabold">{formatNaira(data.amount_gathered_kobo)}</p>
+            <FitAmount className="text-green-900 dark:text-white text-2xl font-extrabold">{formatNaira(data.amount_gathered_kobo)}</FitAmount>
             <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{filter.label}</p>
           </div>
           <div className="flex items-center gap-1.5 text-green-500 dark:text-night-200 text-xs font-semibold">

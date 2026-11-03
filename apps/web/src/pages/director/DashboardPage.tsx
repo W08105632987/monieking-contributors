@@ -1,4 +1,7 @@
 import { useState, useMemo } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
+import { FitAmount } from '@/components/ui/FitAmount'
+import { useBalanceVisibility } from '@/hooks/useBalanceVisibility'
 import { Avatar } from '@/components/ui/Avatar'
 import { useNavigate } from 'react-router-dom'
 import { motion, type Variants } from 'framer-motion'
@@ -18,11 +21,6 @@ import type { Withdrawal, SystemAnalytics } from '@/types'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 import { SetPinPrompt } from '@/components/director/SetPinPrompt'
 import { OfficerClassifyBanner } from '@/components/director/OfficerTypeModal'
-
-function currentMonthValue() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-}
 
 function periodToDateRange(period: string): { start_date?: string; end_date?: string } {
   if (period === 'all') return {}
@@ -151,7 +149,14 @@ export default function DirectorDashboardPage() {
     (Date.now() - new Date(w.requested_at).getTime()) > 1000 * 60 * 60 * 20
   )
 
-  const [heroPeriod, setHeroPeriod] = useState(currentMonthValue())
+  // Director totals can be hidden (dots), remembered per director on this device, even after logging out and in again.
+  const { visible: showTotals, toggle: toggleTotals } = useBalanceVisibility(user?.id, 'director-totals')
+  const mask = (v: string) => (showTotals ? v : '••••••')
+  const PERIOD_KEY = `monieking-director-period:${user?.id ?? ''}`
+  const [heroPeriod, setHeroPeriodState] = useState<string>(() => {
+    try { return localStorage.getItem(PERIOD_KEY) || 'all' } catch { return 'all' }
+  })
+  const setHeroPeriod = (v: string) => { setHeroPeriodState(v); try { localStorage.setItem(PERIOD_KEY, v) } catch { /* private mode */ } }
   const [showPeriodPicker, setShowPeriodPicker] = useState(false)
   const monthOptions = useRecentMonthOptions()
 
@@ -245,7 +250,11 @@ export default function DirectorDashboardPage() {
           </div>
           <div className="relative z-10 p-5">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-green-300 text-xs font-semibold uppercase tracking-widest">Total paid out</p>
+              <p className="text-green-300 text-xs font-semibold uppercase tracking-widest flex items-center gap-2">Total paid out
+                <button onClick={toggleTotals} aria-label={showTotals ? 'Hide totals' : 'Show totals'} className="text-green-200 active:scale-90 transition">
+                  {showTotals ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                </button>
+              </p>
               <button
                 onClick={() => setShowPeriodPicker(s => !s)}
                 className="flex items-center gap-1 bg-white/10 rounded-full px-3 py-1 text-white text-xs font-semibold"
@@ -269,11 +278,11 @@ export default function DirectorDashboardPage() {
                 ))}
               </div>
             )}
-            <p className="text-white text-4xl font-extrabold tracking-tight mb-1">
-              {formatNaira(heroAnalytics?.total_paid_out_kobo ?? 0)}
-            </p>
+            <FitAmount className="text-white text-4xl font-extrabold tracking-tight mb-1">
+              {mask(formatNaira(heroAnalytics?.total_paid_out_kobo ?? 0))}
+            </FitAmount>
             <p className="text-green-400 text-xs mb-5">
-              Charges collected: {formatNaira(heroAnalytics?.total_charges_kobo ?? 0)}
+              Charges collected: {mask(formatNaira(heroAnalytics?.total_charges_kobo ?? 0))}
             </p>
             <button
               onClick={() => navigate('/director/withdrawals')}
@@ -287,12 +296,16 @@ export default function DirectorDashboardPage() {
         {/* Total contributed — same period filter as the hero above */}
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-600 shadow-card p-4 mb-4">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-widest">Total contributed</p>
+            <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-widest flex items-center gap-2">Total contributed
+              <button onClick={toggleTotals} aria-label={showTotals ? 'Hide totals' : 'Show totals'} className="text-green-500 dark:text-night-200 active:scale-90 transition">
+                {showTotals ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </button>
+            </p>
             <span className="text-green-400 dark:text-night-300 text-xs font-semibold">{heroPeriodLabel}</span>
           </div>
-          <p className="text-green-900 dark:text-white text-2xl font-extrabold">
-            {formatNaira(heroAnalytics?.total_contributed_kobo ?? 0)}
-          </p>
+          <FitAmount className="text-green-900 dark:text-white text-2xl font-extrabold">
+            {mask(formatNaira(heroAnalytics?.total_contributed_kobo ?? 0))}
+          </FitAmount>
         </div>
 
         {/* Customer statistics — total/food/regular/active/inactive

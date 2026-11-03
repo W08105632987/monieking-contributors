@@ -5,6 +5,7 @@ import { formatNaira } from '@/lib/utils'
 import { post, useCoopAction } from '../api'
 import { BigButton, Card, Field, Pill, SectionTitle, Skel, dShort, inputCls } from '../ui'
 import { useAdmin } from './dapi'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 export default function PeopleTab() {
   const [sub, setSub] = useState<'pilot' | 'members' | 'dividend'>('pilot')
@@ -52,7 +53,7 @@ function DividendPreview() {
   if (!data) return <Skel h="h-40" />
   return (
     <>
-      <Card><p className="text-xs font-semibold uppercase text-green-500">Dividend pool {data.year}</p><p className="text-3xl font-extrabold text-green-900 dark:text-white">{formatNaira(data.pool_kobo)}</p>
+      <Card><p className="text-xs font-semibold uppercase text-green-500">Dividend pool {data.year}</p><FitAmount className="text-3xl font-extrabold text-green-900 dark:text-white">{formatNaira(data.pool_kobo)}</FitAmount>
         <p className="text-sm text-green-700 dark:text-night-200">{data.contribution_pct}% contributors {formatNaira(data.contribution_pool_kobo)} · {data.guarantee_pct}% guarantors {formatNaira(data.guarantee_pool_kobo)}</p>
         <p className="mt-2 text-xs text-green-600 dark:text-night-300">Share-out check: {formatNaira(data.paid_out_check_kobo)} allocated of {formatNaira(data.pool_kobo)}. {data.basis}</p></Card>
       <SectionTitle>Member by member</SectionTitle>

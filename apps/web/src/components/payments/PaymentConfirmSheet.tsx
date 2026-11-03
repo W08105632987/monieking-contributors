@@ -2,6 +2,7 @@ import { sheetMotion } from '@/lib/motion'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, ArrowDown } from 'lucide-react'
 import { formatNaira, cn } from '@/lib/utils'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 export interface ConfirmDetailRow {
   label: string
@@ -64,7 +65,7 @@ export function PaymentConfirmSheet({
             {/* Amount to be debited — the headline figure */}
             <div className="text-center mb-6">
               <p className="text-green-400 dark:text-night-300 text-xs font-semibold uppercase tracking-widest mb-1">Amount to be debited</p>
-              <p className="text-green-950 dark:text-white text-4xl font-extrabold tracking-tight">{formatNaira(amountKobo)}</p>
+              <FitAmount className="text-green-950 dark:text-white text-4xl font-extrabold tracking-tight">{formatNaira(amountKobo)}</FitAmount>
             </div>
 
             {/* Detail rows — network, phone number, plan, meter, etc. */}

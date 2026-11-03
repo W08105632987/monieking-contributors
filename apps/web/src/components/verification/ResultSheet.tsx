@@ -38,7 +38,7 @@ export function ResultSheet({ lookup, kind, ninAuthUrl, busy, onDownloadSheet, o
         </div>
         <div className="flex items-center gap-4 mb-3">
           {lookup.photo_b64 ? (
-            <img src={`data:image/jpeg;base64,${lookup.photo_b64}`} alt="" className="w-20 h-24 rounded-xl object-cover bg-green-100" />
+            <img src={`data:image/jpeg;base64,${lookup.photo_b64}`} alt="" className="w-20 h-24 rounded-xl object-cover bg-green-100 dark:bg-night-600" />
           ) : (
             <div className="w-20 h-24 rounded-xl bg-green-100 dark:bg-night-600 flex items-center justify-center text-green-700 dark:text-night-100 text-2xl font-extrabold">
               {initialsOf(r.full_name)}

@@ -542,6 +542,24 @@ async def delete_user(
     }
 
 
+@router.get("/{user_id}/wallet-summary")
+async def get_user_wallet_summary(
+    user_id: str,
+    director: DirectorOnly,
+    db: AsyncSession = Depends(get_db),
+):
+    """Director-only: an officer's (or customer's) wallet balance and frozen flag. Read-only."""
+    target = await resolve_user(db, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    wallet = await get_or_create_wallet(db, target.id)
+    return {
+        "wallet_balance_kobo": wallet.balance_kobo,
+        "is_frozen": bool(wallet.is_frozen),
+        "commission_balance_kobo": int(getattr(target, "commission_balance_kobo", 0) or 0),
+    }
+
+
 @router.get("/{user_id}/overview")
 async def get_customer_overview(
     user_id: str,

@@ -515,6 +515,35 @@ async def convert_food_card(
     return card
 
 
+@router.delete("/cards/{card_id}")
+async def delete_empty_card(card_id: str, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Remove a card that was opened by mistake. Only a card with NO money and NO history can be deleted: no days marked, no
+    withdrawals, nothing recorded against it. The owner, their zone officer or a director may do it."""
+    from sqlalchemy import func
+    from sqlalchemy.exc import IntegrityError
+    card = await resolve_card(db, card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if current_user.role not in (UserRole.DIRECTOR, UserRole.ADMIN):
+        await _authorize_card_action(db, current_user, card)
+    if card.total_days_contributed or card.total_contributed_kobo or card.status != CardStatus.ACTIVE:
+        raise HTTPException(status_code=409, detail="Only an empty card can be deleted. This one already has contributions or is closed.")
+    records = (await db.execute(select(func.count(ContributionRecord.id)).where(ContributionRecord.card_id == card.id))).scalar_one()
+    withdrawals = (await db.execute(select(func.count(Withdrawal.id)).where(Withdrawal.card_id == card.id))).scalar_one()
+    if records or withdrawals:
+        raise HTTPException(status_code=409, detail="This card has history, so it cannot be deleted.")
+    number, owner_id, ctype = card.card_number, card.owner_id, card.card_type.value
+    try:
+        async with db.begin_nested():
+            await db.delete(card)
+            await db.flush()
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="This card is linked to other records, so it cannot be deleted.")
+    await log_action(db, actor_id=current_user.id, action="card.deleted_empty", entity_type="card", entity_id=str(card_id),
+                     old_value={"card_number": number, "owner_id": str(owner_id), "type": ctype})
+    return {"message": f"Card #{number} was deleted."}
+
+
 @router.post("/cards/{card_id}/close", response_model=CardResponse)
 async def close_card_manually(
     card_id: str,

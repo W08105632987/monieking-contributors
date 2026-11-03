@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { ArrowDownLeft, ArrowUpRight, Landmark, UserCog, Wallet } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -11,9 +11,6 @@ const PAGE = 30
 /** A customer's wallet story for the director: how it was funded (bank transfer or by which director) and every other transaction. */
 export function WalletHistoryPanel({ customerId }: { customerId: string }) {
   const [kind, setKind] = useState<'funding' | 'all'>('funding')
-  const ref = useRef<HTMLElement | null>(null)
-  // Arriving from the wallet icon in All Customers (#wallet): bring this panel into view.
-  useEffect(() => { if (window.location.hash === '#wallet') setTimeout(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350) }, [])
   const q = useInfiniteQuery({
     queryKey: ['wallet-history', customerId, kind],
     initialPageParam: 0,
@@ -23,7 +20,7 @@ export function WalletHistoryPanel({ customerId }: { customerId: string }) {
   const first = q.data?.pages[0]
   const items = q.data?.pages.flatMap((p) => p.items) ?? []
   return (
-    <section id="wallet" ref={ref} className="mb-4 rounded-2xl border border-green-100 bg-white p-4 shadow-card dark:border-night-500 dark:bg-night-700">
+    <section id="wallet" className="mb-4 rounded-2xl border border-green-100 bg-white p-4 shadow-card dark:border-night-500 dark:bg-night-700">
       <div className="mb-3 flex items-center gap-2"><Wallet className="h-4 w-4 text-green-600 dark:text-night-200" /><p className="text-xs font-bold uppercase tracking-widest text-green-500 dark:text-night-200">Wallet history</p></div>
       {first && (
         <div className="mb-3 grid grid-cols-3 gap-2 text-center">

@@ -6,6 +6,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { api } from '@/lib/api'
 import { formatNaira, cn } from '@/lib/utils'
 import type { SystemAnalytics, ZoneAnalytics } from '@/types'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 type QuickRange = 'all' | 'this_month' | 'last_month' | 'custom'
 
@@ -133,7 +134,7 @@ export default function AnalyticsPage() {
 
             <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4">
               <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase mb-3">Charges collected {quickRange !== 'all' && `— ${periodLabel}`}</p>
-              <p className="text-green-900 dark:text-white text-2xl font-extrabold">{formatNaira(data.total_charges_kobo)}</p>
+              <FitAmount className="text-green-900 dark:text-white text-2xl font-extrabold">{formatNaira(data.total_charges_kobo)}</FitAmount>
             </div>
 
             {/* View report button */}

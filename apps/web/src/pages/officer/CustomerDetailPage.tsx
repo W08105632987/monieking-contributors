@@ -10,6 +10,7 @@ import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, initials, cn } from '@/lib/utils'
 import type { User, ContributionCard } from '@/types'
 import { PostContributionSheet, CreateCardSheet } from './CustomersPage'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 export default function CustomerDetailPage() {
   const navigate = useNavigate()
@@ -178,7 +179,7 @@ export default function CustomerDetailPage() {
         {(customer.sms_alerts_enabled || (customer.sms_accrued_kobo ?? 0) > 0) && (
           <div className="mb-4 rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20 p-4">
             <p className="text-amber-700 dark:text-amber-300 text-xs font-bold uppercase tracking-wide">SMS charges so far</p>
-            <p className="text-green-900 dark:text-white text-2xl font-extrabold mt-0.5">{formatNaira(customer.sms_accrued_kobo ?? 0)}</p>
+            <FitAmount className="text-green-900 dark:text-white text-2xl font-extrabold mt-0.5">{formatNaira(customer.sms_accrued_kobo ?? 0)}</FitAmount>
             <p className="text-xs text-green-700 dark:text-night-200 mt-1 leading-relaxed">
               Nothing is taken from a wallet. Each SMS adds to this amount, and it comes off the customer's card together with the normal charge when they withdraw. Tell the customer this before you turn SMS on — it is their choice.
             </p>

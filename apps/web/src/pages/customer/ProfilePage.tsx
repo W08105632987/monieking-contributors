@@ -30,6 +30,7 @@ import { PaymentPinRow } from '@/components/setup/PaymentPinRow'
 import { EmailRow } from '@/components/setup/EmailRow'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 import { friendlyError } from '@/lib/errorText'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 // ── Change withdrawal password sheet ─────────────────────────────
 function ChangeWithdrawPasswordSheet({ onClose }: { onClose: () => void }) {
@@ -309,7 +310,7 @@ export default function ProfilePage() {
           >
             <div>
               <p className="text-green-400 dark:text-night-300 text-xs font-semibold uppercase tracking-wide">Wallet balance</p>
-              <p className="text-white text-xl font-extrabold">{formatNaira(wallet.balance_kobo)}</p>
+              <FitAmount className="text-white text-xl font-extrabold">{formatNaira(wallet.balance_kobo)}</FitAmount>
             </div>
             <button
               onClick={() => navigate('/customer/wallet')}

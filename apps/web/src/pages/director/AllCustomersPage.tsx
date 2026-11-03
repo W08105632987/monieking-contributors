@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Search, ChevronRight, Wallet } from 'lucide-react'
+import { StatusTag } from '@/components/ui/StatusTag'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -8,11 +9,15 @@ import { Avatar } from '@/components/ui/Avatar'
 import type { User } from '@/types'
 
 type CustomerFilter = 'all' | 'regular' | 'food'
+type StatusFilter = 'any' | 'active' | 'pending_verification' | 'suspended'
+type SortKey = 'az' | 'newest' | 'oldest'
 
 export default function AllCustomersPage() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<CustomerFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('any')
+  const [sort, setSort] = useState<SortKey>('az')
 
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ['all-customers', filter],
@@ -23,10 +28,18 @@ export default function AllCustomersPage() {
     },
   })
 
-  const filtered = customers.filter(c =>
-    c.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone_number.includes(search)
-  )
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const list = customers.filter(c =>
+      (statusFilter === 'any' || c.status === statusFilter) &&
+      (!q || c.full_name.toLowerCase().includes(q) || c.phone_number.includes(search.trim())),
+    )
+    return [...list].sort((a, b) => {
+      if (sort === 'az') return a.full_name.localeCompare(b.full_name, undefined, { sensitivity: 'base' })
+      const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      return sort === 'newest' ? -diff : diff
+    })
+  }, [customers, search, statusFilter, sort])
 
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
@@ -69,6 +82,42 @@ export default function AllCustomersPage() {
         ))}
       </div>
 
+
+      <div className="px-4 mb-3 flex gap-2 overflow-x-auto no-scrollbar">
+        {([
+          { value: 'any', label: 'Any status' },
+          { value: 'active', label: 'Active' },
+          { value: 'pending_verification', label: 'Pending verification' },
+          { value: 'suspended', label: 'Suspended' },
+        ] as { value: StatusFilter; label: string }[]).map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => setStatusFilter(opt.value)}
+            className={cn(
+              'flex-shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold',
+              statusFilter === opt.value ? 'bg-green-900 dark:bg-night-100 text-white dark:text-night-900' : 'bg-white dark:bg-night-700 border border-green-200 dark:border-night-500 text-green-600 dark:text-night-200',
+            )}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="px-4 mb-4 flex items-center gap-2">
+        <label htmlFor="customer-sort" className="text-xs font-semibold text-green-500 dark:text-night-200">Sort</label>
+        <select
+          id="customer-sort"
+          value={sort}
+          onChange={e => setSort(e.target.value as SortKey)}
+          className="rounded-full border border-green-200 bg-white px-3 py-1.5 text-xs font-bold text-green-700 dark:border-night-500 dark:bg-night-700 dark:text-night-100"
+        >
+          <option value="az">A–Z</option>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+        <span className="ml-auto text-xs text-green-500 dark:text-night-200">{filtered.length} shown</span>
+      </div>
+
       <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {isLoading ? (
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4">
@@ -99,14 +148,9 @@ export default function AllCustomersPage() {
                   <p className="text-green-900 dark:text-white text-sm font-semibold truncate">{customer.full_name}</p>
                   <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{customer.phone_number}</p>
                 </div>
-                <span className={cn(
-                  'text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0',
-                  customer.status === 'active' ? 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' : 'bg-red-50 dark:bg-red-900 text-red-500 dark:text-red-300',
-                )}>
-                  {customer.status === 'active' ? 'Active' : customer.status}
-                </span>
+                <StatusTag status={customer.status} />
                 <span role="button" aria-label={`Wallet history of ${customer.full_name}`} title="Wallet funding history"
-                  onClick={(e) => { e.stopPropagation(); navigate(`/director/customers/${customer.customer_number}#wallet`) }}
+                  onClick={(e) => { e.stopPropagation(); navigate(`/director/customers/${customer.customer_number}/wallet`) }}
                   className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"><Wallet className="h-4 w-4" /></span>
                 <ChevronRight className="w-4 h-4 text-green-300 dark:text-night-300 flex-shrink-0" />
               </button>

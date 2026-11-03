@@ -123,7 +123,7 @@ export function PostContributionSheet({
         </div>
 
         {/* Officer wallet balance */}
-        <div className="bg-green-50 border border-green-200 dark:border-night-500 rounded-2xl p-3 mb-5 flex items-center justify-between">
+        <div className="bg-green-50 border border-green-200 dark:border-night-500 rounded-2xl p-3 mb-5 flex items-center justify-between dark:bg-night-600">
           <div className="flex items-center gap-2">
             <Wallet className="w-4 h-4 text-green-600 dark:text-night-200" />
             <span className="text-green-700 dark:text-night-100 text-xs font-semibold">Your wallet balance</span>

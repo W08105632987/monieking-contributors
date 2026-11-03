@@ -22,6 +22,7 @@ import type { WalletTransaction } from '@/types'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 import { CoinSoundToggle } from '@/components/wallet/CoinSoundToggle'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 // ── Transaction item ──────────────────────────────────────────────
 function TxItem({ tx, onClick }: { tx: WalletTransaction; onClick: () => void }) {
@@ -472,7 +473,7 @@ export default function WalletPage() {
               </>
             ) : (
               <>
-                <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(summary?.total_in_kobo ?? 0)}</p>
+                <FitAmount className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(summary?.total_in_kobo ?? 0)}</FitAmount>
                 <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{summary?.range_label ?? 'All time'}</p>
               </>
             )}
@@ -491,7 +492,7 @@ export default function WalletPage() {
               </>
             ) : (
               <>
-                <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(summary?.total_out_kobo ?? 0)}</p>
+                <FitAmount className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(summary?.total_out_kobo ?? 0)}</FitAmount>
                 <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{summary?.range_label ?? 'All time'}</p>
               </>
             )}

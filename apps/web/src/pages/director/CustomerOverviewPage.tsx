@@ -1,18 +1,18 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Wallet, TrendingUp, TrendingDown, Coins, MoreVertical, Phone, MessageSquare, ChevronRight, Scale, UserRound } from 'lucide-react'
+import { ArrowLeft, Wallet, TrendingUp, TrendingDown, Coins, MoreVertical, Phone, MessageSquare, ChevronRight, Scale, UserRound, Settings2 } from 'lucide-react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
-import { formatNaira, formatDate, cn } from '@/lib/utils'
-import { CustomerAdminPanel } from '@/components/director/CustomerAdminPanel'
-import { WalletHistoryPanel } from '@/components/director/WalletHistoryPanel'
+import { formatNaira, formatDate } from '@/lib/utils'
+import { StatusTag } from '@/components/ui/StatusTag'
 import { Avatar } from '@/components/ui/Avatar'
 import { ManageMemberSheet } from '@/components/settings/ManageMemberSheet'
 import type { CustomerOverview } from '@/types'
+import { FitAmount } from '@/components/ui/FitAmount'
 
-interface CustomerExtra {
+export interface CustomerExtra {
   zone_name: string | null
   officer: { id: string; full_name: string; phone_number: string } | null
   is_manual_customer: boolean
@@ -23,7 +23,7 @@ interface CustomerExtra {
   disputes: { id: string; status: string; reason: string; entity_type: string; created_at: string }[]
 }
 
-function Row({ k, v }: { k: string; v: React.ReactNode }) {
+export function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 py-1.5">
       <span className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase tracking-wide shrink-0">{k}</span>
@@ -32,7 +32,7 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   )
 }
 
-function NinReveal({ customerId, linked }: { customerId: string; linked: boolean }) {
+export function NinReveal({ customerId, linked }: { customerId: string; linked: boolean }) {
   const [busy, setBusy] = useState(false)
   const [res, setRes] = useState<{ nin: string | null; last4: string | null; message: string | null } | null>(null)
   if (!linked) return <span>No NIN</span>
@@ -117,12 +117,7 @@ export default function CustomerOverviewPage() {
             <p className="text-green-500 dark:text-night-200 text-sm">{profile.phone_number} · Customer #{profile.customer_number}</p>
             <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">Joined {formatDate(profile.created_at)}</p>
           </div>
-          <span className={cn(
-            'ml-auto text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0',
-            profile.status === 'active' ? 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' : 'bg-red-50 dark:bg-red-900 text-red-500 dark:text-red-300',
-          )}>
-            {profile.status}
-          </span>
+          <StatusTag status={profile.status} className="ml-auto" />
         </div>
 
         {/* Contact actions */}
@@ -133,25 +128,6 @@ export default function CustomerOverviewPage() {
           <button onClick={() => setComposing('customer')} className="flex items-center justify-center gap-2 bg-white dark:bg-night-700 border-2 border-green-200 dark:border-night-500 text-green-800 dark:text-night-100 font-bold text-sm py-3 rounded-xl active:scale-95 transition-all">
             <MessageSquare className="w-4 h-4" /> Message
           </button>
-        </div>
-
-        <WalletHistoryPanel customerId={customerId!} />
-        <CustomerAdminPanel customerId={customerId!} name={profile.full_name} />
-
-        {/* Everything about them */}
-        <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4 divide-y divide-green-50 dark:divide-night-600">
-          <Row k="Phone" v={profile.phone_number} />
-          <Row k="Email" v={profile.email} />
-          <Row k="Zone" v={extra?.zone_name} />
-          <Row k="Officer" v={extra?.officer ? (
-            <span>{extra.officer.full_name} · <a className="underline" href={`tel:${extra.officer.phone_number}`}>{extra.officer.phone_number}</a></span>
-          ) : null} />
-          <Row k="Type" v={extra?.is_manual_customer ? 'Officer-managed (cash)' : 'Self-service (app)'} />
-          <Row k="Bank" v={extra?.bank.bank_name ? `${extra.bank.bank_name} · ${extra.bank.account_number}` : null} />
-          <Row k="Account name" v={extra?.bank.account_name} />
-          <Row k="NIN" v={<NinReveal customerId={customerId!} linked={!!profile.nin_linked} />} />
-          <Row k="SMS alerts" v={extra ? (extra.sms_alerts_enabled ? 'On' : 'Off') : null} />
-          {extra && extra.sms_accrued_kobo > 0 && <Row k="SMS charges owed" v={formatNaira(extra.sms_accrued_kobo)} />}
         </div>
 
         {/* Next of kin */}
@@ -178,7 +154,7 @@ export default function CustomerOverviewPage() {
               <Wallet className="w-4 h-4 text-green-600 dark:text-night-200" />
               <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase">Wallet</p>
             </div>
-            <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(wallet_balance_kobo)}</p>
+            <FitAmount className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(wallet_balance_kobo)}</FitAmount>
           </div>
           <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -203,82 +179,25 @@ export default function CustomerOverviewPage() {
           </div>
         </div>
 
-        {/* Cards */}
-        <h2 className="text-green-900 dark:text-white font-bold text-base mb-3">Contribution cards</h2>
-        {cards.length === 0 ? (
-          <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card text-center py-10 px-6">
-            <p className="text-green-500 dark:text-night-200 text-sm">No cards opened yet</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {cards.map(card => (
-              <button key={card.id} onClick={() => navigate(`/director/customers/${customerId}/cards/${card.id}`)} className="block w-full text-left bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 active:scale-[0.99] transition-all">
-                <div className="flex items-center justify-between mb-3">
-                  <span className={cn(
-                    'text-xs font-bold px-2.5 py-1 rounded-full',
-                    card.card_type === 'food' ? 'bg-amber-100 dark:bg-amber-500 text-amber-700 dark:text-amber-300' : 'bg-blue-100 text-blue-700',
-                  )}>
-                    {card.card_type === 'food' ? 'Food Card' : 'Regular Card'}
-                  </span>
-                  <span className="text-green-500 dark:text-night-200 text-xs flex items-center gap-1">{card.status} <ChevronRight className="w-3.5 h-3.5" /></span>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-center mb-3">
-                  <div>
-                    <p className="text-green-400 dark:text-night-300 text-xs">Contributed</p>
-                    <p className="text-green-900 dark:text-white font-bold text-sm">{formatNaira(card.total_contributed_kobo)}</p>
-                  </div>
-                  <div>
-                    <p className="text-green-400 dark:text-night-300 text-xs">Withdrawn</p>
-                    <p className="text-green-900 dark:text-white font-bold text-sm">{formatNaira(card.total_withdrawn_kobo)}</p>
-                  </div>
-                  <div>
-                    <p className="text-green-400 dark:text-night-300 text-xs">Available</p>
-                    <p className="text-green-900 dark:text-white font-bold text-sm">{formatNaira(card.available_balance_kobo)}</p>
-                  </div>
-                </div>
-                <div className="h-1.5 bg-green-50 dark:bg-night-600 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-green-600 dark:bg-night-400 rounded-full"
-                    style={{ width: `${Math.min(100, (card.total_days_contributed / 372) * 100)}%` }}
-                  />
-                </div>
-                <p className="text-green-400 dark:text-night-300 text-xs mt-1.5">
-                  {card.total_days_contributed}/372 days · rate {formatNaira(card.rate_kobo)}/day
-                </p>
-
-                {card.withdrawal_history.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-green-50 dark:border-night-600">
-                    <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase mb-2">Withdrawal history</p>
-                    {card.withdrawal_history.map(w => (
-                      <div key={w.id} className="flex items-center justify-between text-xs py-1">
-                        <span className="text-green-600 dark:text-night-200">{formatDate(w.requested_at)} · {w.status}</span>
-                        <span className="text-green-900 dark:text-white font-semibold">{formatNaira(w.net_payable_kobo)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Disputes */}
-        <h2 className="text-green-900 dark:text-white font-bold text-base mt-6 mb-3 flex items-center gap-2"><Scale className="w-4 h-4" /> Disputes &amp; complaints</h2>
-        {!extra || extra.disputes.length === 0 ? (
-          <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 text-center py-6 text-green-500 dark:text-night-200 text-sm">No disputes</div>
-        ) : (
-          <div className="space-y-2">
-            {extra.disputes.map(d => (
-              <button key={d.id} onClick={() => navigate(`/disputes/${d.id}`)} className="w-full flex items-center justify-between bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 px-4 py-3 text-left">
-                <div>
-                  <p className="text-green-900 dark:text-white text-sm font-semibold">{d.reason.replace(/_/g, ' ')}</p>
-                  <p className="text-green-400 dark:text-night-300 text-xs">{formatDate(d.created_at)} · {d.entity_type.replace(/_/g, ' ')}</p>
-                </div>
-                <span className="flex items-center gap-1 text-xs font-bold text-green-700 dark:text-night-100">{d.status.replace(/_/g, ' ')} <ChevronRight className="w-3.5 h-3.5" /></span>
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Sections: each opens its own page so this one stays light */}
+        <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card divide-y divide-green-50 dark:divide-night-600 mb-4">
+          {([
+            { key: 'wallet', label: 'Wallet & funding history', hint: 'How the wallet was funded and every transaction', Icon: Wallet },
+            { key: 'cards', label: 'Contribution cards', hint: `${cards.length} card${cards.length === 1 ? '' : 's'} and withdrawal history`, Icon: Coins },
+            { key: 'details', label: 'Profile, bank & KYC', hint: 'Contact, officer, bank account, NIN, SMS alerts', Icon: UserRound },
+            { key: 'disputes', label: 'Disputes & complaints', hint: extra ? `${extra.disputes.length} on record` : 'Open to view', Icon: Scale },
+            { key: 'admin', label: 'Admin tools', hint: 'Phone change, name correction, deletion', Icon: Settings2 },
+          ] as const).map(({ key, label, hint, Icon }) => (
+            <button key={key} onClick={() => navigate(`/director/customers/${customerId}/${key}`)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-green-50/50 dark:active:bg-night-600/50">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700 dark:bg-night-600 dark:text-night-100"><Icon className="h-4 w-4" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-bold text-green-900 dark:text-white">{label}</span>
+                <span className="block truncate text-xs text-green-500 dark:text-night-200">{hint}</span>
+              </span>
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-green-300 dark:text-night-300" />
+            </button>
+          ))}
+        </div>
       </div>
 
       {composing && (

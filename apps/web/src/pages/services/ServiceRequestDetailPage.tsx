@@ -6,6 +6,7 @@ import { formatNaira, formatDateTime } from '@/lib/utils'
 import type { IdentityServiceRequest, IdentityRequestStatus } from '@/types'
 import { CATEGORY_LABEL } from '@/lib/identityServices'
 import { FallbackError } from '@/components/ui/FallbackError'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 const STATUS_META: Record<IdentityRequestStatus, { label: string; icon: typeof CheckCircle2; className: string }> = {
   completed: { label: 'Completed', icon: CheckCircle2, className: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
@@ -70,7 +71,7 @@ export default function ServiceRequestDetailPage() {
                 })()}
                 <span className="text-xs text-green-400 dark:text-night-300">{CATEGORY_LABEL[req.service_category]}</span>
               </div>
-              <p className="text-green-900 dark:text-white font-extrabold text-2xl">{formatNaira(req.amount_charged_kobo)}</p>
+              <FitAmount className="text-green-900 dark:text-white font-extrabold text-2xl">{formatNaira(req.amount_charged_kobo)}</FitAmount>
               <p className="text-green-400 dark:text-night-300 text-xs mt-1">
                 Submitted {formatDateTime(req.created_at)}
                 {req.completed_at && ` · Completed ${formatDateTime(req.completed_at)}`}

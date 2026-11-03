@@ -10,6 +10,7 @@ import type { IdentityService, IdentityServiceRequest } from '@/types'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { useIsManualService } from '@/lib/manualServices'
 import { verifyStatus } from '@/lib/verificationApi'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 export default function ServiceRequestFormPage() {
   const navigate = useNavigate()
@@ -158,7 +159,7 @@ export default function ServiceRequestFormPage() {
             )}
             <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-5">
               <p className="text-green-500 dark:text-night-300 text-xs font-semibold uppercase tracking-wide mb-1">Cost</p>
-              <p className="text-green-900 dark:text-white text-2xl font-extrabold">{formatNaira(service.price_kobo)}</p>
+              <FitAmount className="text-green-900 dark:text-white text-2xl font-extrabold">{formatNaira(service.price_kobo)}</FitAmount>
               <p className="text-green-400 dark:text-night-300 text-xs mt-1">
                 {customerId ? "Charged from the customer's wallet once this completes." : 'Charged from your wallet once this completes.'}
               </p>

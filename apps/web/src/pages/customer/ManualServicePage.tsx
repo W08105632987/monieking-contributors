@@ -20,6 +20,7 @@ import { AttestationForm } from '@/components/manual-services/AttestationForm'
 import { CacRegistrationForm } from '@/components/manual-services/CacRegistrationForm'
 import { SelfServiceModificationForm } from '@/components/manual-services/SelfServiceModificationForm'
 import { TemplateForm, type TemplateData, type TemplatePayload } from '@/components/manual-services/TemplateForm'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 // ─── Service metadata ────────────────────────────────────────────────────────
 export const MANUAL_SERVICE_META: Record<string, {
@@ -389,7 +390,7 @@ export default function ManualServicePage({ serviceKeyProp }: { serviceKeyProp?:
             {priceKobo > 0 ? (
               <>
                 <p className="text-xs text-green-500 dark:text-night-300 font-semibold">Amount to pay</p>
-                <p className="text-green-900 dark:text-white font-extrabold text-xl leading-tight">{formatNaira(priceKobo)}</p>
+                <FitAmount className="text-green-900 dark:text-white font-extrabold text-xl leading-tight">{formatNaira(priceKobo)}</FitAmount>
               </>
             ) : quoteFailed ? (
               <p className="text-xs text-green-600 dark:text-night-300 font-semibold">

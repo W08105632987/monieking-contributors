@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn, formatNaira, formatDateTime } from '@/lib/utils'
 import { FallbackError } from '@/components/ui/FallbackError'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 interface ArchiveDetail {
   year_label: string
@@ -72,7 +73,7 @@ export default function FoodYearArchiveDetailPage() {
 
             <div className={cn('rounded-2xl p-5 text-center', data.net_result_kobo >= 0 ? 'bg-green-900 dark:bg-green-950' : 'bg-red-500')}>
               <p className="text-white/70 text-xs font-bold uppercase tracking-wide">{data.net_result_kobo >= 0 ? 'Profit' : 'Loss'} for {data.year_label}</p>
-              <p className="text-white text-3xl font-extrabold mt-1">{formatNaira(Math.abs(data.net_result_kobo))}</p>
+              <FitAmount className="text-white text-3xl font-extrabold mt-1">{formatNaira(Math.abs(data.net_result_kobo))}</FitAmount>
             </div>
           </>
         )}

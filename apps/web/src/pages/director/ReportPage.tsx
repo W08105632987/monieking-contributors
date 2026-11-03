@@ -5,6 +5,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recha
 import { api } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
 import type { ProfitReport } from '@/types'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 const COLORS = ['#052E16', '#D97706']
 
@@ -58,7 +59,7 @@ export default function ReportPage() {
               style={{ background: 'linear-gradient(135deg, #052E16 0%, #064E3B 60%, #065F46 100%)' }}
             >
               <p className="text-green-300 dark:text-night-300 text-xs font-semibold uppercase tracking-widest mb-1">Total company profit</p>
-              <p className="text-white text-4xl font-extrabold tracking-tight">{formatNaira(data.total_profit_kobo)}</p>
+              <FitAmount className="text-white text-4xl font-extrabold tracking-tight">{formatNaira(data.total_profit_kobo)}</FitAmount>
               <p className="text-green-400 dark:text-night-300 text-xs mt-1">{label} · sum of all charges collected</p>
             </div>
 
@@ -92,7 +93,7 @@ export default function ReportPage() {
                     <p className="text-green-400 dark:text-night-300 text-xs">{data.card_withdrawal_count} paid withdrawal{data.card_withdrawal_count === 1 ? '' : 's'}</p>
                   </div>
                 </div>
-                <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(data.card_withdrawal_charges_kobo)}</p>
+                <FitAmount className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(data.card_withdrawal_charges_kobo)}</FitAmount>
               </div>
 
               <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4">
@@ -105,7 +106,7 @@ export default function ReportPage() {
                     <p className="text-green-400 dark:text-night-300 text-xs">{data.instant_withdrawal_count} paid withdrawal{data.instant_withdrawal_count === 1 ? '' : 's'}</p>
                   </div>
                 </div>
-                <p className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(data.instant_withdrawal_charges_kobo)}</p>
+                <FitAmount className="text-green-900 dark:text-white text-xl font-extrabold">{formatNaira(data.instant_withdrawal_charges_kobo)}</FitAmount>
               </div>
 
               <div className="bg-green-900 dark:bg-night-100 rounded-2xl p-4 flex items-center justify-between">

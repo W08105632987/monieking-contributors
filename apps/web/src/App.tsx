@@ -79,8 +79,10 @@ const DirectorDashboard      = lazy(() => import('@/pages/director/DashboardPage
 const DirectorWithdrawals    = lazy(() => import('@/pages/director/WithdrawalsPage'))
 const DirectorStaff          = lazy(() => import('@/pages/director/StaffPage'))
 const DirectorOfficerDetail  = lazy(() => import('@/pages/director/OfficerDetailPage'))
+const DirectorOfficerSection = lazy(() => import('@/pages/director/OfficerSectionPage'))
 const DirectorAllCustomers   = lazy(() => import('@/pages/director/AllCustomersPage'))
 const DirectorCustomerDetail = lazy(() => import('@/pages/director/CustomerOverviewPage'))
+const DirectorCustomerSection = lazy(() => import('@/pages/director/CustomerSectionPage'))
 const DirectorSettings       = lazy(() => import('@/pages/director/BusinessSettingsPage'))
 const DirectorIdentityServices = lazy(() => import('@/pages/director/IdentityServicesPage'))
 const DirectorServiceBuilder = lazy(() => import('@/pages/director/ServiceBuilderPage'))
@@ -389,8 +391,10 @@ export default function App() {
             <Route path="/director/dashboard"       element={<AuthGuard allowedRoles={['director']}><DirectorDashboard /></AuthGuard>} />
             <Route path="/director/withdrawals"     element={<AuthGuard allowedRoles={['director']}><DirectorWithdrawals /></AuthGuard>} />
             <Route path="/director/staff"           element={<AuthGuard allowedRoles={['director']}><DirectorStaff /></AuthGuard>} />
+            <Route path="/director/officers/:officerId/:section" element={<AuthGuard allowedRoles={['director']}><DirectorOfficerSection /></AuthGuard>} />
             <Route path="/director/officers/:officerId" element={<AuthGuard allowedRoles={['director']}><DirectorOfficerDetail /></AuthGuard>} />
             <Route path="/director/customers"       element={<AuthGuard allowedRoles={['director']}><DirectorAllCustomers /></AuthGuard>} />
+            <Route path="/director/customers/:customerId/:section" element={<AuthGuard allowedRoles={['director']}><DirectorCustomerSection /></AuthGuard>} />
             <Route path="/director/customers/:customerId/cards/:cardId" element={<AuthGuard allowedRoles={['director']}><DirectorCardDetail /></AuthGuard>} />
             <Route path="/director/customers/:customerId" element={<AuthGuard allowedRoles={['director']}><DirectorCustomerDetail /></AuthGuard>} />
             <Route path="/director/settings"        element={<AuthGuard allowedRoles={['director']}><DirectorSettings /></AuthGuard>} />

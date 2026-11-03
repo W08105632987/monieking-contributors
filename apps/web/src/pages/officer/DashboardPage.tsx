@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import type { ContributionCard, User } from '@/types'
 import { SetupChecklist } from '@/components/setup/SetupChecklist'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 const OFFICER_WALLET_WITHDRAWAL_CHARGE_KOBO = 5_000 // ₦50, flat
 
@@ -119,7 +120,7 @@ function OfficerWalletWithdrawSheet({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <div className="bg-green-50 border border-green-200 dark:border-night-500 rounded-2xl p-4 mb-5">
+        <div className="bg-green-50 border border-green-200 dark:border-night-500 rounded-2xl p-4 mb-5 dark:bg-night-600">
           <p className="text-green-500 dark:text-night-200 text-xs font-bold uppercase tracking-wide mb-2">Payout to</p>
           <p className="text-green-900 dark:text-white font-bold text-sm">{user?.account_name}</p>
           <p className="text-green-700 dark:text-night-100 text-sm font-semibold tracking-widest mt-0.5">{user?.account_number}</p>
@@ -227,7 +228,7 @@ export default function OfficerDashboardPage() {
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-400"><BadgeDollarSign className="h-6 w-6 text-green-950" /></div>
             <div className="min-w-0 flex-1">
               <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-300">My earnings</p>
-              <p className="text-2xl font-extrabold">{formatNaira(earnings?.available_kobo ?? 0)}</p>
+              <FitAmount className="text-2xl font-extrabold">{formatNaira(earnings?.available_kobo ?? 0)}</FitAmount>
               <p className="text-[11px] text-green-200">{earnings && earnings.pending_payout_kobo > 0 ? `${formatNaira(earnings.pending_payout_kobo)} payout on the way · ` : ''}You earn {earnings?.percent ?? '…'}% of the company's profit</p>
             </div>
           </button>

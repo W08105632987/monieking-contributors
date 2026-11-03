@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/auth.store'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 import { cn, formatNaira } from '@/lib/utils'
+import { FitAmount } from '@/components/ui/FitAmount'
 
 /**
  * An exact, non-interactive snapshot of the real officer card screen (pages/officer/CardDetailPage.tsx):
@@ -44,7 +45,7 @@ function DemoOfficerScreen({ scale = 0.72 }: { scale?: number }) {
               </div>
               <div className="relative z-10">
                 <p className="mb-1 text-xs uppercase tracking-wide text-green-400">Daily Rate</p>
-                <p className="text-3xl font-extrabold tracking-tight text-amber-400">{formatNaira(rate)}</p>
+                <FitAmount className="text-3xl font-extrabold tracking-tight text-amber-400">{formatNaira(rate)}</FitAmount>
                 <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-green-800"><div className="h-full rounded-full" style={{ width: `${progress}%`, background: '#F59E0B' }} /></div>
                 <div className="mt-1.5 flex justify-between"><p className="text-xs text-green-400">{days} / 372 days</p><p className="text-xs text-green-400">{progress}%</p></div>
                 <div className="mt-2 flex items-center gap-1"><RotateCcw className="h-3 w-3 text-green-500" /><p className="text-xs text-green-500">Tap to see contribution grid</p></div>
