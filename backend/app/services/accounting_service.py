@@ -53,6 +53,15 @@ async def catalog(db: AsyncSession) -> list[dict]:
     for code, name in rows:
         items.append({"key": f"identity.{code}", "label": name, "provider": "Provider for this service", "group": "Identity services", "mode": "flat",
                       "hint": "What the provider charges us each time a customer uses this service."})
+    seen = {i["key"] for i in items}
+    # Worker/provider-handled services (NIN modification, BVN modification, CAC ...) are priced under the SAME key as the
+    # identity service of that name, so a cost typed once is used by the report. Services with no identity twin get a key too.
+    for code, title in (await db.execute(text("SELECT service_code, title FROM service_templates WHERE archived_at IS NULL ORDER BY title"))).all():
+        k = f"identity.{code}"
+        if k not in seen:
+            items.append({"key": k, "label": title, "provider": "Provider for this service", "group": "Identity services", "mode": "flat",
+                          "hint": "What the provider charges us each time a customer's request is completed. Type 0 if it costs nothing."})
+            seen.add(k)
     return items
 
 
@@ -118,6 +127,26 @@ def _row(key, label, group, revenue, cost, count, volume=0, source="rate", unpri
             "margin_kobo": int(revenue) - int(cost), "cost_source": source, "unpriced_events": int(unpriced), "rate_keys": rate_keys or [], "note": note}
 
 
+
+_SAFE = __import__("re").compile(r"[^a-z0-9_\-]")
+
+
+def _safe(code: str) -> str:
+    return _SAFE.sub("", (code or "").lower())
+
+
+async def _titles(db: AsyncSession) -> dict[str, str]:
+    out = {c: n for c, n in (await db.execute(text("SELECT code, name FROM identity_services"))).all()}
+    out.update({c: t for c, t in (await db.execute(text("SELECT service_code, title FROM service_templates"))).all()})
+    return out
+
+
+def _manual_row(cat: str, title: str, rev, comm, c, n, un) -> dict:
+    key = f"identity.{cat}"
+    return _row(f"manual_{cat}", title, "Services", rev, int(comm) + int(c), n, 0, "rate", un, [key],
+                "Cost = the worker's commission + what the provider charges us per request (price book). Counted when the job is completed successfully; failed jobs are refunded and earn nothing.")
+
+
 async def service_rows(db: AsyncSession, start: datetime, end: datetime, rates: dict | None = None) -> list[dict]:
     rates = rates if rates is not None else await _all_rates(db)
     P = {"s": start, "e": end}
@@ -181,9 +210,17 @@ async def service_rows(db: AsyncSession, start: datetime, end: datetime, rates: 
             c, _, un = await _priced(db, rates, key, start, end, "verification_slips", "created_at", f"tier = '{tier}'")
             rows.append(_row(f"techhub_slip_{tier}", f"Techhub slip - {tier}", "Techhub", rev, c, n, 0, "rate", un, [key]))
 
-    # Manual (worker-handled) services: our cost is the worker's commission.
-    n, rev, comm = await _one(db, "SELECT COUNT(*), COALESCE(SUM(price_kobo),0), COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0) FROM manual_service_requests WHERE status = 'successful' AND completed_at >= :s AND completed_at < :e", **P)
-    rows.append(_row("manual_services", "Worker-handled services", "Services", rev, comm, n, 0, "measured", 0, [], "Cost is the commission paid to workers (reversed commissions excluded)."))
+    # Worker/provider-handled services (NIN modification, BVN modification ...): one row per service so each can be priced.
+    titles = await _titles(db)
+    for cat, n, rev, comm in (await db.execute(text("SELECT service_category, COUNT(*), COALESCE(SUM(price_kobo),0), COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0) FROM manual_service_requests WHERE status = 'successful' AND completed_at >= :s AND completed_at < :e GROUP BY 1 ORDER BY 1"), P)).all():
+        sc = _safe(cat)
+        c, _, un = await _priced(db, rates, f"identity.{sc}", start, end, "manual_service_requests", "completed_at", f"status = 'successful' AND service_category = '{sc}'", "price_kobo")
+        rows.append(_manual_row(sc, titles.get(cat, cat.replace("_", " ").title()), rev, comm, c, n, un))
+
+    # Affiliated officers earn a share of the withdrawal charge: that is money the company pays out.
+    (oc, on_) = await _one(db, "SELECT COALESCE(SUM(amount_kobo),0), COUNT(*) FROM officer_commissions WHERE created_at >= :s AND created_at < :e", **P)
+    if on_:
+        rows.append(_row("officer_commissions", "Affiliated officer commissions", "Withdrawals", 0, oc, on_, 0, "measured", 0, [], "Their share of the withdrawal charge, paid when a withdrawal is marked paid."))
     return rows
 
 
@@ -316,10 +353,23 @@ async def service_rows_multi(db: AsyncSession, windows: list[Window], rates: dic
                 if agg[i][0]:
                     out[i].append(_row(f"techhub_slip_{tier}", f"Techhub slip - {tier}", "Techhub", agg[i][1], pr[i][0], agg[i][0], 0, "rate", pr[i][2], [key]))
 
-    man = await _one_multi(db, windows, "completed_at", "COUNT(*), COALESCE(SUM(price_kobo),0), COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0)", "manual_service_requests", "status = 'successful'", width=3)
+    titles = await _titles(db)
+    mcats: dict[str, set[int]] = {}
+    for i, vals in await _grouped(db, windows, "completed_at", "COUNT(*)", "manual_service_requests", "status = 'successful'", keys="service_category"):
+        mcats.setdefault(vals[0], set()).add(i)
+    for cat in sorted(mcats):
+        sc = _safe(cat)
+        where = f"status = 'successful' AND service_category = '{sc}'"
+        agg = await _one_multi(db, windows, "completed_at", "COALESCE(SUM(price_kobo),0), COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0), COUNT(*)", "manual_service_requests", where, width=3)
+        pr = await _priced_multi(db, rates, f"identity.{sc}", windows, "manual_service_requests", "completed_at", where, "price_kobo")
+        for i in sorted(mcats[cat]):
+            rev, comm, n = agg[i]
+            out[i].append(_manual_row(sc, titles.get(cat, cat.replace("_", " ").title()), rev, comm, pr[i][0], n, pr[i][2]))
+
+    oc = await _one_multi(db, windows, "created_at", "COALESCE(SUM(amount_kobo),0), COUNT(*)", "officer_commissions", width=2)
     for i in range(W):
-        n, rev, comm = man[i]
-        out[i].append(_row("manual_services", "Worker-handled services", "Services", rev, comm, n, 0, "measured", 0, [], "Cost is the commission paid to workers (reversed commissions excluded)."))
+        if oc[i][1]:
+            out[i].append(_row("officer_commissions", "Affiliated officer commissions", "Withdrawals", 0, oc[i][0], oc[i][1], 0, "measured", 0, [], "Their share of the withdrawal charge, paid when a withdrawal is marked paid."))
     return out
 
 
@@ -418,6 +468,12 @@ async def holdings(db: AsyncSession) -> dict:
     """How much the company should be holding right now, and why."""
     (wallets,) = await _one(db, "SELECT COALESCE(SUM(balance_kobo),0) FROM wallets")
     (pending,) = await _one(db, "SELECT COALESCE(SUM(net_payable_kobo),0) FROM withdrawals WHERE status IN ('pending','claimed')")
+    (jobs_kobo, jobs_n) = await _one(db, "SELECT COALESCE(SUM(price_kobo),0), COUNT(*) FROM manual_service_requests WHERE status IN ('pending','processing','awaiting_provider')")
+    (worker_bal,) = await _one(db, "SELECT COALESCE(SUM(commission_balance_kobo),0) FROM users WHERE role::text = 'service_worker'")
+    (worker_pending,) = await _one(db, "SELECT COALESCE(SUM(amount_kobo),0) FROM service_worker_withdrawals WHERE status::text = 'pending'")
+    (off_earned,) = await _one(db, "SELECT COALESCE(SUM(amount_kobo),0) FROM officer_commissions")
+    (off_paid,) = await _one(db, "SELECT COALESCE(SUM(amount_kobo),0) FROM officer_payouts WHERE status = 'paid'")
+    owed = int(worker_bal) + int(worker_pending) + max(0, int(off_earned) - int(off_paid))
     st = await db.get(AccountingSettings, 1)
     days = st.buffer_days if st else 14
     today = datetime.now(WAT).date()
@@ -428,4 +484,65 @@ async def holdings(db: AsyncSession) -> dict:
     daily = (sum(r["cost_kobo"] for r in rows) + exp["total_kobo"]) // 30
     buffer = daily * days
     return {"wallet_balances_kobo": int(wallets), "pending_payouts_kobo": int(pending), "avg_daily_outgoings_kobo": int(daily), "buffer_days": days,
-            "buffer_kobo": int(buffer), "should_hold_kobo": int(wallets) + int(pending) + int(buffer)}
+            "buffer_kobo": int(buffer),
+            "in_progress_jobs_kobo": int(jobs_kobo), "in_progress_jobs": int(jobs_n), "owed_commissions_kobo": owed,
+            "should_hold_kobo": int(wallets) + int(pending) + int(jobs_kobo) + owed + int(buffer)}
+
+
+# ── money trail: every wallet movement, and where the report counts it ────────
+# (type, entity) -> (what it is, how the report treats it, accounting row it feeds)
+_TRAIL: dict[tuple[str, str], tuple[str, str, str | None]] = {
+    ("credit", "wallet_funding"):        ("Customers funded wallets", "customer_money", "funding"),
+    ("debit", "wallet_funding_fee"):     ("Funding fee charged", "revenue", "funding"),
+    ("debit", "sms_fee"):                ("SMS alert fees", "revenue", "sms"),
+    ("debit", "bill_payment"):           ("Bills, airtime and data paid", "pass_through", "bills"),
+    ("debit", "techhub_lookup"):         ("Verification checks", "revenue", "techhub"),
+    ("debit", "techhub_slip"):           ("Verification slips", "revenue", "techhub"),
+    ("debit", "identity_service"):       ("Identity services", "revenue", "identity"),
+    ("debit", "manual_service_request"): ("Worker/provider-handled services (NIN, BVN, CAC ...)", "revenue_on_completion", "manual"),
+    ("credit", "manual_service_request"):("Refunds of failed services", "refund", "manual"),
+    ("debit", "withdrawal"):             ("Withdrawals taken from wallets", "customer_money", "withdrawals"),
+    ("credit", "withdrawal"):            ("Withdrawal reversals", "customer_money", "withdrawals"),
+    ("debit", "contribution_card"):      ("Card contributions from wallets", "customer_money", None),
+    ("credit", "contribution_card"):     ("Card refunds to wallets", "customer_money", None),
+    ("debit", "coop"):                   ("Cooperative module", "separate_ledger", None),
+    ("credit", "coop"):                  ("Cooperative module", "separate_ledger", None),
+}
+_TREATMENT_TEXT = {
+    "revenue": "Counted as revenue.",
+    "revenue_on_completion": "Counted as revenue when the job completes successfully; money for jobs still open is held, not yet income.",
+    "pass_through": "Only our markup and Monnify's commission are income; the rest is passed on to the biller.",
+    "refund": "Money returned to customers; those jobs earn nothing.",
+    "customer_money": "Belongs to customers (savings, wallet balance, payouts). Not income.",
+    "separate_ledger": "Tracked in the cooperative's own ledger, not in this report.",
+    "unmapped": "Not counted anywhere. Check it.",
+}
+
+
+async def money_trail(db: AsyncSession, start: date, end: date) -> dict:
+    s, e = day_bounds(start, end)
+    rows = (await db.execute(text(
+        "SELECT type::text, category::text, COALESCE(related_entity_type, ''), COUNT(*), COALESCE(SUM(amount_kobo), 0) "
+        "FROM wallet_transactions WHERE created_at >= :s AND created_at < :e GROUP BY 1, 2, 3 ORDER BY 5 DESC"), {"s": s, "e": e})).all()
+    lines, attention = [], []
+    for typ, cat, ent, n, total in rows:
+        known = _TRAIL.get((typ, ent))
+        if known:
+            label, treat, feeds = known
+        elif cat in ("contribution", "officer_contribution", "withdrawal"):
+            label, treat, feeds = (f"{cat.replace('_', ' ').title()} ({typ})", "customer_money", None)
+        elif cat == "reversal":
+            label, treat, feeds = (f"Reversal ({typ}){' - ' + ent.replace('_', ' ') if ent else ''}", "customer_money", None)
+        elif cat == "manual_debit":
+            label, treat, feeds = ("Director manual debit from a wallet", "unmapped", None)
+        else:
+            label, treat, feeds = (f"{cat.replace('_', ' ').title()} / {ent or 'no source'} ({typ})", "unmapped", None)
+        line = {"type": typ, "category": cat, "source": ent or None, "label": label, "count": int(n), "total_kobo": int(total),
+                "treatment": treat, "treatment_text": _TREATMENT_TEXT[treat], "feeds": feeds}
+        lines.append(line)
+        if treat == "unmapped":
+            attention.append(line)
+    # Jobs paid for but not finished: money held, income not yet earned.
+    (jn, jk) = await _one(db, "SELECT COUNT(*), COALESCE(SUM(price_kobo),0) FROM manual_service_requests WHERE status IN ('pending','processing','awaiting_provider') AND created_at >= :s AND created_at < :e", s=s, e=e)
+    return {"start": start.isoformat(), "end": end.isoformat(), "lines": lines, "attention": attention,
+            "open_jobs": {"count": int(jn), "held_kobo": int(jk)}}

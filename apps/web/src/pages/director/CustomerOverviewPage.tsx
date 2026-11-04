@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Wallet, TrendingUp, TrendingDown, Coins, MoreVertical, Phone, MessageSquare, ChevronRight, Scale, UserRound, Settings2 } from 'lucide-react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { ArrowLeft, Wallet, TrendingUp, TrendingDown, Coins, MoreVertical, MapPin, Phone, MessageSquare, ChevronRight, Scale, UserRound, Settings2 } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira, formatDate } from '@/lib/utils'
+import { MoveSheet } from '@/components/director/ZoneCustomersOverview'
 import { StatusTag } from '@/components/ui/StatusTag'
 import { Avatar } from '@/components/ui/Avatar'
 import { ManageMemberSheet } from '@/components/settings/ManageMemberSheet'
@@ -50,7 +51,9 @@ export function NinReveal({ customerId, linked }: { customerId: string; linked: 
 export default function CustomerOverviewPage() {
   const { customerId } = useParams()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const [managing, setManaging] = useState(false)
+  const [movingZone, setMovingZone] = useState(false)
   const [composing, setComposing] = useState<null | 'customer' | 'kin'>(null)
   const [msg, setMsg] = useState('')
   const [alsoSms, setAlsoSms] = useState(false)
@@ -65,6 +68,18 @@ export default function CustomerOverviewPage() {
       ? api.post(`/director-customers/${customerId}/message-kin`, { body: msg })
       : api.post(`/director-customers/${customerId}/message`, { body: msg, also_sms: alsoSms }),
     onSuccess: () => { toast.success(composing === 'kin' ? 'SMS sent to next of kin' : 'Message sent to their notifications'); setComposing(null); setMsg(''); setAlsoSms(false) },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  })
+
+  const moveZone = useMutation({
+    mutationFn: ({ id, ...b }: { id: string; zone_id: string; clear_commission: boolean }) => api.post('/director-zones/customers/move', { customer_ids: [id], ...b }),
+    onSuccess: (r: any) => {
+      toast.success(`Moved to ${r.data.zone_name}`)
+      setMovingZone(false)
+      qc.invalidateQueries({ queryKey: ['customer-overview', customerId] })
+      qc.invalidateQueries({ queryKey: ['customer-extra', customerId] })
+      qc.invalidateQueries({ queryKey: ['all-customers'] })
+    },
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
@@ -118,6 +133,18 @@ export default function CustomerOverviewPage() {
             <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">Joined {formatDate(profile.created_at)}</p>
           </div>
           <StatusTag status={profile.status} className="ml-auto" />
+        </div>
+
+        {/* Zone: any customer, including one who registered alone, can be placed under a zone */}
+        <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 mb-4 flex items-center gap-3">
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700 dark:bg-night-600 dark:text-night-100"><MapPin className="h-4 w-4" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-green-500 dark:text-night-200 text-xs font-semibold uppercase">Zone</p>
+            <p className="truncate text-sm font-bold text-green-900 dark:text-white">{profile.zone_name ?? (extra?.zone_name ?? 'Not in any zone')}</p>
+          </div>
+          <button onClick={() => setMovingZone(true)} className="flex-shrink-0 rounded-full bg-green-900 px-4 py-2 text-xs font-bold text-white dark:bg-night-100 dark:text-night-900">
+            {profile.zone_id ? 'Change zone' : 'Move to a zone'}
+          </button>
         </div>
 
         {/* Contact actions */}
@@ -220,6 +247,10 @@ export default function CustomerOverviewPage() {
       )}
 
       <AnimatePresence>
+        {movingZone && (
+          <MoveSheet count={1} currentZoneId={profile.zone_id} affiliated={!!profile.commission_officer_id} busy={moveZone.isPending}
+            onClose={() => setMovingZone(false)} onMove={(zone_id, clear_commission) => moveZone.mutate({ id: profile.id, zone_id, clear_commission })} />
+        )}
         {managing && (
           <ManageMemberSheet
             member={profile}

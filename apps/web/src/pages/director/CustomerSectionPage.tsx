@@ -6,6 +6,7 @@ import { formatNaira, formatDate, cn } from '@/lib/utils'
 import { CustomerAdminPanel } from '@/components/director/CustomerAdminPanel'
 import { WalletHistoryPanel } from '@/components/director/WalletHistoryPanel'
 import type { CustomerOverview } from '@/types'
+import { useGoBack } from '@/hooks/useGoBack'
 import { Row, NinReveal, type CustomerExtra } from './CustomerOverviewPage'
 
 const TITLES = {
@@ -22,6 +23,7 @@ const box = 'bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark
 export default function CustomerSectionPage() {
   const { customerId, section } = useParams()
   const navigate = useNavigate()
+  const goBack = useGoBack(`/director/customers/${customerId}`)
   const valid = !!section && section in TITLES
   const key = section as Section
 
@@ -43,7 +45,7 @@ export default function CustomerSectionPage() {
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
       <header className="flex items-center gap-3 px-4 py-3">
-        <button onClick={() => navigate(`/director/customers/${customerId}`)} aria-label="Back to customer" className="w-9 h-9 rounded-full bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 flex items-center justify-center">
+        <button onClick={goBack} aria-label="Back" className="w-9 h-9 rounded-full bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 flex items-center justify-center">
           <ArrowLeft className="w-4 h-4 text-green-700 dark:text-night-100" />
         </button>
         <div className="min-w-0">

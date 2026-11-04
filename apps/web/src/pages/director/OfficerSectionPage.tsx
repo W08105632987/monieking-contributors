@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useParams, useNavigate, Navigate } from 'react-router-dom'
+import { useParams, Navigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
+import { useGoBack } from '@/hooks/useGoBack'
 import { CustomerStatsPanel } from '@/components/dashboard/CustomerStatsPanel'
 import { OfficerContributionCard } from '@/components/dashboard/OfficerContributionCard'
 import { CustomerAdminPanel } from '@/components/director/CustomerAdminPanel'
@@ -62,7 +63,7 @@ function CoverageHistory({ officerId }: { officerId: string }) {
 
 export default function OfficerSectionPage() {
   const { officerId, section } = useParams()
-  const navigate = useNavigate()
+  const goBack = useGoBack(`/director/officers/${officerId}`)
   const valid = !!section && section in TITLES
   const key = section as Section
 
@@ -84,7 +85,7 @@ export default function OfficerSectionPage() {
   return (
     <div className="min-h-dvh flex flex-col bg-green-50 dark:bg-night-800">
       <header className="flex items-center gap-3 px-4 py-3">
-        <button onClick={() => navigate(`/director/officers/${officerId}`)} aria-label="Back to officer" className="w-9 h-9 rounded-full bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 flex items-center justify-center">
+        <button onClick={goBack} aria-label="Back" className="w-9 h-9 rounded-full bg-white dark:bg-night-700 border border-green-100 dark:border-night-500 flex items-center justify-center">
           <ArrowLeft className="w-4 h-4 text-green-700 dark:text-night-100" />
         </button>
         <div className="min-w-0">

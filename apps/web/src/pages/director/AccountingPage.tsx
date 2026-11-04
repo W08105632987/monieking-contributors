@@ -21,13 +21,15 @@ interface RateRow { id: string; mode: 'flat' | 'percent'; value: number; cap_kob
 interface Rate { key: string; label: string; group: string; provider: string; mode: 'flat' | 'percent'; hint: string; current: RateRow | null; history: RateRow[] }
 interface Income { id: string; earned_on: string; source: string; description: string; amount_kobo: number }
 interface Expense { id: string; spent_on: string; category: string; description: string; amount_kobo: number }
-interface Holdings { wallet_balances_kobo: number; pending_payouts_kobo: number; avg_daily_outgoings_kobo: number; buffer_days: number; buffer_kobo: number; should_hold_kobo: number }
+interface Holdings { wallet_balances_kobo: number; pending_payouts_kobo: number; avg_daily_outgoings_kobo: number; buffer_days: number; buffer_kobo: number; should_hold_kobo: number; in_progress_jobs_kobo?: number; in_progress_jobs?: number; owed_commissions_kobo?: number }
+interface TrailLine { type: string; category: string; source: string | null; label: string; count: number; total_kobo: number; treatment: string; treatment_text: string; feeds: string | null }
+interface Trail { lines: TrailLine[]; attention: TrailLine[]; open_jobs: { count: number; held_kobo: number } }
 
 const card = 'rounded-2xl border border-green-100 bg-white p-4 shadow-card dark:border-night-500 dark:bg-night-700'
 const input = 'w-full rounded-xl border border-green-200 bg-white px-3 py-2 text-sm text-green-950 outline-none focus:border-green-500 dark:border-night-500 dark:bg-night-600 dark:text-white'
 const btn = 'rounded-xl bg-green-600 px-4 py-2 text-sm font-bold text-white transition-transform active:scale-95 disabled:opacity-50'
 const REPORT_TIMEOUT = 60_000
-const TABS = ['Overview', 'Services', 'Prices', 'Expenses', 'Other income', 'Cash'] as const
+const TABS = ['Overview', 'Services', 'Prices', 'Expenses', 'Other income', 'Money trail', 'Cash'] as const
 type Tab = typeof TABS[number]
 const PRESETS = [['today', 'Today'], ['7d', '7 days'], ['month', 'This month'], ['lastmonth', 'Last month'], ['90d', '90 days']] as const
 
@@ -111,6 +113,7 @@ export default function AccountingPage() {
         {tab === 'Prices' && <Prices onChange={refresh} />}
         {tab === 'Expenses' && <Expenses period={period} onChange={refresh} />}
         {tab === 'Other income' && <OtherIncome period={period} onChange={refresh} />}
+        {tab === 'Money trail' && <MoneyTrail period={period} />}
         {tab === 'Cash' && <Cash />}
       </div>
     </div>
@@ -408,6 +411,59 @@ function OtherIncome({ period, onChange }: { period: Period; onChange: () => voi
   )
 }
 
+const TREAT_TONE: Record<string, string> = {
+  revenue: 'bg-green-100 text-green-800 dark:bg-night-600 dark:text-green-300',
+  revenue_on_completion: 'bg-green-100 text-green-800 dark:bg-night-600 dark:text-green-300',
+  pass_through: 'bg-blue-100 text-blue-800 dark:bg-night-600 dark:text-blue-300',
+  refund: 'bg-amber-100 text-amber-800 dark:bg-night-600 dark:text-amber-300',
+  customer_money: 'bg-slate-100 text-slate-700 dark:bg-night-600 dark:text-night-200',
+  separate_ledger: 'bg-slate-100 text-slate-700 dark:bg-night-600 dark:text-night-200',
+  unmapped: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+}
+const TREAT_NAME: Record<string, string> = { revenue: 'Income', revenue_on_completion: 'Income when done', pass_through: 'Pass-through', refund: 'Refund', customer_money: "Customers' money", separate_ledger: 'Own ledger', unmapped: 'NOT COUNTED' }
+
+/** Every wallet movement in the period and where the report counts it, so no money can quietly go missing. */
+function MoneyTrail({ period }: { period: Period }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['acct-trail', period.start, period.end],
+    queryFn: async () => (await api.get<Trail>('/director/accounting/money-trail', { params: { start: period.start, end: period.end }, timeout: REPORT_TIMEOUT })).data,
+  })
+  if (isLoading || !data) return <p className="py-10 text-center text-sm text-green-600">Loading…</p>
+  return (
+    <div className="space-y-4">
+      {data.attention.length > 0 && (
+        <div className="flex gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <p><b>{money(data.attention.reduce((t, l) => t + l.total_kobo, 0))}</b> moved in ways the report does not count ({data.attention.map(l => l.label).join(', ')}). Review it and record it as an expense or other income if it is real.</p>
+        </div>
+      )}
+      {data.open_jobs.count > 0 && (
+        <div className={card}><p className="text-xs text-green-700 dark:text-night-200"><b>{data.open_jobs.count}</b> service request(s) paid for in this period are still open, holding <b>{money(data.open_jobs.held_kobo)}</b>. It becomes income when a worker completes them, and goes back to the customer if they fail.</p></div>
+      )}
+      <div className={card}>
+        <p className="mb-1 text-sm font-extrabold text-green-950 dark:text-white">Every wallet movement in this period</p>
+        <p className="mb-3 text-xs text-green-600 dark:text-night-300">Each line shows how the report treats it. Anything marked NOT COUNTED needs your attention.</p>
+        {data.lines.length === 0 ? <p className="py-6 text-center text-sm text-green-600">No wallet movement in this period.</p> : (
+          <div className="divide-y divide-green-50 dark:divide-night-600">
+            {data.lines.map((l, i) => (
+              <div key={i} className="py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 text-sm font-semibold text-green-950 dark:text-white">{l.label}<span className="ml-1.5 text-[11px] font-normal text-green-600 dark:text-night-300">{l.count} × {l.type}</span></p>
+                  <p className="flex-shrink-0 text-sm font-extrabold text-green-950 dark:text-white">{money(l.total_kobo)}</p>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${TREAT_TONE[l.treatment] ?? ''}`}>{TREAT_NAME[l.treatment] ?? l.treatment}</span>
+                  <span className="text-[11px] text-green-600 dark:text-night-300">{l.treatment_text}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function Cash() {
   const qc = useQueryClient()
   const { data } = useQuery({ queryKey: ['acct-holdings'], queryFn: async () => (await api.get<Holdings>('/director/accounting/holdings')).data })
@@ -427,8 +483,10 @@ function Cash() {
         <div className="grid grid-cols-2 gap-2">
           <Tile label="Customer & worker wallets" value={money(data.wallet_balances_kobo)} sub="owed to wallet holders" />
           <Tile label="Withdrawals waiting" value={money(data.pending_payouts_kobo)} sub="requested, not yet paid" />
+          <Tile label="Jobs being processed" value={money(data.in_progress_jobs_kobo ?? 0)} sub={`${data.in_progress_jobs ?? 0} paid for, not finished: refunded if they fail`} />
+          <Tile label="Commissions owed" value={money(data.owed_commissions_kobo ?? 0)} sub="workers and affiliated officers, not yet paid out" />
           <Tile label={`Buffer (${data.buffer_days} days)`} value={money(data.buffer_kobo)} sub={`about ${money(data.avg_daily_outgoings_kobo)} a day (last 30 days)`} />
-          <Tile label="Should hold" value={money(data.should_hold_kobo)} tone="text-green-700 dark:text-green-300" sub="total of the three" />
+          <Tile label="Should hold" value={money(data.should_hold_kobo)} tone="text-green-700 dark:text-green-300" sub="total of the above" />
         </div>
       </div>
       <div className={card}>

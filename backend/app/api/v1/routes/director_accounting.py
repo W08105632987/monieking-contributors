@@ -40,6 +40,13 @@ async def get_report(director: DirectorOnly, start: date | None = None, end: dat
     return await svc.report(db, a, b, series, series_only)
 
 
+@router.get("/money-trail")
+async def get_money_trail(director: DirectorOnly, start: date | None = None, end: date | None = None, db: AsyncSession = Depends(get_db)):
+    """Every wallet movement in the period and how the accounting report counts it (or that it does not)."""
+    a, b = _period(start, end)
+    return await svc.money_trail(db, a, b)
+
+
 @router.get("/holdings")
 async def get_holdings(director: DirectorOnly, db: AsyncSession = Depends(get_db)):
     return await svc.holdings(db)

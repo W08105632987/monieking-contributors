@@ -154,7 +154,7 @@ export function ZoneCustomersOverview({ officerId, affiliated }: { officerId: st
   )
 }
 
-function MoveSheet({ count, currentZoneId, affiliated, busy, onClose, onMove }: { count: number; currentZoneId: string | null; affiliated: boolean; busy: boolean; onClose: () => void; onMove: (zone: string, clear: boolean) => void }) {
+export function MoveSheet({ count, currentZoneId, affiliated, busy, onClose, onMove }: { count: number; currentZoneId: string | null; affiliated: boolean; busy: boolean; onClose: () => void; onMove: (zone: string, clear: boolean) => void }) {
   const { data: zones = [], isLoading } = useQuery({ queryKey: ['zones'], queryFn: async () => (await api.get<Zone[]>('/zones')).data })
   const [pick, setPick] = useState<string | null>(null)
   const [clear, setClear] = useState(false)

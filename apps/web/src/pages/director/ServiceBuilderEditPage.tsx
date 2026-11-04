@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ask } from '@/lib/dialog'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Lock } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -12,6 +12,7 @@ import { LookPicker } from '@/components/builder/LookPicker'
 import { PublishSheet, type PublishMode } from '@/components/builder/PublishSheet'
 import { cardCls, primaryBtn, smallBtn, labelCls } from '@/components/builder/builderUi'
 import type { TemplateSchema } from '@/lib/templateRules'
+import { useGoBack } from '@/hooks/useGoBack'
 import { sameJson, type PriceRule } from '@/lib/templateBuilder'
 import type { AdminTemplate, PreviewResult } from '@/lib/templateBuilderApi'
 
@@ -20,7 +21,6 @@ const TABS: Array<[Tab, string]> = [['fields', 'Fields'], ['prices', 'Types & pr
 
 export default function ServiceBuilderEditPage() {
   const { code = '' } = useParams()
-  const navigate = useNavigate()
   const qc = useQueryClient()
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
@@ -67,9 +67,10 @@ export default function ServiceBuilderEditPage() {
     setRules(data.price_rules as PriceRule[])
     setResetKey((k) => k + 1)
   }
+  const goBack = useGoBack('/director/service-builder')
   const leave = async () => {
     if (dirty && !(await ask('You have unpublished edits that will be lost.', { title: 'Leave anyway?', tone: 'danger', confirmLabel: 'Leave', cancelLabel: 'Stay' }))) return
-    navigate('/director/service-builder')
+    goBack()
   }
   const refreshAfterChange = () => {
     qc.invalidateQueries({ queryKey: ['service-template-admin', code] })

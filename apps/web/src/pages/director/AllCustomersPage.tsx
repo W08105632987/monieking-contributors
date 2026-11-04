@@ -1,15 +1,17 @@
 import { useMemo, useState } from 'react'
+import toast from '@/lib/notify'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search, ChevronRight, Wallet } from 'lucide-react'
+import { ArrowLeft, Search, ChevronRight, Wallet, Check, ArrowRightLeft } from 'lucide-react'
 import { StatusTag } from '@/components/ui/StatusTag'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { api, getErrorMessage } from '@/lib/api'
+import { MoveSheet } from '@/components/director/ZoneCustomersOverview'
 import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/Avatar'
 import type { User } from '@/types'
 
 type CustomerFilter = 'all' | 'regular' | 'food'
-type StatusFilter = 'any' | 'active' | 'pending_verification' | 'suspended'
+type StatusFilter = 'any' | 'active' | 'pending_verification' | 'suspended' | 'no_zone'
 type SortKey = 'az' | 'newest' | 'oldest'
 
 export default function AllCustomersPage() {
@@ -18,6 +20,20 @@ export default function AllCustomersPage() {
   const [filter, setFilter] = useState<CustomerFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('any')
   const [sort, setSort] = useState<SortKey>('az')
+  const qc = useQueryClient()
+  const [selecting, setSelecting] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [moving, setMoving] = useState(false)
+  const toggle = (id: string) => setPicked(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const move = useMutation({
+    mutationFn: (b: { zone_id: string; clear_commission: boolean }) => api.post('/director-zones/customers/move', { customer_ids: [...picked], ...b }),
+    onSuccess: (r: any) => {
+      toast.success(`${r.data.moved} customer(s) moved to ${r.data.zone_name}`)
+      setMoving(false); setSelecting(false); setPicked(new Set())
+      qc.invalidateQueries({ queryKey: ['all-customers'] })
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  })
 
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ['all-customers', filter],
@@ -31,7 +47,7 @@ export default function AllCustomersPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     const list = customers.filter(c =>
-      (statusFilter === 'any' || c.status === statusFilter) &&
+      (statusFilter === 'any' || (statusFilter === 'no_zone' ? !c.zone_id : c.status === statusFilter)) &&
       (!q || c.full_name.toLowerCase().includes(q) || c.phone_number.includes(search.trim())),
     )
     return [...list].sort((a, b) => {
@@ -89,6 +105,7 @@ export default function AllCustomersPage() {
           { value: 'active', label: 'Active' },
           { value: 'pending_verification', label: 'Pending verification' },
           { value: 'suspended', label: 'Suspended' },
+          { value: 'no_zone', label: 'No zone' },
         ] as { value: StatusFilter; label: string }[]).map(opt => (
           <button
             key={opt.value}
@@ -115,7 +132,11 @@ export default function AllCustomersPage() {
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
         </select>
-        <span className="ml-auto text-xs text-green-500 dark:text-night-200">{filtered.length} shown</span>
+        <span className="text-xs text-green-500 dark:text-night-200">{filtered.length} shown</span>
+        <button
+          onClick={() => { setSelecting(v => !v); setPicked(new Set()) }}
+          className={cn('ml-auto rounded-full px-3 py-1.5 text-xs font-bold', selecting ? 'bg-amber-400 text-green-950' : 'border border-green-200 bg-white text-green-700 dark:border-night-500 dark:bg-night-700 dark:text-night-100')}
+        >{selecting ? 'Cancel' : 'Select'}</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
@@ -140,13 +161,18 @@ export default function AllCustomersPage() {
             {filtered.map(customer => (
               <button
                 key={customer.id}
-                onClick={() => navigate(`/director/customers/${customer.customer_number}`)}
+                onClick={() => selecting ? toggle(customer.id) : navigate(`/director/customers/${customer.customer_number}`)}
                 className="w-full flex items-center gap-3 py-3.5 border-b border-green-50 dark:border-night-600 last:border-0 active:bg-green-50/50 dark:bg-night-600/50 transition-all text-left"
               >
+                {selecting && (
+                  <span className={cn('flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2', picked.has(customer.id) ? 'border-green-700 bg-green-700 text-white' : 'border-green-300 dark:border-night-400')}>
+                    {picked.has(customer.id) && <Check className="h-3.5 w-3.5" />}
+                  </span>
+                )}
                 <Avatar name={customer.full_name} avatarUrl={customer.avatar_url} size={40} className="text-sm" />
                 <div className="flex-1 min-w-0">
                   <p className="text-green-900 dark:text-white text-sm font-semibold truncate">{customer.full_name}</p>
-                  <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{customer.phone_number}</p>
+                  <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">{customer.phone_number}{!customer.zone_id && ' · no zone'}</p>
                 </div>
                 <StatusTag status={customer.status} />
                 <span role="button" aria-label={`Wallet history of ${customer.full_name}`} title="Wallet funding history"
@@ -158,6 +184,17 @@ export default function AllCustomersPage() {
           </div>
         )}
       </div>
+      {selecting && picked.size > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-safe-nav">
+          <button onClick={() => setMoving(true)} className="flex items-center gap-2 rounded-full bg-amber-400 px-5 py-3 text-sm font-extrabold text-green-950 shadow-lg">
+            <ArrowRightLeft className="h-4 w-4" /> Move {picked.size} to a zone
+          </button>
+        </div>
+      )}
+      {moving && (
+        <MoveSheet count={picked.size} currentZoneId={null} affiliated={false} busy={move.isPending}
+          onClose={() => setMoving(false)} onMove={(zone_id, clear_commission) => move.mutate({ zone_id, clear_commission })} />
+      )}
     </div>
   )
 }

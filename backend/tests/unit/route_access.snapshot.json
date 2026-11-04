@@ -113,6 +113,7 @@
  "GET /api/v1/director/accounting/export.csv": "director",
  "GET /api/v1/director/accounting/holdings": "director",
  "GET /api/v1/director/accounting/income": "director",
+ "GET /api/v1/director/accounting/money-trail": "director",
  "GET /api/v1/director/accounting/rates": "director",
  "GET /api/v1/director/accounting/report": "director",
  "GET /api/v1/director/funding-fees": "director",

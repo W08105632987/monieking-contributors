@@ -1,3 +1,4 @@
+import { useGoBack } from '@/hooks/useGoBack'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -63,6 +64,7 @@ function Shelf() {
 /* ───────── An open book: one page per day ───────── */
 function Book({ directorId }: { directorId: string }) {
   const navigate = useNavigate()
+  const goBack = useGoBack('/director/journal')
   const today = lagosToday()
   const [day, setDay] = useState(today)
   const [dir, setDir] = useState(1)
@@ -94,7 +96,7 @@ function Book({ directorId }: { directorId: string }) {
   return (
     <div className="flex min-h-dvh flex-col" style={{ background: 'linear-gradient(180deg,#2b1a0f,#3b2415)' }}>
       <header className="flex items-center gap-3 px-4 py-3">
-        <button onClick={() => navigate('/director/journal')} aria-label="Back to the shelf" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10"><ArrowLeft className="h-4 w-4 text-amber-100" /></button>
+        <button onClick={goBack} aria-label="Back to the shelf" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10"><ArrowLeft className="h-4 w-4 text-amber-100" /></button>
         <div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-[0.25em] text-amber-300/70">Journal of</p><h1 className="truncate font-serif text-xl font-bold text-amber-50">{data?.director.name ?? '…'}</h1></div>
         <button onClick={() => setCal((v) => !v)} aria-label="Pick a day" className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-300 text-[#3b2415]"><CalendarDays className="h-4 w-4" /></button>
       </header>
