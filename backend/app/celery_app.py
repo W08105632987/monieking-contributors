@@ -19,7 +19,7 @@ celery_app = Celery(
     "monieking",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry", "app.tasks.provider_poll", "app.tasks.food_conversion"],
+    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry", "app.tasks.provider_poll", "app.tasks.food_conversion", "app.tasks.bill_resolver"],
 )
 
 celery_app.conf.update(
@@ -67,9 +67,18 @@ celery_app.conf.beat_schedule = {
         # 23:10 UTC = 00:10 in Lagos: just after the deadline day ends, and again every night (it only acts once the deadline has passed).
         "schedule": crontab(hour=23, minute=10),
     },
+    "settle-pending-bills": {
+        "task": "app.tasks.bill_resolver.sweep_pending_bills",
+        # Every 2 minutes: finishes bills the app is no longer watching and picks up delayed electricity tokens.
+        "schedule": crontab(minute="*/2"),
+    },
     "poll-provider-tickets": {
         "task": "app.tasks.provider_poll.poll_provider_tickets",
         # Every 10 minutes; each service's own "check every N minutes" setting decides which tickets are due.
         "schedule": crontab(minute="*/10"),
     },
 }
+
+# Count ERROR log lines per minute (shared through Redis) so the monitor can alert on an error storm in the worker too.
+from app.core.log_counter import install_error_counter  # noqa: E402
+install_error_counter()

@@ -156,6 +156,19 @@ async def reset_withdrawal_password(user_id: str, body: ResetKind, director: Dir
     return {"message": "Withdrawal password reset. They will be asked to set a new one."}
 
 
+def _watch_manual_money(kind: str, kobo: int, director, user=None) -> None:
+    """Every manual DEBIT and every manual CREDIT at or above MANUAL_MONEY_ALERT_NAIRA emails the operators: this is the one
+    place a single compromised director account could move money, so none of it should happen silently."""
+    from app.core.config import settings as _s
+    if kind == "credit" and kobo < _s.MANUAL_MONEY_ALERT_NAIRA * 100:
+        return
+    from app.services.security_signals import record_soon
+    record_soon(f"manual_{kind}", str(director.id), each_event=True, severity="warning", category="fraud",
+                title=f"Manual {kind} of ₦{kobo / 100:,.2f} by director {director.full_name}",
+                detail={"director": director.full_name, "director_id": str(director.id), "amount_naira": kobo / 100,
+                        **({"account": user.full_name} if user is not None else {})})
+
+
 async def enforce_manual_credit_cap(db: AsyncSession, kobo: int) -> None:
     """The director-set ceiling (Business Settings > Wallet) on one manual credit. Shared by customer and officer funding."""
     from app.services.settings_service import get_config_int
@@ -176,6 +189,7 @@ async def fund_wallet(user_id: str, body: FundBody, director: DirectorOnly, db: 
     await enforce_manual_credit_cap(db, kobo)
     await check_pin(db, director, body.pin)
     user = await _person(db, user_id)   # a customer OR an officer: officers have a virtual account too
+    _watch_manual_money("credit", kobo, director, user)
     wallet = await get_or_create_wallet(db, user.id)
     ref = f"MANUAL-{uuid.uuid4().hex[:12].upper()}"
     tx = await credit_wallet(
@@ -200,6 +214,7 @@ async def debit_wallet_manually(user_id: str, body: FundBody, director: Director
     await check_pin(db, director, body.pin)
     user = await _person(db, user_id)
     kobo = int(round(body.amount_naira * 100))
+    _watch_manual_money("debit", kobo, director, user)
     wallet = await get_or_create_wallet(db, user.id)
     ref = f"MANUAL-DEBIT-{uuid.uuid4().hex[:12].upper()}"
     tx = await debit_wallet(

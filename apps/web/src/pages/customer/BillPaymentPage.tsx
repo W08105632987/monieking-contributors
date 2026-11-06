@@ -8,6 +8,8 @@ import { useWallet } from '@/hooks/useWallet'
 import { AnimatePresence, motion } from 'framer-motion'
 import { isPinCancelled } from '@/lib/pin'
 import { useBillsConfig, DEFAULT_BILLS_CONFIG, useBillers, useValidateBill, usePayBill, useBillRequest } from '@/hooks/useBillPayments'
+import { useBillHealth } from '@/hooks/useBillHealth'
+import { MonnifyStatusBanner } from '@/components/billers/MonnifyStatusBanner'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { PaymentReceipt, type ReceiptField } from '@/components/receipts/PaymentReceipt'
 import { PaymentConfirmSheet } from '@/components/payments/PaymentConfirmSheet'
@@ -44,6 +46,7 @@ export default function BillPaymentPage() {
   const { data: cfgData } = useBillsConfig()
   const cfg = cfgData ?? DEFAULT_BILLS_CONFIG
   const { data: billers = [], isLoading, isError, refetch, isFetching } = useBillers(subCategory)
+  const healthQ = useBillHealth(subCategory)
 
   const isCable = subCategory === 'cable_tv'
   const allGroups = useMemo(() => groupByProvider(billers), [billers])
@@ -210,11 +213,12 @@ export default function BillPaymentPage() {
             )}
 
             {/* Provider — one field, list opens in a sheet */}
+            <MonnifyStatusBanner status={healthQ.data?.monnify} />
             <div>
               <label className="text-green-700 dark:text-night-200 text-xs font-semibold uppercase tracking-wide mb-2 block">{stepNo(1)} · {isCable ? 'TV provider' : 'Electricity provider'}</label>
               <ProviderSheet
                 title={isCable ? 'Select TV provider' : 'Select provider'} placeholder={isCable ? 'Choose DStv, GOtv…' : 'Choose your electricity company'}
-                groups={groups} selectedKey={groupKey} onSelect={chooseGroup} fallbackIcon={isCable ? <Tv className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
+                groups={groups} selectedKey={groupKey} onSelect={chooseGroup} health={healthQ.data} fallbackIcon={isCable ? <Tv className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
                 emptyText={`No ${activeKind ?? ''} providers are available right now.`}
               />
             </div>

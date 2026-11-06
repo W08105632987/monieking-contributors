@@ -692,3 +692,36 @@ def test_unsigned_webhook_rejected_in_production(monkeypatch):
     with pytest.raises(HTTPException) as ei:
         _hook(monkeypatch, db=db, payload=_payload(), signature="", sandbox=False)
     assert ei.value.status_code == 401
+
+
+# ── prepaid electricity: "SUCCESS" without a token is not a finished purchase ──────────────────────────────────────────
+def _electricity(product="Abuja Electricity Distribution Prepaid"):
+    b = _biller(category=BillerCategory.ELECTRICITY, requires_validation=False)
+    b.name, b.product_name = "Abuja Electricity", product
+    return b
+
+
+def test_prepaid_electricity_success_without_token_stays_pending_and_is_not_refunded(monkeypatch):
+    env = Env(monkeypatch, biller=_electricity(), vend={"vendStatus": "SUCCESS", "transactionReference": "TX1", "metaData": {"token": "", "unit": "0"}})
+    req = env.pay()
+    assert req.status == BillPaymentStatus.PENDING
+    assert req.failure_reason == svc.TOKEN_NOTE
+    assert req.token is None and req.completed_at is None
+    assert len(env.debits) == 1 and env.credits == []     # customer stays debited, nothing refunded
+
+
+def test_prepaid_electricity_success_with_token_completes(monkeypatch):
+    env = Env(monkeypatch, biller=_electricity(), vend={"vendStatus": "SUCCESS", "transactionReference": "TX2", "metaData": {"token": "3051-1111-2222-3242", "unit": "29.4"}})
+    req = env.pay()
+    assert req.status == BillPaymentStatus.COMPLETED and req.token
+
+
+def test_postpaid_electricity_success_without_token_completes(monkeypatch):
+    env = Env(monkeypatch, biller=_electricity("Abuja Electricity Distribution Postpaid"), vend={"vendStatus": "SUCCESS", "transactionReference": "TX3"})
+    req = env.pay()
+    assert req.status == BillPaymentStatus.COMPLETED
+
+
+def test_requery_tries_our_own_reference_before_monnify_transaction_reference():
+    req = SimpleNamespace(id=uuid.UUID(int=7), monnify_transaction_reference="MFBP123")
+    assert svc._vend_references(req) == [str(req.id), "MFBP123"]

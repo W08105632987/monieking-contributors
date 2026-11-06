@@ -165,6 +165,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+# Count ERROR log lines per minute so the monitor can alert on an error storm.
+from app.core.log_counter import install_error_counter
+install_error_counter()
+
 # Director journal: records every state-changing action by a director/admin (see core/journal.py).
 from app.core.journal import JournalMiddleware
 app.add_middleware(JournalMiddleware)
@@ -180,7 +184,7 @@ app.add_middleware(TrustedProxyMiddleware)
 from app.api.v1.routes import (
     auth, users, wallets, cards, notifications, admin, withdrawals,
     settings as settings_routes, instant_messages, promo_banners, zones,
-    webauthn as webauthn_routes, disputes, identity_services, bill_payments, seasonal, cleanup, zonal_customers, customer_admin, officer_earnings, email_account, kyc,
+    webauthn as webauthn_routes, disputes, identity_services, bill_payments, seasonal, cleanup, zonal_customers, customer_admin, officer_earnings, system_alerts, email_account, kyc,
     customer_stats, auth_admin, admin_crm, analytics, system_health,
     food_collections,
     food_ledger,
@@ -231,6 +235,7 @@ app.include_router(seasonal.router,          prefix=PREFIX)
 app.include_router(cleanup.router,           prefix=PREFIX)
 app.include_router(customer_admin.router,     prefix=PREFIX)
 app.include_router(officer_earnings.router,   prefix=PREFIX)
+app.include_router(system_alerts.router,      prefix=PREFIX)
 app.include_router(email_account.router,      prefix=PREFIX)
 app.include_router(kyc.router,                prefix=PREFIX)
 app.include_router(zonal_customers.router,   prefix=PREFIX)
@@ -326,6 +331,32 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 @app.get("/health")
 async def health():
     return {"status": "ok", "app": "MonieKing Contributors"}
+
+@app.get("/health/ready")
+async def health_ready():
+    """DEEP health: answers 200 only if the database AND Redis really respond. Point uptime monitors and Railway's health check at
+    THIS (not /health, which would still say "ok" while the database is down). 503 = take me out of rotation / alert someone."""
+    import asyncio as _a
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text as _t
+    problems = {}
+    try:
+        async with engine.connect() as conn:
+            await _a.wait_for(conn.execute(_t("SELECT 1")), timeout=4)
+    except Exception as e:  # noqa: BLE001
+        problems["database"] = type(e).__name__
+    try:
+        from app.core.redis_client import get_redis
+        await _a.wait_for(get_redis().ping(), timeout=2)
+    except Exception as e:  # noqa: BLE001
+        problems["redis"] = type(e).__name__
+    if problems:
+        # Public endpoint: say only THAT it is unhealthy. The details go to the logs, not to whoever is asking.
+        import logging as _l
+        _l.getLogger("monieking.health").error("readiness check failed: %s", problems)
+        return JSONResponse({"status": "unavailable"}, status_code=503)
+    return {"status": "ok"}
+
 
 @app.get(f"{PREFIX}/health")
 async def health_versioned():

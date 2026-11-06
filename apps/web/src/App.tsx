@@ -71,6 +71,7 @@ const OfficerProfile        = lazy(() => import('@/pages/officer/ProfilePage'))
 const OfficerEarnings       = lazy(() => import('@/pages/officer/EarningsPage'))
 const OfficerWelcome        = lazy(() => import('@/pages/officer/WelcomePage'))
 const DirectorOfficerPayouts = lazy(() => import('@/pages/director/OfficerPayoutsPage'))
+const DirectorAlerts = lazy(() => import('@/pages/director/AlertsPage'))
 const OfficerNotifications  = lazy(() => import('@/pages/officer/NotificationsPage'))
 const OfficerCustomerStats  = lazy(() => import('@/pages/officer/CustomerStatsDetailPage'))
 
@@ -374,6 +375,7 @@ export default function App() {
             <Route path="/officer/profile"        element={<AuthGuard allowedRoles={['officer']}><OfficerProfile /></AuthGuard>} />
             <Route path="/officer/earnings"       element={<AuthGuard allowedRoles={['officer']}><OfficerEarnings /></AuthGuard>} />
             <Route path="/officer/welcome"        element={<AuthGuard allowedRoles={['officer']}><OfficerWelcome /></AuthGuard>} />
+            <Route path="/director/alerts" element={<AuthGuard allowedRoles={['director']}><DirectorAlerts /></AuthGuard>} />
             <Route path="/director/officer-payouts" element={<AuthGuard allowedRoles={['director']}><DirectorOfficerPayouts /></AuthGuard>} />
             <Route path="/officer/disputes"       element={<AuthGuard allowedRoles={['officer']}><DisputesListPage /></AuthGuard>} />
             <Route path="/officer/customers/:customerId/verify/:kind" element={<AuthGuard allowedRoles={['officer']}><VerifyLookupPage /></AuthGuard>} />

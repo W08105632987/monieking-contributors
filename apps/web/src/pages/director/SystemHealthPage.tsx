@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Activity, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Database, Zap, Send, MessageSquare, Users } from 'lucide-react'
+import { ArrowLeft, Activity, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Database, Zap, Send, MessageSquare, Users, Wallet, Cpu, FileWarning, Gauge, ShieldAlert, Bell, Radio } from 'lucide-react'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -16,6 +16,8 @@ interface StatusResponse { checks: CheckResult[]; overall_status: 'healthy' | 'd
 
 const CHECK_ICON: Record<string, any> = {
   database: Database, redis: Zap, monnify: Send, termii: MessageSquare, transactions: Activity, traffic: Users,
+  monnify_api: Send, monnify_status: Radio, bills: Wallet, resources: Cpu, error_rate: FileWarning, db_load: Gauge,
+  integrity: ShieldAlert, fraud: ShieldAlert, sms: MessageSquare, alerting: Bell,
 }
 const STATUS_TINT: Record<string, string> = {
   healthy: 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800',
@@ -77,7 +79,7 @@ export default function DirectorSystemHealthPage() {
                     <Icon className="w-4 h-4 text-green-700 dark:text-night-100" />
                     <StatusIcon className={cn('w-4 h-4', check.status === 'healthy' ? 'text-green-600 dark:text-green-400' : check.status === 'degraded' ? 'text-amber-500 dark:text-amber-400' : 'text-red-500 dark:text-red-400')} />
                   </div>
-                  <p className="text-green-900 dark:text-white font-bold text-xs capitalize mb-1">{check.check_name}</p>
+                  <p className="text-green-900 dark:text-white font-bold text-xs capitalize mb-1">{check.check_name.replace(/_/g, ' ')}</p>
                   {check.message && <p className="text-green-500 dark:text-night-300 text-[10px]">{check.message}</p>}
                 </div>
               )

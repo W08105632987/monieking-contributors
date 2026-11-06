@@ -22,6 +22,22 @@ from app.core.public_errors import public_message  # noqa: E402
 logger = logging.getLogger(__name__)
 
 PENDING_NOTE = "Waiting for the bills provider to confirm this payment."
+# Prepaid electricity: the provider can say SUCCESS before the meter token exists (token "" and units "0").
+# That is NOT a finished purchase: the customer has paid, but has nothing to use. It stays pending until the token arrives.
+TOKEN_NOTE = "Payment received. Your electricity token is still being generated and will appear here automatically."
+TOKEN_ALERT_AFTER_SECONDS = 30 * 60
+
+
+def _needs_token(biller: Biller | None) -> bool:
+    """Prepaid electricity always produces a token. Postpaid meters legitimately do not."""
+    if not biller or biller.category != BillerCategory.ELECTRICITY:
+        return False
+    return "postpaid" not in f"{biller.name} {biller.product_name}".lower()
+
+
+def _vend_references(request: BillPaymentRequest) -> list[str]:
+    """Our own vendReference (the request id) is what Monnify's requery knows; their MFBP... transaction reference returns 404."""
+    return [r for r in (str(request.id), request.monnify_transaction_reference) if r]
 
 
 def _mask(value: str) -> str:
@@ -567,7 +583,14 @@ async def _apply_outcome(db: AsyncSession, request: BillPaymentRequest, outcome:
         request.monnify_transaction_reference = str(reference)[:120]
     actor = request.officer_id or request.customer_id
 
-    if outcome == "SUCCESS":
+    if outcome == "SUCCESS" and _needs_token(await db.get(Biller, request.biller_id)) and not _extract_token(result):
+        # Paid, but no token yet: do not call this successful. Keep it pending (money stays with the request, nothing is refunded)
+        # and let the resolver pick the token up the moment the provider has it.
+        logger.warning("[bills] request %s: provider says SUCCESS but returned no token yet; keeping it pending", request.id)
+        request.status = BillPaymentStatus.PENDING
+        request.failure_reason = TOKEN_NOTE
+        await db.flush()
+    elif outcome == "SUCCESS":
         _mark_completed(request, result)
         await db.flush()
         await log_action(
@@ -740,7 +763,7 @@ async def resolve_pending_bill(db: AsyncSession, request_id: uuid.UUID) -> BillP
 
     provider = get_bills_provider()
     result = None
-    for reference in [r for r in (request.monnify_transaction_reference, str(request.id)) if r]:
+    for reference in _vend_references(request):
         try:
             result = await provider.requery_bill(reference)
             break
@@ -776,7 +799,7 @@ async def backfill_missing_token(db: AsyncSession, request: BillPaymentRequest) 
         return request
 
     provider = get_bills_provider()
-    for reference in [r for r in (request.monnify_transaction_reference, str(request.id)) if r]:
+    for reference in _vend_references(request):
         try:
             result = await provider.requery_bill(reference)
         except MonnifyBillsError as e:
@@ -789,3 +812,71 @@ async def backfill_missing_token(db: AsyncSession, request: BillPaymentRequest) 
             logger.info("[bills] recovered missing token for request %s", request.id)
             return request
     return request
+
+
+
+async def sweep_pending_bills(db: AsyncSession, *, limit: int = 50) -> dict:
+    """
+    Settle PENDING bill payments without waiting for the customer to reopen the app: requery each one and complete it
+    (token present), refund it (provider confirms failure) or leave it. Prepaid electricity stuck without a token for over
+    30 minutes alerts the directors ONCE. It is never auto-refunded: the provider said SUCCESS, so Monnify/the DisCo
+    has to produce the token or confirm a reversal first.
+    """
+    from datetime import timedelta
+    from app.core.redis_client import get_redis
+    from app.models.notification import NotificationType
+    from app.models.user import User, UserRole
+    from app.services.notification_service import send_notification
+
+    now = datetime.now(timezone.utc)
+    ids = [r for (r,) in (await db.execute(
+        select(BillPaymentRequest.id)
+        .where(BillPaymentRequest.status == BillPaymentStatus.PENDING,
+               BillPaymentRequest.created_at < now - timedelta(seconds=30),
+               BillPaymentRequest.created_at > now - timedelta(days=3))
+        .order_by(BillPaymentRequest.created_at).limit(limit)
+    )).all()]
+    settled = alerted = 0
+    for rid in ids:
+        try:
+            request = await resolve_pending_bill(db, rid)
+        except Exception:
+            logger.exception("[bills] sweep could not resolve %s", rid)
+            await db.rollback()
+            continue
+        if request is None:
+            continue
+        if request.status != BillPaymentStatus.PENDING:
+            settled += 1
+            continue
+        if request.failure_reason == TOKEN_NOTE and (now - request.created_at).total_seconds() > TOKEN_ALERT_AFTER_SECONDS:
+            try:
+                first = await get_redis().set(f"bills:token-alert:{request.id}", "1", nx=True, ex=7 * 86400)
+            except Exception:  # noqa: BLE001
+                first = False
+            if first:
+                directors = (await db.execute(select(User.id).where(User.role == UserRole.DIRECTOR))).scalars().all()
+                for uid in directors:
+                    await send_notification(
+                        db, user_id=uid, title="Electricity token delayed",
+                        body=f"A prepaid electricity payment of N{request.amount_kobo / 100:,.2f} has been paid for over 30 minutes with no token. Provider reference: {request.id}. Please contact Monnify.",
+                        type=NotificationType.INFO, related_entity_id=request.id, deep_link_url="/director/journal",
+                    )
+                await db.commit()
+                alerted += 1
+    # Purchases already marked complete that never got a token (older behaviour): keep asking for it.
+    recovered = 0
+    missing = (await db.execute(
+        select(BillPaymentRequest).where(
+            BillPaymentRequest.status == BillPaymentStatus.COMPLETED, BillPaymentRequest.token.is_(None),
+            BillPaymentRequest.completed_at > now - timedelta(days=3))
+        .order_by(BillPaymentRequest.completed_at).limit(limit)
+    )).scalars().all()
+    for request in missing:
+        try:
+            if (await backfill_missing_token(db, request)).token:
+                recovered += 1
+        except Exception:
+            logger.exception("[bills] sweep could not recover the token for %s", request.id)
+            await db.rollback()
+    return {"checked": len(ids), "settled": settled, "alerted": alerted, "tokens_recovered": recovered}

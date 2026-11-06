@@ -33,6 +33,13 @@ class OriginGuardMiddleware:
         cookie = headers.get(b"cookie", b"").decode("latin1")
         has_session = (ACCESS_COOKIE + "=") in cookie or (REFRESH_COOKIE + "=") in cookie
         if origin and has_session and not _origin_ok(origin, self.allowed):
+            try:
+                from app.services.security_signals import record_soon
+                record_soon("origin_blocked", "all", threshold=5, window_s=600, severity="warning",
+                            title="Requests are being blocked by the Origin guard",
+                            detail={"last_origin": origin[:120], "hint": "If real customers are affected, CORS_ORIGINS is missing this origin. Otherwise someone is sending forged requests."})
+            except Exception:  # noqa: BLE001
+                pass
             resp = JSONResponse({"detail": "This request was blocked because it did not come from the MonieKing app."}, status_code=403)
             return await resp(scope, receive, send)
         await self.app(scope, receive, send)

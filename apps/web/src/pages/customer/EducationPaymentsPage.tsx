@@ -8,6 +8,9 @@ import { formatNaira } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api'
 import { useWallet } from '@/hooks/useWallet'
 import { useBillers, usePayBill } from '@/hooks/useBillPayments'
+import { useBillHealth } from '@/hooks/useBillHealth'
+import { isPinCancelled } from '@/lib/pin'
+import { MonnifyStatusBanner } from '@/components/billers/MonnifyStatusBanner'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { PaymentReceipt, type ReceiptField } from '@/components/receipts/PaymentReceipt'
 import { ProviderSheet } from '@/components/billers/ProviderSheet'
@@ -30,6 +33,7 @@ export default function EducationPaymentsPage() {
   const [completedRequest, setCompletedRequest] = useState<BillPaymentRequest | null>(null)
 
   const { data: rows = [], isLoading, isError, refetch, isFetching } = useBillers('education')
+  const healthQ = useBillHealth('education')
   const groups = useMemo(() => groupByBiller(rows), [rows])
   const group: BillerGroup | undefined = groups.find(g => g.key === groupKey)
   const brand = group ? resolveBrand(group.name) : NEUTRAL
@@ -60,7 +64,7 @@ export default function EducationPaymentsPage() {
       },
       {
         onSuccess: (req) => setCompletedRequest(req),
-        onError: (e) => toast.error(getErrorMessage(e)),
+        onError: (e) => { if (!isPinCancelled(e)) toast.error(getErrorMessage(e)) },
       },
     )
   }
@@ -109,7 +113,8 @@ export default function EducationPaymentsPage() {
           </div>
         ) : (
           <div className="mb-5">
-            <ProviderSheet title="Select exam body" placeholder="Choose JAMB, WAEC…" groups={groups} selectedKey={groupKey} onSelect={chooseGroup} fallbackIcon={<GraduationCap className="w-5 h-5" />} />
+            <MonnifyStatusBanner status={healthQ.data?.monnify} />
+            <ProviderSheet title="Select exam body" placeholder="Choose JAMB, WAEC…" groups={groups} selectedKey={groupKey} onSelect={chooseGroup} health={healthQ.data} fallbackIcon={<GraduationCap className="w-5 h-5" />} />
           </div>
         )}
 

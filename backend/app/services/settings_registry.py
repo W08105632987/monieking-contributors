@@ -46,6 +46,7 @@ GROUPS: list[dict] = [
     {"id": "workers", "label": "Service Workers", "blurb": "What workers earn and how long they have to finish jobs."},
     {"id": "officers", "label": "Affiliated Officers", "blurb": "How much of the company's profit commission officers earn."},
     {"id": "disputes", "label": "Disputes", "blurb": "How long a dispute can wait and how long customers have to raise one."},
+    {"id": "bills", "label": "Bill Payments", "blurb": "When customers are warned that a biller is struggling."},
     {"id": "verification", "label": "Identity Verification", "blurb": "How long NIN and BVN lookup results are kept."},
     {"id": "sms", "label": "SMS Alerts", "blurb": "What customers are charged per SMS and what SMS costs us."},
 ]
@@ -118,6 +119,17 @@ DEFS: list[Def] = [
     Def("dispute_eligibility_window_minutes", "disputes", "Dispute eligibility window", "duration", "4320", min=60, max=30 * 1440,
         what="How long after a service is completed a customer can still raise a commission dispute.",
         effect="After this window, customers can no longer dispute that job. It also decides how long worker commission can be held for a dispute."),
+
+    # ── Bill payments ─────────────────────────────────────────────────────
+    Def("bill_warning_threshold_percent", "bills", "Biller warning level", "percent", "30", min=0, max=100,
+        what="A biller whose recent success rate is below this percentage is flagged as struggling.",
+        effect="Customers who pick a flagged biller see a warning that the purchase might fail because of a bad network, and can still choose to continue. Set 0 to never warn."),
+    Def("bill_health_min_attempts", "bills", "Purchases needed before a rate counts", "count", "5", min=1, max=100,
+        what="How many recent purchases a biller needs before its success rate is trusted.",
+        effect="Below this many purchases the biller shows no rate and no warning, so one failed purchase cannot flag a biller on its own."),
+    Def("bill_health_window_minutes", "bills", "How far back success rates look", "duration", "180", min=10, max=7 * 1440,
+        what="Only purchases inside this window count toward a biller's success rate.",
+        effect="A short window reacts faster to a network problem but is noisier. A long one is steadier but slower to notice trouble or recovery."),
 
     # ── Identity verification ─────────────────────────────────────────────
     Def("verification.retention_minutes", "verification", "Verification result retention", "duration", "1440", min=60, max=168 * 60,

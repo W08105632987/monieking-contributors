@@ -175,7 +175,9 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
                 )}
                 {status === 'pending' && (
                   <div className="mt-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 px-3.5 py-3 text-[13px] leading-snug text-amber-700 dark:text-amber-300">
-                    This payment is still being confirmed. You will not be charged twice, and any failed payment is refunded automatically.
+                    {failureReason?.startsWith('Payment received')
+                      ? `${failureReason} You will not be charged again.`
+                      : 'This payment is still being confirmed. You will not be charged twice, and any failed payment is refunded automatically.'}
                   </div>
                 )}
 

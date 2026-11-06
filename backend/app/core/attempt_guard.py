@@ -100,6 +100,12 @@ async def _apply_lock(db: AsyncSession, user_id, guard: Guard) -> AttemptLocked:
         {"until": until, "id": str(user_id)},
     )
     await db.commit()
+    try:
+        from app.services.security_signals import record_soon
+        record_soon(f"lockout:{guard.lock_col}", str(user_id), title=f"An account was locked after repeated wrong attempts ({guard.lock_col})",
+                    detail={"user_id": str(user_id), "lock_level": level_before + 1 if guard.level_col else 0, "locked_until": until.isoformat()}, severity="warning", each_event=True)
+    except Exception:  # noqa: BLE001  -- reporting must never break the lock itself
+        pass
     return AttemptLocked(until, level_before + 1 if guard.level_col else 0)
 
 

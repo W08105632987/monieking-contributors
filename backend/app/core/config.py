@@ -110,6 +110,10 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = "alerts@monieking.app"
     SMTP_USE_TLS: bool = True
+    SMTP_REPLY_TO: str = ""                 # where replies to system emails should go (a monitored mailbox)
+    # Optional HTTPS email API (Resend). Preferred over SMTP when set: it works from hosts that block SMTP ports,
+    # and a domain verified there gets SPF/DKIM set up for you. SMTP stays as the automatic fallback.
+    RESEND_API_KEY: str = ""
 
     # ── System health monitoring — where alerts go. Deliberately NOT
     # tied to a user account (no email field exists on User at all
@@ -117,6 +121,14 @@ class Settings(BaseSettings):
     # in .env, completely separate from any customer/staff data. ─────
     ALERT_EMAIL_TO: str = ""             # comma-separated if more than one
     ALERT_PHONE_TO: str = ""             # comma-separated if more than one
+    ALERT_HEARTBEAT_URL: str = ""        # an EXTERNAL watchdog (Healthchecks.io / Better Stack) pinged every monitor run:
+                                         # if our servers die, the pings stop and THEY email you. The only way to hear "Railway is down".
+    MONNIFY_MIN_WALLET_NAIRA: int = 20000    # warn when the Monnify wallet that pays for bills falls below this
+    TERMII_MIN_BALANCE_NAIRA: int = 1000     # warn when SMS credit falls below this
+    TERMII_CHANNEL: str = "generic"          # "dnd" delivers to Do-Not-Disturb numbers (needs an approved sender ID)
+    ERROR_RATE_WARN_PER_5MIN: int = 20       # ERROR log lines in 5 minutes
+    ERROR_RATE_DOWN_PER_5MIN: int = 100
+    MANUAL_MONEY_ALERT_NAIRA: int = 50000    # every manual credit at or above this (and every manual debit) emails the operators
     HEALTH_CHECK_ALERT_COOLDOWN_MINUTES: int = 20   # don't re-SMS every 2 minutes for the same ongoing outage
     HEALTH_CHECK_DB_LATENCY_WARN_MS: int = 500
     HEALTH_CHECK_DB_LATENCY_CRITICAL_MS: int = 2000

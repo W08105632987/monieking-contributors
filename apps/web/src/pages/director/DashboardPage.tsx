@@ -21,6 +21,7 @@ import type { Withdrawal, SystemAnalytics } from '@/types'
 import { BrandBlobLogo } from '@/components/brand/BrandBlobLogo'
 import { SetPinPrompt } from '@/components/director/SetPinPrompt'
 import { OfficerClassifyBanner } from '@/components/director/OfficerTypeModal'
+import { AlertsBanner } from '@/components/director/AlertsBanner'
 
 function periodToDateRange(period: string): { start_date?: string; end_date?: string } {
   if (period === 'all') return {}
@@ -194,6 +195,7 @@ export default function DirectorDashboardPage() {
 
       <div className="flex-1 overflow-y-auto pb-safe-nav px-4">
         <SetPinPrompt />
+        <AlertsBanner />
         <OfficerClassifyBanner />
 
         {/* Greeting */}

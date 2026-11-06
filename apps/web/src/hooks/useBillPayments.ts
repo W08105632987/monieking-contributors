@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { withPin } from '@/lib/pin'
+import { withPin, PinCancelled } from '@/lib/pin'
+import { confirmIfRisky } from '@/hooks/useBillHealth'
 import { api } from '@/lib/api'
 import type { Biller, BillerCategory, BillValidationResult, BillPaymentRequest } from '@/types'
 
@@ -29,6 +30,9 @@ export function usePayBill(customerId?: string) {
       biller_id: string; customer_reference: string
       amount_kobo?: number | null; quantity?: number; validation_reference?: string | null
     }) => {
+      // A struggling biller (success rate under the director's threshold) or a Monnify outage: warn first, let them choose.
+      // Declining counts as cancelling, which every pay screen already ignores silently.
+      if (!(await confirmIfRisky(body.biller_id))) throw new PinCancelled()
       // The person tapping Pay confirms with their own 4-digit PIN (an officer paying for a customer uses the officer's PIN).
       return withPin(async (pin) => {
         const { data } = await api.post<BillPaymentRequest>(

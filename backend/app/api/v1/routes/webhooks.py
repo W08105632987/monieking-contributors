@@ -27,6 +27,18 @@ logger = logging.getLogger(__name__)
 _settings = get_settings()
 
 
+def _alarm_bad_signature(request: Request, why: str) -> None:
+    """A webhook claiming to be Monnify but failing the signature check is either a forgery attempt (someone trying to fake a
+    payment) or our secret key is wrong. Either way a human should know at once."""
+    try:
+        from app.services.security_signals import record_soon
+        record_soon("webhook_bad_signature", request.client.host if request.client else "unknown", severity="critical",
+                    title="A payment webhook failed signature verification (possible forgery attempt)",
+                    detail={"signature": why, "from_ip": request.client.host if request.client else "unknown", "path": str(request.url.path)})
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _may_skip_signature(provider) -> bool:
     """SECURITY (finding S-06): the signature check may only be relaxed for a sandbox provider AND a non-production
     deployment. Before, it relied on MONNIFY_BASE_URL alone — if that variable was missing or still pointed at the
@@ -69,6 +81,7 @@ async def monnify_payment_webhook(
                 "(expected in sandbox). Proceeding without verification."
             )
         else:
+            _alarm_bad_signature(request, "missing" if not signature else "does not match")
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
     elif not provider.verify_webhook_signature(raw_body, signature):
         if _may_skip_signature(provider):
@@ -77,6 +90,7 @@ async def monnify_payment_webhook(
                 "Allowing test payment in sandbox mode."
             )
         else:
+            _alarm_bad_signature(request, "missing" if not signature else "does not match")
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     try:

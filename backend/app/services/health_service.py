@@ -183,8 +183,8 @@ async def check_traffic(db: AsyncSession) -> dict:
 
 # ── Orchestration ────────────────────────────────────────────────────
 
-ALL_CHECKS_DB = ["database", "transactions", "traffic"]   # need a db session
-ALL_CHECKS_NO_DB = ["redis", "monnify", "termii"]          # don't
+ALL_CHECKS_DB = ["database", "transactions", "traffic", "bills", "db_load", "integrity", "fraud"]   # need a db session
+ALL_CHECKS_NO_DB = ["redis", "monnify", "termii", "monnify_api", "monnify_status", "resources", "error_rate", "sms", "alerting"]   # don't
 
 STATUS_EMOJI = {"healthy": "\u2705", "degraded": "\u26a0\ufe0f", "down": "\U0001f534"}
 
@@ -237,45 +237,40 @@ async def _maybe_alert(db: AsyncSession, result: dict, prev_result_status: str |
 
 
 async def _send_alert(db: AsyncSession, *, check_name: str, status: str, previous_status: str, message: str | None) -> None:
-    is_recovery = status == "healthy"
-    subject = f"{STATUS_EMOJI[status]} MonieKing: {check_name} {'has recovered' if is_recovery else f'is {status}'}"
-    body = (
-        f"System health monitor alert\n\n"
-        f"Check: {check_name}\n"
-        f"Status: {previous_status} -> {status}\n"
-        f"Detail: {message or '(no additional detail)'}\n"
-        f"Time: {datetime.now(timezone.utc).isoformat()}\n"
-    )
-
-    emails = [e.strip() for e in settings.ALERT_EMAIL_TO.split(",") if e.strip()]
-    try:   # plus every director who has a verified email on their account
-        from app.models.user import User, UserRole
-        rows = (await db.execute(select(User.email).where(
-            User.role == UserRole.DIRECTOR, User.email.is_not(None), User.email_verified_at.is_not(None)))).all()
-        for (em,) in rows:
-            if em and em not in emails:
-                emails.append(em)
-    except Exception:
-        pass
-    phones = [p.strip() for p in settings.ALERT_PHONE_TO.split(",") if p.strip()]
-
-    if emails:
-        await send_email(to=emails, subject=subject, body=body)
-    for phone in phones:
-        try:
-            await send_sms(phone, f"{subject}. {message or ''}"[:300])
-        except Exception:
-            pass   # the other channel (email) may still have gotten through
+    """Hand the transition to the central alert service: it records the incident, de-duplicates, emails every operator with
+    a proper HTML message, texts for critical problems, and says when it has recovered."""
+    from app.services import alert_service
+    key = f"health:{check_name}"
+    if status == "healthy":
+        await alert_service.resolve_alert(key, note=f"{check_name} is healthy again")
+        return
+    pretty = check_name.replace("_", " ")
+    await alert_service.raise_alert(
+        severity="critical" if status == "down" else "warning", category="health",
+        title=f"{pretty} is {status}" + (f": {message}" if message else ""),
+        detail={"check": check_name, "was": previous_status, "now": status, "detail": message or "(none)"},
+        dedupe_key=key, notify="always", sms=True)
 
 
 async def run_all_checks(db: AsyncSession) -> list[dict]:
+    from app.services import monitor_checks as M
+    no_db = {"redis": check_redis, "monnify": check_monnify, "termii": check_termii, "monnify_api": M.check_monnify_api,
+             "monnify_status": M.check_monnify_status, "resources": M.check_resources, "error_rate": M.check_error_rate,
+             "sms": M.check_sms, "alerting": M.check_alerting}
+    with_db = {"database": check_database, "transactions": check_transactions, "traffic": check_traffic, "bills": M.check_bills,
+               "db_load": M.check_db_load, "integrity": M.check_integrity, "fraud": M.check_fraud}
     results = []
     for name in ALL_CHECKS_NO_DB:
-        fn = {"redis": check_redis, "monnify": check_monnify, "termii": check_termii}[name]
-        results.append(await fn())
+        try:
+            results.append(await no_db[name]())
+        except Exception as e:  # noqa: BLE001  -- a crashing check is itself a finding, and must not stop the others
+            results.append({"check_name": name, "status": "degraded", "message": f"Check crashed: {type(e).__name__}: {e}", "metrics": {}})
     for name in ALL_CHECKS_DB:
-        fn = {"database": check_database, "transactions": check_transactions, "traffic": check_traffic}[name]
-        results.append(await fn(db))
+        try:
+            results.append(await with_db[name](db))
+        except Exception as e:  # noqa: BLE001
+            await db.rollback()
+            results.append({"check_name": name, "status": "degraded", "message": f"Check crashed: {type(e).__name__}: {e}", "metrics": {}})
 
     prev: dict[str, str] = {}
     for result in results:
@@ -289,6 +284,7 @@ async def run_all_checks(db: AsyncSession) -> list[dict]:
         await _maybe_alert(db, result, prev.get(result["check_name"]))
 
     await db.commit()
+    await M.ping_heartbeat()    # tell the external watchdog we are alive (see ALERT_HEARTBEAT_URL)
     return results
 
 

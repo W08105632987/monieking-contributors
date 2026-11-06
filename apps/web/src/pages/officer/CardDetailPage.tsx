@@ -18,6 +18,7 @@ import { PleaseHold } from '@/components/ui/PleaseHold'
 import type { ContributionCard, CardGrid, GridCell, User, ContributionRecord } from '@/types'
 import { ContributionHistoryModal } from '@/components/cards/ContributionHistoryModal'
 import { MarkingDisputeModal } from '@/components/disputes/MarkingDisputeModal'
+import { CompletionBadge } from '@/components/cards/CompletionBadge'
 import { FitAmount } from '@/components/ui/FitAmount'
 import { FlipCard } from '@/components/cards/FlipCard'
 import { GridBack } from '@/components/cards/GridBack'
@@ -430,6 +431,12 @@ export default function OfficerCardDetailPage() {
                 <span className="text-green-900 dark:text-white font-semibold">{value}</span>
               </div>
             ))}
+            {isComplete && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-green-500 dark:text-night-200">Payout</span>
+                <CompletionBadge status={card.completion_status} collected={isFood && !!card.food_collected_at} />
+              </div>
+            )}
           </div>
         </div>
 

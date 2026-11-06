@@ -7,7 +7,8 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
-import { formatNaira, initials, cn } from '@/lib/utils'
+import { formatNaira, formatDate, initials, cn } from '@/lib/utils'
+import { CompletionBadge } from '@/components/cards/CompletionBadge'
 import type { User, ContributionCard } from '@/types'
 import { PostContributionSheet, CreateCardSheet } from './CustomersPage'
 import { FitAmount } from '@/components/ui/FitAmount'
@@ -50,14 +51,21 @@ export default function CustomerDetailPage() {
     },
   })
 
-  const { data: cards = [], isLoading: cardsLoading } = useQuery({
-    queryKey: ['customer-cards', customer?.id],
+  const { data: allCards = [], isLoading: cardsLoading } = useQuery({
+    // Active AND completed cards in one request. The key extends ['customer-cards', id] so every existing
+    // invalidation of that key refreshes this list too, while the officer's optimistic cache edits to the
+    // exact ['customer-cards', id] key are left alone.
+    queryKey: ['customer-cards', customer?.id, 'with-completed'],
     queryFn: async () => {
-      const { data } = await api.get<ContributionCard[]>(`/cards?owner_id=${customer!.id}`)
-      return data.filter(c => c.status === 'active')
+      const { data } = await api.get<ContributionCard[]>(`/cards?owner_id=${customer!.id}&include_completed=true`)
+      return data
     },
     enabled: !!customer?.id,
   })
+  const cards = allCards.filter(c => c.status === 'active')
+  const completedCards = allCards
+    .filter(c => c.status === 'completed')
+    .sort((a, b) => new Date(b.completed_at ?? b.created_at).getTime() - new Date(a.completed_at ?? a.created_at).getTime())
   const hasCards = cards.length > 0
 
   if (customerLoading) {
@@ -244,6 +252,32 @@ export default function CustomerDetailPage() {
               </button>
             ))}
           </div>
+        )}
+
+        {/* Completed cards — same customer, finished cards, with whether they have been paid out */}
+        {!cardsLoading && completedCards.length > 0 && (
+          <>
+            <p className="text-green-700 dark:text-night-100 text-xs font-bold uppercase tracking-wide mt-5 mb-2">Completed cards ({completedCards.length})</p>
+            <div className="space-y-2">
+              {completedCards.map(card => (
+                <button
+                  key={card.id}
+                  onClick={() => navigate(`/officer/customers/${customerId}/cards/${card.card_number}`)}
+                  className="w-full bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card p-4 flex items-center justify-between gap-3 text-left active:scale-[0.99] transition-all"
+                >
+                  <div className="min-w-0">
+                    <p className="text-green-900 dark:text-white text-sm font-semibold">
+                      {card.card_type === 'food' ? '🍱 Food' : '📋 Regular'} #{card.card_number} · {formatNaira(card.rate_kobo)}/day
+                    </p>
+                    <p className="text-green-400 dark:text-night-300 text-xs mt-0.5">
+                      {formatNaira(card.total_contributed_kobo)} contributed{card.completed_at ? ` · completed ${formatDate(card.completed_at)}` : ''}
+                    </p>
+                  </div>
+                  <CompletionBadge status={card.completion_status} collected={card.card_type === 'food' && !!card.food_collected_at} />
+                </button>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

@@ -8,6 +8,9 @@ import { formatNaira, cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api'
 import { useWallet } from '@/hooks/useWallet'
 import { useBillers, usePayBill, useBillsConfig, usePhoneCheck, DEFAULT_BILLS_CONFIG, useBillRequest } from '@/hooks/useBillPayments'
+import { useBillHealth, statForRows } from '@/hooks/useBillHealth'
+import { HealthBar } from '@/components/billers/HealthBar'
+import { MonnifyStatusBanner } from '@/components/billers/MonnifyStatusBanner'
 import { NETWORK_THEME, NEUTRAL_THEME } from '@/lib/networkTheme'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { PaymentReceipt, type ReceiptField } from '@/components/receipts/PaymentReceipt'
@@ -127,6 +130,10 @@ export default function AirtimeDataPage() {
   const airtimeQ = useBillers('airtime')
   const dataQ = useBillers('data')
   const airtimeRows = airtimeQ.data ?? []
+  // Live success rate per network (from real purchases) and Monnify's own status, refreshed every minute.
+  const healthA = useBillHealth('airtime')
+  const healthD = useBillHealth('data')
+  const health = healthA.data ? { ...healthA.data, billers: { ...healthA.data.billers, ...(healthD.data?.billers ?? {}) } } : undefined
   const dataPlans = useMemo(() => {
     if (tab === 'airtime') return airtimeRows
     const seen = new Set<string>()
@@ -287,6 +294,7 @@ export default function AirtimeDataPage() {
         )}
 
         {/* Network — always manually selectable, auto-detect just pre-picks one */}
+        <MonnifyStatusBanner status={healthA.data?.monnify} />
         <div className="mb-5">
           <div className="flex items-center justify-between mb-2">
             <label className="text-green-700 dark:text-night-200 text-xs font-semibold uppercase tracking-wide">Network</label>
@@ -311,6 +319,7 @@ export default function AirtimeDataPage() {
                   <span className={cn('text-[11px] font-semibold', network === n ? 'text-green-900 dark:text-white' : 'text-green-600 dark:text-night-400')}>
                     {on ? n : `${n} · off`}
                   </span>
+                  {on && <HealthBar className="w-full px-1" stat={statForRows((tab === 'airtime' ? airtimeRows : dataPlans).filter(r => matchesNetwork(r, n)), health)} />}
                 </motion.button>
               )
             })}

@@ -6,12 +6,14 @@ import { cn } from '@/lib/utils'
 import { resolveBrand, rgba, type BillerBrand } from '@/lib/billerBrand'
 import type { BillerGroup } from '@/lib/billCatalog'
 import { BillerLogo } from './BillerLogo'
+import { HealthBar } from './HealthBar'
+import { statForGroup, type BillHealth } from '@/hooks/useBillHealth'
 
 /**
  * "Select provider" — a single field that opens a full list in a bottom sheet (the way banking
  * apps do it), instead of a wall of cards on the page. Works for DISCOs, TV providers, exam bodies.
  */
-export function ProviderSheet({ title = 'Select provider', placeholder = 'Choose a provider', groups, selectedKey, onSelect, emptyText = 'No providers available.', disabled, fallbackIcon }: {
+export function ProviderSheet({ title = 'Select provider', placeholder = 'Choose a provider', groups, selectedKey, onSelect, emptyText = 'No providers available.', disabled, fallbackIcon, health }: {
   title?: string
   placeholder?: string
   groups: BillerGroup[]
@@ -20,6 +22,8 @@ export function ProviderSheet({ title = 'Select provider', placeholder = 'Choose
   emptyText?: string
   disabled?: boolean
   fallbackIcon?: ReactNode
+  /** When given, each provider shows its live success-rate bar. */
+  health?: BillHealth
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -107,7 +111,10 @@ export function ProviderSheet({ title = 'Select provider', placeholder = 'Choose
                       style={on ? { background: rgba(b.main, 0.12) } : undefined}
                     >
                       <BillerLogo brand={b} size={42} glow={on} />
-                      <span className="flex-1 min-w-0 text-sm font-bold text-green-950 dark:text-white">{g.name}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-bold text-green-950 dark:text-white">{g.name}</span>
+                        {health && <HealthBar stat={statForGroup(g, health)} className="mt-1.5 max-w-[11rem]" />}
+                      </span>
                       {on ? <Check className="w-5 h-5 shrink-0" style={{ color: b.main }} strokeWidth={3} /> : <ChevronRight className="w-4 h-4 text-green-300 dark:text-night-400 shrink-0" />}
                     </button>
                   )

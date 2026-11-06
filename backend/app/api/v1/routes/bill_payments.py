@@ -26,6 +26,25 @@ logger = logging.getLogger(__name__)
 REQUERY_AFTER_SECONDS = 5
 
 
+@router.get("/health")
+async def bill_health(user: CustomerOrOfficer, category: str | None = None, db: AsyncSession = Depends(get_db)):
+    """Success rate of each biller over the recent window (from real purchases) plus Monnify's own status page.
+    The app shows these as the status bar on each biller and warns before a purchase on a biller below the threshold."""
+    from app.services import bill_health_service as H
+    try:
+        stats = await H.provider_stats(db, category)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Unknown category")
+    return {**stats, "monnify": await H.monnify_status()}
+
+
+@router.get("/health/{biller_id}")
+async def biller_health(biller_id: uuid.UUID, user: CustomerOrOfficer, db: AsyncSession = Depends(get_db)):
+    """The verdict for one biller, used right before a payment is confirmed."""
+    from app.services import bill_health_service as H
+    return {**await H.stat_for_biller(db, biller_id), "monnify": await H.monnify_status()}
+
+
 @router.get("/categories")
 async def get_categories():
     # Static — matches the fixed BillerCategory enum, not a live Monnify
