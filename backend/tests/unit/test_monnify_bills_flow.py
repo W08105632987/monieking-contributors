@@ -725,3 +725,24 @@ def test_postpaid_electricity_success_without_token_completes(monkeypatch):
 def test_requery_tries_our_own_reference_before_monnify_transaction_reference():
     req = SimpleNamespace(id=uuid.UUID(int=7), monnify_transaction_reference="MFBP123")
     assert svc._vend_references(req) == [str(req.id), "MFBP123"]
+
+
+def test_no_token_and_zero_units_after_the_grace_period_finishes_as_no_token_issued(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    env = Env(monkeypatch, biller=_electricity(), vend={"vendStatus": "SUCCESS", "transactionReference": "TX4", "metaData": {"token": "", "unit": "0"}})
+    req = env.pay()
+    assert req.status == BillPaymentStatus.PENDING                      # first answer: wait
+    req.created_at = datetime.now(timezone.utc) - timedelta(minutes=20)
+    run(svc._apply_outcome(env.db, req, "SUCCESS", {"vendStatus": "SUCCESS", "metaData": {"token": "", "unit": "0"}}))
+    assert req.status == BillPaymentStatus.COMPLETED and req.token is None
+    assert req.failure_reason == svc.NO_TOKEN_NOTE
+    assert env.credits == []                                            # never refunded
+
+
+def test_no_token_but_real_units_keeps_waiting_even_after_the_grace_period(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    env = Env(monkeypatch, biller=_electricity(), vend={"vendStatus": "SUCCESS", "transactionReference": "TX5", "metaData": {"token": "", "unit": "0"}})
+    req = env.pay()
+    req.created_at = datetime.now(timezone.utc) - timedelta(minutes=20)
+    run(svc._apply_outcome(env.db, req, "SUCCESS", {"vendStatus": "SUCCESS", "metaData": {"token": "", "unit": "12.5"}}))
+    assert req.status == BillPaymentStatus.PENDING and req.failure_reason == svc.TOKEN_NOTE

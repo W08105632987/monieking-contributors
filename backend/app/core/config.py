@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Connection pool PER WORKER. Total = workers x (size + overflow); keep it under your database pooler limit.
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 5
+    # Celery workers/beat run short jobs, each in its own event loop. They should NOT hold idle connections (they would eat the
+    # pooler's connection limit and a pooled connection cannot safely be reused across event loops). celery_app.py turns this on.
+    DB_USE_NULL_POOL: bool = False
     # Refuse request bodies larger than this (bytes). Uploads are base64 JSON, so 12 MB covers an 8 MB file.
     # Store uploaded ID documents in a PRIVATE bucket and hand out short-lived links (see utils/private_files.py).
     PRIVATE_DOCUMENTS: bool = False

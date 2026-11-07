@@ -1,8 +1,16 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.pool import AsyncAdaptedQueuePool
+from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
 from app.core.config import settings
 
+
+# Celery processes open a connection per job and give it back (NullPool); the API keeps a small reusable pool.
+_POOL_ARGS = (
+    {"poolclass": NullPool}
+    if settings.DB_USE_NULL_POOL
+    else {"poolclass": AsyncAdaptedQueuePool, "pool_size": settings.DB_POOL_SIZE, "max_overflow": settings.DB_MAX_OVERFLOW,
+          "pool_timeout": 10, "pool_recycle": 900, "pool_pre_ping": True}
+)
 
 engine = create_async_engine(
     settings.DATABASE_URL,
@@ -18,17 +26,9 @@ engine = create_async_engine(
     # NullPool makes sense for short-lived/serverless callers; this is a
     # long-running uvicorn process, so it should hold a small pool of
     # already-open connections and reuse them across requests instead.
-    poolclass=AsyncAdaptedQueuePool,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    pool_timeout=10,   # fail fast under overload instead of piling up requests that all time out together
-    # Recycle before Supabase/pgbouncer's own idle-connection timeout can
-    # silently drop a pooled connection out from under us.
-    pool_recycle=900,
-    # Cheaply validates a pooled connection is still alive before handing
-    # it to a request; replaces it transparently if pgbouncer already
-    # closed it server-side, instead of failing the request.
-    pool_pre_ping=True,
+    # API: pool_timeout=10 fails fast under overload; pool_recycle=900 drops connections before pgbouncer's idle timeout;
+    # pool_pre_ping replaces a connection pgbouncer already closed. (All set in _POOL_ARGS above.)
+    **_POOL_ARGS,
     connect_args={
         # Required for Supabase's pgbouncer pooler in transaction mode —
         # a prepared statement created on one backend connection can be

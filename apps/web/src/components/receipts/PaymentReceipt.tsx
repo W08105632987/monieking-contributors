@@ -173,6 +173,12 @@ export function PaymentReceipt(props: PaymentReceiptProps) {
                     {failureReason} — you were not charged for this transaction.
                   </div>
                 )}
+                {status === 'completed' && failureReason?.startsWith('Payment received. No token was issued') && (
+                  <div className="mt-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 px-3.5 py-3 text-[13px] leading-snug text-blue-800 dark:text-blue-200">
+                    <p className="font-bold mb-0.5">Payment successful. Outstanding balance cleared.</p>
+                    {failureReason}
+                  </div>
+                )}
                 {status === 'pending' && (
                   <div className="mt-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 px-3.5 py-3 text-[13px] leading-snug text-amber-700 dark:text-amber-300">
                     {failureReason?.startsWith('Payment received')

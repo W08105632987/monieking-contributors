@@ -26,6 +26,22 @@ PENDING_NOTE = "Waiting for the bills provider to confirm this payment."
 # That is NOT a finished purchase: the customer has paid, but has nothing to use. It stays pending until the token arrives.
 TOKEN_NOTE = "Payment received. Your electricity token is still being generated and will appear here automatically."
 TOKEN_ALERT_AFTER_SECONDS = 30 * 60
+# A prepaid payment the provider confirms (SUCCESS) but which still has no token AND zero units after this long was almost
+# certainly applied to an outstanding balance on the meter (Monnify confirmed this happens with AEDC): no token is issued
+# for it. We then finish the purchase instead of holding it forever, and keep asking for a token in the background.
+NO_TOKEN_GRACE_SECONDS = 15 * 60
+NO_TOKEN_NOTE = ("Payment received. No token was issued for this payment. This usually means it was used to clear an outstanding balance "
+                 "on your meter. Your next purchase will give you a token as normal. If it does not, please contact support.")
+
+
+def _units_are_zero(result) -> bool:
+    u = _read_units(result)
+    if u is None or str(u).strip() == "":
+        return True
+    try:
+        return float(str(u).replace(",", "")) == 0
+    except ValueError:
+        return False
 
 
 def _needs_token(biller: Biller | None) -> bool:
@@ -586,9 +602,16 @@ async def _apply_outcome(db: AsyncSession, request: BillPaymentRequest, outcome:
     if outcome == "SUCCESS" and _needs_token(await db.get(Biller, request.biller_id)) and not _extract_token(result):
         # Paid, but no token yet: do not call this successful. Keep it pending (money stays with the request, nothing is refunded)
         # and let the resolver pick the token up the moment the provider has it.
-        logger.warning("[bills] request %s: provider says SUCCESS but returned no token yet; keeping it pending", request.id)
-        request.status = BillPaymentStatus.PENDING
-        request.failure_reason = TOKEN_NOTE
+        created = getattr(request, "created_at", None)
+        age = (datetime.now(timezone.utc) - created).total_seconds() if created else 0
+        if age >= NO_TOKEN_GRACE_SECONDS and _units_are_zero(result):
+            logger.warning("[bills] request %s: SUCCESS, no token and 0 units after %ds: finishing as 'no token issued' (likely an outstanding balance was cleared)", request.id, age)
+            _mark_completed(request, result)
+            request.failure_reason = NO_TOKEN_NOTE
+        else:
+            logger.warning("[bills] request %s: provider says SUCCESS but returned no token yet; keeping it pending", request.id)
+            request.status = BillPaymentStatus.PENDING
+            request.failure_reason = TOKEN_NOTE
         await db.flush()
     elif outcome == "SUCCESS":
         _mark_completed(request, result)
@@ -808,6 +831,9 @@ async def backfill_missing_token(db: AsyncSession, request: BillPaymentRequest) 
         token = _extract_token(result) if isinstance(result, dict) else None
         if token:
             request.token = token
+            request.units = _read_units(result) or request.units
+            if request.failure_reason == NO_TOKEN_NOTE:
+                request.failure_reason = None          # the token did arrive after all
             await db.commit()
             logger.info("[bills] recovered missing token for request %s", request.id)
             return request
@@ -869,7 +895,7 @@ async def sweep_pending_bills(db: AsyncSession, *, limit: int = 50) -> dict:
     missing = (await db.execute(
         select(BillPaymentRequest).where(
             BillPaymentRequest.status == BillPaymentStatus.COMPLETED, BillPaymentRequest.token.is_(None),
-            BillPaymentRequest.completed_at > now - timedelta(days=3))
+            BillPaymentRequest.completed_at > now - timedelta(hours=24))
         .order_by(BillPaymentRequest.completed_at).limit(limit)
     )).scalars().all()
     for request in missing:

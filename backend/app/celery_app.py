@@ -9,6 +9,11 @@ Run alongside the API in deployment:
   celery -A app.celery_app worker --loglevel=info
   celery -A app.celery_app beat --loglevel=info
 """
+import os
+
+# Must run before app.core.config / app.core.database are imported: Celery jobs use no idle connection pool.
+os.environ.setdefault("DB_USE_NULL_POOL", "1")
+
 from celery import Celery
 from celery.schedules import crontab
 from app.core.config import get_settings
