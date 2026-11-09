@@ -219,6 +219,9 @@ async def check_db_load(db: AsyncSession) -> dict:
             "SELECT (SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()) AS conns,"
             " current_setting('max_connections')::int AS maxc,"
             " (SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND pid <> pg_backend_pid()"
+            "    AND backend_type = 'client backend'"
+            "    AND COALESCE(application_name, '') NOT IN ('realtime_replication_connection', 'realtime_subscription_manager')"
+            "    AND query NOT ILIKE 'START_REPLICATION%'"
             "    AND now() - query_start > interval '60 seconds') AS slow,"
             " (SELECT count(*) FROM pg_locks WHERE NOT granted) AS waiting"))).one()
     except Exception as e:  # noqa: BLE001
