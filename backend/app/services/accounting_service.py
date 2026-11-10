@@ -203,6 +203,19 @@ async def service_rows(db: AsyncSession, start: datetime, end: datetime, rates: 
         key = f"techhub.{m}.{t}"
         c, n, un = await _priced(db, rates, key, start, end, "verification_lookups", "created_at", where)
         rows.append(_row(f"techhub_{m}_{t}", f"Techhub {m.upper() if m in ('nin', 'bvn') else m} check - {t}", "Techhub", rev, c, n, 0, "rate", un, [key]))
+    # KYC onboarding checks: a customer proves their NIN to get an account. Techhub charges us for each one at the same
+    # price as an ordinary NIN check of that tier (the price-book key techhub.nin.<tier>). The customer is not charged,
+    # so revenue is 0 and the cost shows as a loss. Savepoint: an old database without the table never breaks the report.
+    try:
+        async with db.begin_nested():
+            for (tier,) in (await db.execute(text("SELECT DISTINCT tier FROM kyc_lookups WHERE outcome = 'found' AND created_at >= :s AND created_at < :e"), P)).all():
+                t = tier.replace("'", "")
+                key = f"techhub.nin.{t}"
+                c, n, un = await _priced(db, rates, key, start, end, "kyc_lookups", "created_at", f"outcome = 'found' AND tier = '{t}'")
+                rows.append(_row(f"techhub_kyc_nin_{t}", f"Techhub NIN check, KYC onboarding - {t}", "Techhub", 0, c, n, 0, "rate", un, [key],
+                                 "Customers verifying their NIN to open their account. Priced like a normal NIN check; the customer is not charged."))
+    except Exception:   # noqa: BLE001
+        pass
     for tier in ("regular", "standard", "premium"):
         (n, rev) = await _one(db, "SELECT COUNT(*), COALESCE(SUM(price_kobo),0) FROM verification_slips WHERE tier = :t AND created_at >= :s AND created_at < :e", t=tier, **P)
         if n:
@@ -344,6 +357,20 @@ async def service_rows_multi(db: AsyncSession, windows: list[Window], rates: dic
         pr = await _priced_multi(db, rates, key, windows, "verification_lookups", "created_at", where)
         for i in sorted(combos[(method, tier)]):
             out[i].append(_row(f"techhub_{m}_{t}", f"Techhub {m.upper() if m in ('nin', 'bvn') else m} check - {t}", "Techhub", rev[i][0], pr[i][0], pr[i][1], 0, "rate", pr[i][2], [key]))
+    try:   # KYC onboarding checks, see service_rows()
+        async with db.begin_nested():
+            kc: dict[str, set[int]] = {}
+            for i, vals in await _grouped(db, windows, "created_at", "COUNT(*)", "kyc_lookups", "outcome = 'found'", keys="tier"):
+                kc.setdefault(vals[0], set()).add(i)
+            for tier in sorted(kc):
+                t = tier.replace("'", "")
+                key = f"techhub.nin.{t}"
+                pr = await _priced_multi(db, rates, key, windows, "kyc_lookups", "created_at", f"outcome = 'found' AND tier = '{t}'")
+                for i in sorted(kc[tier]):
+                    out[i].append(_row(f"techhub_kyc_nin_{t}", f"Techhub NIN check, KYC onboarding - {t}", "Techhub", 0, pr[i][0], pr[i][1], 0, "rate", pr[i][2], [key],
+                                       "Customers verifying their NIN to open their account. Priced like a normal NIN check; the customer is not charged."))
+    except Exception:   # noqa: BLE001
+        pass
     for tier in ("regular", "standard", "premium"):
         agg = await _one_multi(db, windows, "created_at", "COUNT(*), COALESCE(SUM(price_kobo),0)", "verification_slips", f"tier = '{tier}'", width=2)
         if any(a[0] for a in agg):

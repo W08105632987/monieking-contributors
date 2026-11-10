@@ -8,6 +8,7 @@
  "DELETE /api/v1/promo-banners/{banner_id}/image": "director",
  "DELETE /api/v1/push/subscriptions/{subscription_id}": "ANY LOGIN",
  "DELETE /api/v1/settings/rate-changes/{change_id}": "admin,director",
+ "DELETE /api/v1/users/me/account": "ANY LOGIN",
  "DELETE /api/v1/users/{user_id}": "admin,director",
  "DELETE /api/v1/webauthn/credentials/{credential_id}": "ANY LOGIN",
  "DELETE /api/v1/zonal-customers/waiting/{pending_id}": "director",

@@ -643,6 +643,15 @@ async def login(
         raise
 
     await record_success(db, user)
+
+    # The Google Play app is for customers only. Officers, service workers and directors use the website.
+    # Checked AFTER the password so nobody can learn an account's role without knowing its password, and BEFORE
+    # any session cookie is set so a refused sign-in leaves no session behind.
+    if request.headers.get("x-monieking-client", "").lower() == "play":
+        role = user.role.value if hasattr(user.role, "value") else str(user.role)
+        if role != "customer":
+            raise HTTPException(status_code=403, detail={"code": "WEB_ONLY", "message": "This account type signs in on the MonieKing website, not the app. Please open the website to continue."})
+
     set_session_cookies(response, session["access_token"], session.get("refresh_token"))
 
     return await build_user_response(db, user)

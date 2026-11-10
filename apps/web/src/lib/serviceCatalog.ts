@@ -1,5 +1,6 @@
 import type { IdentityService } from '@/types'
 import { resolveManualKey, type TemplateListItem } from '@/lib/manualServices'
+import { withoutHiddenInPlayApp } from '@/lib/playApp'
 
 // These cards are always shown as open unless the director's switch (service template) says otherwise.
 const ALWAYS_OPEN = new Set([
@@ -120,5 +121,6 @@ export function normalizeServices(rawServices: IdentityService[], templateList: 
     })
   }
 
-  return dedupeServices(list, templateList)
+  // Inside the Google Play app the NIN / BVN / NIMC services are not offered (no effect anywhere else).
+  return withoutHiddenInPlayApp(dedupeServices(list, templateList))
 }

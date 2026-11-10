@@ -19,10 +19,12 @@ import { ChangeDefaultPasswordHost } from '@/components/ui/ChangeDefaultPassword
 import { DownloadHost } from '@/components/ui/DownloadHost'
 import { initSessionLifecycle } from '@/lib/sessionLifecycle'
 import { initKeyboardLayout } from '@/lib/keyboardLayout'
+import { detectPlayApp } from '@/lib/playApp'
 
 // Before React renders anything: the resume handler, privacy shield and
 // durable-logout retry must be live from the first moment, independent of
 // any component mounting (or mounting late). See sessionLifecycle.ts.
+detectPlayApp()
 initSessionLifecycle()
 // Sheets rise above the phone keyboard instead of hiding behind it (see keyboardLayout.ts).
 initKeyboardLayout()

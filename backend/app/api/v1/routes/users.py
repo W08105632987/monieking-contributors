@@ -485,6 +485,55 @@ async def update_user_status(
     return await build_user_response(db, user)
 
 
+@router.delete("/me/account")
+@limiter.limit("3/hour")
+async def delete_my_account(
+    request: Request,
+    body: dict,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    A customer permanently deletes their OWN account (Google Play requires this to exist in the app).
+
+    Safety rules, all checked before anything is touched:
+      * customers only (staff accounts are removed by the director);
+      * the person must type DELETE;
+      * the wallet must be empty, with no unpaid withdrawals and no bill payment still in flight, so nobody can lose
+        money or leave a half-finished purchase behind.
+    The erasure itself is the same audited routine the director uses (erase_account): personal data is wiped, and
+    money records that must be kept for the books are kept anonymously.
+    """
+    if current_user.role != UserRole.CUSTOMER:
+        raise HTTPException(status_code=403, detail="Only customer accounts can be deleted here.")
+    if str((body or {}).get("confirm", "")).strip().upper() != "DELETE":
+        raise HTTPException(status_code=422, detail="Type DELETE to confirm.")
+
+    from app.models.bill_payment import BillPaymentRequest, BillPaymentStatus
+    wallet_kobo = (await db.execute(select(func.coalesce(func.sum(Wallet.balance_kobo), 0)).where(Wallet.owner_id == current_user.id))).scalar_one()
+    open_withdrawals = (await db.execute(select(func.count(Withdrawal.id)).where(
+        Withdrawal.customer_id == current_user.id, Withdrawal.status.in_([WithdrawalStatus.PENDING, WithdrawalStatus.CLAIMED])))).scalar_one()
+    in_flight = (await db.execute(select(func.count(BillPaymentRequest.id)).where(
+        BillPaymentRequest.customer_id == current_user.id,
+        BillPaymentRequest.status.in_([BillPaymentStatus.PENDING_VALIDATION, BillPaymentStatus.VALIDATED, BillPaymentStatus.PENDING])))).scalar_one()
+    if open_withdrawals:
+        raise HTTPException(status_code=409, detail="You have a withdrawal that is not finished yet. Wait for it to be paid, then try again.")
+    if in_flight:
+        raise HTTPException(status_code=409, detail="You have a bill payment that is still being processed. Wait for it to finish, then try again.")
+    if int(wallet_kobo or 0) > 0:
+        raise HTTPException(status_code=409, detail="Your wallet still has money in it. Withdraw it first, then delete your account.")
+
+    from app.services.erasure_service import erase_account
+    uid = str(current_user.id)
+    result, _report = await erase_account(
+        db, current_user, director_id=current_user.id, hard_preferred=True,
+        ip_address=request.client.host if request.client else None,
+    )
+    await db.commit()
+    await invalidate_user_cache(uid)
+    return {"message": "Your account has been deleted.", "result": result}
+
+
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: str,

@@ -34,7 +34,7 @@ export default function BillPaymentPage() {
   const { customerId } = useParams<{ customerId?: string }>()
   const { wallet } = useWallet()
 
-  const [subCategory, setSubCategory] = useState<SubCategory>('electricity')
+  const [subCategory, setSubCategory] = useState<SubCategory>(() => new URLSearchParams(window.location.search).get('category') === 'cable_tv' ? 'cable_tv' : 'electricity')
   const [meterMode, setMeterMode] = useState<MeterKind>('prepaid')
   const [groupKey, setGroupKey] = useState<string | null>(null)
   const [productId, setProductId] = useState<string | null>(null)

@@ -1,3 +1,4 @@
+import { isPlayApp } from '@/lib/playApp'
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { idempotencyKey } from './utils'
 import { friendlyError } from './errorText'
@@ -42,6 +43,8 @@ export const api = axios.create({
 
 // ── Idempotency key on mutating requests ───────────────────────────
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  // Tells the server this request comes from the Google Play app (staff accounts are refused there, see /auth/login).
+  if (isPlayApp()) config.headers['X-MonieKing-Client'] = 'play'
   if (['post', 'put', 'patch'].includes(config.method ?? '')) {
     config.headers['Idempotency-Key'] ??= idempotencyKey()
   }

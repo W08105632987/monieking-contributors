@@ -103,7 +103,18 @@ class NinConfirmBody(NinBody):
     webauthn_assertion: dict | None = None
 
 
-async def lookup_nin_name(db: AsyncSession, number: str, *, notify_uid=None) -> tuple[dict, str]:
+async def _record_kyc_lookup(db: AsyncSession, *, tier: str, outcome: str, user_id, source: str) -> None:
+    """Remember that a KYC lookup reached Techhub, so the accounting center can show what it cost us.
+    Never allowed to break KYC: it runs in its own savepoint and any failure is only logged."""
+    try:
+        from app.verification.models import KycLookup
+        async with db.begin_nested():
+            db.add(KycLookup(user_id=user_id, kind="nin", tier=str(tier or "regular")[:12], outcome=outcome, source=source))
+    except Exception as e:   # noqa: BLE001
+        logger.warning("kyc lookup record failed (%s): %s", outcome, e)
+
+
+async def lookup_nin_name(db: AsyncSession, number: str, *, notify_uid=None, user_id=None) -> tuple[dict, str]:
     """Look a NIN up with Techhub and return (normalised fields, verified full name).
     Shared by the customer's own KYC page and the director's help-a-customer tool. Raises HTTPException."""
     try:
@@ -112,6 +123,9 @@ async def lookup_nin_name(db: AsyncSession, number: str, *, notify_uid=None) -> 
         raise HTTPException(status_code=422, detail=str(e))
 
     cfg = await vs.load_settings(db)
+    kyc_tier = cfg.lookup_tier["nin"]
+    kyc_source = "customer" if notify_uid else "director"
+    kyc_uid = user_id or notify_uid
     endpoint = C.ENDPOINTS.get(("nin", cfg.lookup_tier["nin"]))
     st = await vs._state_row(db, "nin")
     if endpoint is None or not B.allows_call(vs._to_breaker(st), vs._now()):
@@ -121,6 +135,7 @@ async def lookup_nin_name(db: AsyncSession, number: str, *, notify_uid=None) -> 
     try:
         result = await T.call_techhub(endpoint, fields)
     except T.TechhubNotFound:
+        await _record_kyc_lookup(db, tier=kyc_tier, outcome="not_found", user_id=kyc_uid, source=kyc_source)
         await vs.record_outcome(db, "nin", ok=True)
         await db.commit()
         if notify_uid:
@@ -143,6 +158,7 @@ async def lookup_nin_name(db: AsyncSession, number: str, *, notify_uid=None) -> 
         await db.commit()
         logger.warning("kyc nin unreadable keys=%s", X.key_names(result.user_data))
         raise HTTPException(status_code=503, detail=UNAVAILABLE)
+    await _record_kyc_lookup(db, tier=kyc_tier, outcome="found", user_id=kyc_uid, source=kyc_source)
     await vs.record_outcome(db, "nin", ok=True)
     await db.commit()
     return fields, full_name(person)

@@ -93,7 +93,7 @@ export default function PrivacyPolicyPage({ onClose }: { onClose?: () => void } 
           <li>Know what personal data we hold about you</li>
           <li>Request a copy of your data</li>
           <li>Request correction of inaccurate data</li>
-          <li>Request deletion of your data, subject to our legal retention obligations as a financial platform</li>
+          <li>Request deletion of your data, subject to our legal retention obligations as a financial platform. Customers can delete their own account any time in the app (Profile, then Delete my account), or follow the steps at <a className="underline" href="/legal/delete-account">monieking.com/legal/delete-account</a></li>
           <li>Withdraw consent for optional data collection (such as location) at any time</li>
         </ul>
         <p>To exercise any of these rights, contact us through the in-app support channel.</p>

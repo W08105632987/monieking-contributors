@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ChevronRight, Plus, History, LayoutGrid } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Plus, History, LayoutGrid, Smartphone, Wifi, Zap, Tv } from 'lucide-react'
+import { isPlayApp } from '@/lib/playApp'
 import toast from '@/lib/notify'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { api } from '@/lib/api'
@@ -31,6 +32,30 @@ function SheetRow({ service, onOpen }: { service: IdentityService; onOpen: () =>
   )
 }
 
+// Google Play version: only the bill tiles, in the same tile style as the normal grid.
+const PLAY_TILES = [
+  { key: 'airtime', label: 'Airtime', Icon: Smartphone, to: '/customer/airtime-data' },
+  { key: 'data', label: 'Data', Icon: Wifi, to: '/customer/airtime-data?tab=data' },
+  { key: 'electricity', label: 'Electricity', Icon: Zap, to: '/customer/bill-payments?category=electricity' },
+  { key: 'cable', label: 'Cable TV', Icon: Tv, to: '/customer/bill-payments?category=cable_tv' },
+]
+
+function PlayBillTiles() {
+  const navigate = useNavigate()
+  return (
+    <div className="grid grid-cols-4 gap-x-2 gap-y-4">
+      {PLAY_TILES.map(({ key, label, Icon, to }) => (
+        <button key={key} onClick={() => navigate(to)} className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-green-100 dark:bg-night-600">
+            <Icon className="w-6 h-6 text-green-800 dark:text-night-100" />
+          </div>
+          <span className="text-[11px] font-semibold text-center leading-tight text-green-900 dark:text-white">{label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function QuickActionsGrid({ customerId, title = 'Quick actions' }: QuickActionsGridProps = {}) {
   const navigate = useNavigate()
   const [openCategory, setOpenCategory] = useState<IdentityServiceCategory | null>(null)
@@ -39,7 +64,9 @@ export function QuickActionsGrid({ customerId, title = 'Quick actions' }: QuickA
   // a Notify Me action), not silently hidden. Hiding them was the actual
   // bug behind "NIMC only shows two services" — three more were already
   // seeded, just filtered out before they ever reached the UI.
+  const inPlay = isPlayApp() && !customerId
   const { data: rawServices = [], isLoading, isError, refetch, isFetching } = useQuery({
+    enabled: !inPlay,
     queryKey: ['identity-services', 'all'],
     queryFn: async () => {
       const { data } = await api.get<IdentityService[]>('/identity-services')
@@ -105,14 +132,16 @@ export function QuickActionsGrid({ customerId, title = 'Quick actions' }: QuickA
     <div className="mt-6">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-green-900 dark:text-white font-bold text-base">{title}</h2>
-        {!isLoading && !isError && (
+        {!inPlay && !isLoading && !isError && (
           <span className="text-green-400 dark:text-night-300 text-xs font-medium">
             {liveCount} service{liveCount === 1 ? '' : 's'} live
           </span>
         )}
       </div>
 
-      {isError ? (
+      {inPlay ? (
+        <PlayBillTiles />
+      ) : isError ? (
         <FallbackError
           title="Couldn't load quick actions"
           onRetry={() => refetch()}

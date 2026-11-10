@@ -18,6 +18,7 @@ import { BiometricSection } from '@/components/settings/BiometricSection'
 import { ChangePasswordSection } from '@/components/settings/ChangePasswordSection'
 import { BankDetailsEditor } from '@/components/settings/BankDetailsEditor'
 import { KycSection } from '@/components/settings/KycSection'
+import { DeleteAccountSection } from '@/components/settings/DeleteAccountSection'
 import { ContactSupportSheet } from '@/components/settings/ContactSupportSheet'
 import { DarkModeToggle } from '@/components/settings/DarkModeToggle'
 import { NotificationSoundRow } from '@/components/settings/NotificationSoundRow'
@@ -497,6 +498,8 @@ export default function ProfilePage() {
             onClick={() => setShowSignOutSheet(true)}
           />
         </div>
+
+        <DeleteAccountSection />
 
         {/* Footer */}
         <p className="text-center text-green-300 dark:text-night-300 text-xs pb-4">

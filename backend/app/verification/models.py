@@ -40,6 +40,21 @@ class VerificationLookup(Base):
     purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class KycLookup(Base):
+    """One Techhub NIN lookup made to verify a customer for KYC (their own, or by a director on their behalf).
+    It holds NO identity data (no NIN, no name): it exists only so the accounting center can count what Techhub
+    charges us for onboarding. Priced like an ordinary NIN check of the same tier."""
+    __tablename__ = "kyc_lookups"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(8), nullable=False, default="nin")
+    tier: Mapped[str] = mapped_column(String(12), nullable=False, default="regular")
+    outcome: Mapped[str] = mapped_column(String(12), nullable=False)     # found | not_found
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="customer")   # customer | director
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class VerificationSlip(Base):
     __tablename__ = "verification_slips"
     __table_args__ = (UniqueConstraint("lookup_id", "tier", name="verification_slips_once_uq"),)

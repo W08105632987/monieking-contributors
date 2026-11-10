@@ -64,7 +64,7 @@ export default function AirtimeDataPage() {
   const { customerId } = useParams<{ customerId?: string }>()
   const { wallet } = useWallet()
 
-  const [tab, setTab] = useState<'airtime' | 'data'>('airtime')
+  const [tab, setTab] = useState<'airtime' | 'data'>(() => new URLSearchParams(window.location.search).get('tab') === 'data' ? 'data' : 'airtime')
   const [phone, setPhone] = useState('')
   const [network, setNetwork] = useState<NetworkName | null>(null)
   const [manuallyChosen, setManuallyChosen] = useState(false)

@@ -1,4 +1,7 @@
-import { MessageCircle, Mail, ExternalLink, Phone } from 'lucide-react'
+import { MessageCircle, Mail, ExternalLink, Phone, Users } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { useAuthStore } from '@/store/auth.store'
 import { Modal } from '@/components/ui/Modal'
 import { useSupportContact } from '@/components/support/ContactSupport'
 
@@ -19,6 +22,14 @@ export function ContactSupportSheet({ open, onClose }: ContactSupportSheetProps)
   // The director sets these in Business Settings; the built-in WhatsApp number is only a fallback while that loads.
   const { data } = useSupportContact()
   const wa = data?.whatsapp || WHATSAPP_NUMBER
+  // Same community link the director sets in Business Settings (also used by the first-sign-in prompt).
+  const user = useAuthStore((s) => s.user)
+  const { data: community } = useQuery({
+    queryKey: ['whatsapp-community-link', user?.id],
+    queryFn: async () => (await api.get<{ link: string; button: string }>('/community/whatsapp')).data,
+    enabled: open && user?.role === 'customer', staleTime: 5 * 60_000, retry: 0,
+  })
+  const joinCommunity = () => { api.post('/community/whatsapp/joined').catch(() => {}) }
   return (
     <Modal open={open} onClose={onClose} title="Contact support" size="sm">
       <div className="space-y-3">
@@ -47,6 +58,15 @@ export function ContactSupportSheet({ open, onClose }: ContactSupportSheetProps)
           </div>
           <ExternalLink className="w-4 h-4 text-green-400 dark:text-night-300 shrink-0" />
         </a>
+
+        {community?.link && (
+          <a
+            href={community.link} target="_blank" rel="noopener noreferrer" onClick={joinCommunity}
+            className="flex items-center justify-center gap-2 bg-amber-400 text-green-950 font-extrabold text-sm rounded-2xl p-4 active:scale-[0.98] transition-all"
+          >
+            <Users className="w-5 h-5" /> Tap to join community
+          </a>
+        )}
 
         <a
           href={`mailto:${SUPPORT_EMAIL}`}

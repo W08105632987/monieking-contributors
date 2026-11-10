@@ -1,0 +1,21 @@
+{
+  "packageId": "com.monieking.app",
+  "host": "app.monieking.com",
+  "name": "MonieKing",
+  "launcherName": "MonieKing",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#052E16",
+  "navigationColor": "#052E16",
+  "backgroundColor": "#052E16",
+  "startUrl": "/?source=twa",
+  "iconUrl": "https://app.monieking.com/icons/icon-512.png",
+  "maskableIconUrl": "https://app.monieking.com/icons/icon-maskable-512.png",
+  "appVersionName": "1.0.0",
+  "appVersion": "1",
+  "enableNotifications": true,
+  "enableSiteSettingsShortcut": false,
+  "fallbackType": "customtabs",
+  "signingKey": { "path": "./android.keystore", "alias": "monieking" },
+  "generatorApp": "bubblewrap-cli"
+}

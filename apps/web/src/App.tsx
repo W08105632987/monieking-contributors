@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthGuard, roleDashboard } from '@/components/layout/AuthGuard'
+import { PlayAppGate } from '@/components/layout/PlayAppGate'
 import { InactivityMonitor } from '@/components/layout/InactivityMonitor'
 import { MaintenancePage } from '@/components/layout/MaintenancePage'
 import { MaintenanceModeScreen } from '@/components/layout/MaintenanceModeScreen'
@@ -32,6 +33,7 @@ import { PageContentSkeleton } from '@/components/ui/PageContentSkeleton'
 // exactly like the catch-all fallback.
 const TermsOfServicePage = lazy(() => import('@/pages/legal/TermsOfServicePage'))
 const PrivacyPolicyPage  = lazy(() => import('@/pages/legal/PrivacyPolicyPage'))
+const DeleteAccountPage = lazy(() => import('@/pages/legal/DeleteAccountPage'))
 
 // ── Auth pages ────────────────────────────────────────────────────
 const LoginPage    = lazy(() => import('@/pages/auth/LoginPage'))
@@ -291,6 +293,7 @@ export default function App() {
           <Route path="/" element={isAuthenticated && user ? <Navigate to={roleDashboard[user.role]} replace /> : null} />
           <Route path="/legal/terms" element={<TermsOfServicePage />} />
           <Route path="/legal/privacy" element={<PrivacyPolicyPage />} />
+          <Route path="/legal/delete-account" element={<DeleteAccountPage />} />
           <Route path="/auth/login"    element={<LoginPage />} />
           <Route path="/auth/register" element={<RegisterPage />} />
           <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
@@ -324,17 +327,17 @@ export default function App() {
             <Route path="/customer/cards/:cardId" element={<AuthGuard allowedRoles={['customer']}><CardDetailPage /></AuthGuard>} />
             <Route path="/customer/withdrawals/new"          element={<AuthGuard allowedRoles={['customer']}><WithdrawalPage /></AuthGuard>} />
             <Route path="/customer/disputes"      element={<AuthGuard allowedRoles={['customer']}><DisputesListPage /></AuthGuard>} />
-            <Route path="/customer/verify/:kind" element={<AuthGuard allowedRoles={['customer']}><VerifyLookupPage /></AuthGuard>} />
-            <Route path="/customer/verify/:kind/:lookupId" element={<AuthGuard allowedRoles={['customer']}><VerifyLookupPage /></AuthGuard>} />
+            <Route path="/customer/verify/:kind" element={<AuthGuard allowedRoles={['customer']}><PlayAppGate param="kind"><VerifyLookupPage /></PlayAppGate></AuthGuard>} />
+            <Route path="/customer/verify/:kind/:lookupId" element={<AuthGuard allowedRoles={['customer']}><PlayAppGate param="kind"><VerifyLookupPage /></PlayAppGate></AuthGuard>} />
             <Route path="/customer/services/history" element={<AuthGuard allowedRoles={['customer']}><ServiceHistoryPage /></AuthGuard>} />
             <Route path="/customer/services" element={<AuthGuard allowedRoles={['customer']}><ServicesPage /></AuthGuard>} />
-            <Route path="/customer/services/:serviceId/request" element={<AuthGuard allowedRoles={['customer']}><ServiceRequestFormPage /></AuthGuard>} />
+            <Route path="/customer/services/:serviceId/request" element={<AuthGuard allowedRoles={['customer']}><PlayAppGate><ServiceRequestFormPage /></PlayAppGate></AuthGuard>} />
             <Route path="/customer/airtime-data" element={<AuthGuard allowedRoles={['customer']}><AirtimeDataPage /></AuthGuard>} />
             <Route path="/customer/bill-payments" element={<AuthGuard allowedRoles={['customer']}><BillPaymentPage /></AuthGuard>} />
             <Route path="/customer/education-payments" element={<AuthGuard allowedRoles={['customer']}><EducationPaymentsPage /></AuthGuard>} />
             <Route path="/customer/manual-services/history" element={<AuthGuard allowedRoles={['customer']}><ManualServiceHistoryPage /></AuthGuard>} />
             <Route path="/customer/manual-services/requests/:requestId" element={<AuthGuard allowedRoles={['customer', 'officer', 'director']}><ManualServiceDetailPage /></AuthGuard>} />
-            <Route path="/customer/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['customer']}><ManualServicePage /></AuthGuard>} />
+            <Route path="/customer/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['customer']}><PlayAppGate param="serviceKey"><ManualServicePage /></PlayAppGate></AuthGuard>} />
 
             {/* ── Cooperative (preview) ── */}
             <Route path="/coop"                 element={<AuthGuard allowedRoles={['customer']}><CoopHomePage /></AuthGuard>} />
@@ -378,8 +381,8 @@ export default function App() {
             <Route path="/director/alerts" element={<AuthGuard allowedRoles={['director']}><DirectorAlerts /></AuthGuard>} />
             <Route path="/director/officer-payouts" element={<AuthGuard allowedRoles={['director']}><DirectorOfficerPayouts /></AuthGuard>} />
             <Route path="/officer/disputes"       element={<AuthGuard allowedRoles={['officer']}><DisputesListPage /></AuthGuard>} />
-            <Route path="/officer/customers/:customerId/verify/:kind" element={<AuthGuard allowedRoles={['officer']}><VerifyLookupPage /></AuthGuard>} />
-            <Route path="/officer/customers/:customerId/verify/:kind/:lookupId" element={<AuthGuard allowedRoles={['officer']}><VerifyLookupPage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/verify/:kind" element={<AuthGuard allowedRoles={['officer']}><PlayAppGate param="kind"><VerifyLookupPage /></PlayAppGate></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/verify/:kind/:lookupId" element={<AuthGuard allowedRoles={['officer']}><PlayAppGate param="kind"><VerifyLookupPage /></PlayAppGate></AuthGuard>} />
             <Route path="/officer/customers/:customerId/services" element={<AuthGuard allowedRoles={['officer']}><ServiceHistoryPage /></AuthGuard>} />
             <Route path="/officer/customers/:customerId/services/all" element={<AuthGuard allowedRoles={['officer']}><ServicesPage /></AuthGuard>} />
             <Route path="/officer/customers/:customerId/services/:serviceId/request" element={<AuthGuard allowedRoles={['officer']}><ServiceRequestFormPage /></AuthGuard>} />
@@ -387,7 +390,7 @@ export default function App() {
             <Route path="/officer/customers/:customerId/bill-payments" element={<AuthGuard allowedRoles={['officer']}><BillPaymentPage /></AuthGuard>} />
             <Route path="/officer/customers/:customerId/education-payments" element={<AuthGuard allowedRoles={['officer']}><EducationPaymentsPage /></AuthGuard>} />
             <Route path="/officer/manual-services/history" element={<AuthGuard allowedRoles={['officer']}><ManualServiceHistoryPage /></AuthGuard>} />
-            <Route path="/officer/customers/:customerId/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['officer']}><ManualServicePage /></AuthGuard>} />
+            <Route path="/officer/customers/:customerId/manual-services/:serviceKey" element={<AuthGuard allowedRoles={['officer']}><PlayAppGate param="serviceKey"><ManualServicePage /></PlayAppGate></AuthGuard>} />
 
             {/* ── Director (Admin fused in) ── */}
             <Route path="/director/dashboard"       element={<AuthGuard allowedRoles={['director']}><DirectorDashboard /></AuthGuard>} />

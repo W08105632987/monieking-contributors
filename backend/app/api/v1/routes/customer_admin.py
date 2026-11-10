@@ -377,7 +377,7 @@ async def kyc_lookup(request: Request, user_id: str, body: KycLookupBody, direct
     if user.kyc_complete:
         raise HTTPException(status_code=409, detail="This person is already verified.")
     uid, registered = user.id, user.full_name
-    fields, verified_name = await lookup_nin_name(db, body.nin)
+    fields, verified_name = await lookup_nin_name(db, body.nin, user_id=user.id)
     ok = kyc_flow.names_match(registered, verified_name)
     proof = kyc_flow.make_proof(user_id=str(uid), kind="nin", number=fields["nin"], name=verified_name, name_ok=ok)
     return {"verified_name": verified_name, "registered_name": registered, "name_matches": ok, "id_masked": mask_id(fields["nin"]), "proof": proof}

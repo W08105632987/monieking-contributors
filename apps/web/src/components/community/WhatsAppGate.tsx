@@ -22,6 +22,11 @@ export function WhatsAppGate({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const opened = useRef(false)
+  // "Skip": remembered on this device only. The server record stays empty, so the director's numbers are unchanged and
+  // the person can still join later from Profile > Contact support.
+  const skipKey = `mk_wa_skip_${user?.id ?? ''}`
+  const [skipped, setSkipped] = useState(() => { try { return !!localStorage.getItem(skipKey) } catch { return false } })
+  const skip = () => { try { localStorage.setItem(skipKey, String(Date.now())) } catch { /* ignore */ } setSkipped(true) }
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['whatsapp-gate', user?.id],
@@ -44,7 +49,7 @@ export function WhatsAppGate({ children }: { children: ReactNode }) {
     )
   }
 
-  if (!data.required) return <>{children}</>
+  if (!data.required || skipped) return <>{children}</>
 
   const confirm = async () => {
     setBusy(true); setFailed(false)
@@ -80,7 +85,8 @@ export function WhatsAppGate({ children }: { children: ReactNode }) {
           className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-[#25D366] py-4 text-base font-extrabold text-white shadow-lg shadow-green-500/30 transition-transform active:scale-95 disabled:opacity-60">
           <MessageCircle className="h-5 w-5" /> {busy ? 'Please wait…' : failed ? 'Tap again to continue' : data.button}
         </button>
-        <p className="mt-3 text-[11px] text-green-500 dark:text-night-300">You only need to do this once.</p>
+        <button onClick={skip} disabled={busy} className="mt-3 w-full rounded-full py-3 text-sm font-bold text-green-700 dark:text-night-100">Skip for now</button>
+        <p className="mt-1 text-[11px] text-green-500 dark:text-night-300">You can join any time from Profile, then Contact.</p>
       </motion.div>
     </div>
   )
