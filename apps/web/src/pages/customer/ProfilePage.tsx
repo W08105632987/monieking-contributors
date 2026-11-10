@@ -272,6 +272,7 @@ export default function ProfilePage() {
       {/* Top bar */}
       <header className="flex items-center justify-between px-4 py-3 bg-green-50 dark:bg-night-800">
         <BrandBlobLogo height={36} />
+        <DeleteAccountSection variant="header" />
       </header>
 
       <div className="flex-1 overflow-y-auto pb-safe-nav px-4">
@@ -498,8 +499,6 @@ export default function ProfilePage() {
             onClick={() => setShowSignOutSheet(true)}
           />
         </div>
-
-        <DeleteAccountSection />
 
         {/* Footer */}
         <p className="text-center text-green-300 dark:text-night-300 text-xs pb-4">

@@ -8,7 +8,7 @@ import { sheetMotion, overlayMotion } from '@/lib/motion'
 import toast from '@/lib/notify'
 
 /** "Delete my account": required by Google Play. The server refuses while money or a payment is still in flight. */
-export function DeleteAccountSection() {
+export function DeleteAccountSection({ variant = 'card' }: { variant?: 'card' | 'header' } = {}) {
   const navigate = useNavigate()
   const { logout } = useAuthStore()
   const [open, setOpen] = useState(false)
@@ -33,15 +33,25 @@ export function DeleteAccountSection() {
 
   return (
     <>
-      <div className="bg-white dark:bg-night-700 rounded-2xl border border-red-100 shadow-card px-4 mb-6">
-        <button onClick={() => setOpen(true)} className="w-full flex items-center gap-3 py-4 text-left">
-          <span className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center"><Trash2 className="w-4 h-4 text-red-400 dark:text-red-300" /></span>
-          <span className="flex-1">
-            <span className="block text-red-600 dark:text-red-300 text-sm font-bold">Delete my account</span>
-            <span className="block text-green-500 dark:text-night-300 text-xs">Permanently erase your account and personal data</span>
-          </span>
+      {variant === 'header' ? (
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Delete my account"
+          className="flex items-center gap-1.5 rounded-full border border-red-200 dark:border-red-900 px-3 h-9 text-xs font-bold text-red-600 dark:text-red-300 active:scale-95 transition-transform"
+        >
+          <Trash2 className="w-3.5 h-3.5" /> Delete account
         </button>
-      </div>
+      ) : (
+        <div className="bg-white dark:bg-night-700 rounded-2xl border border-red-100 shadow-card px-4 mb-6">
+          <button onClick={() => setOpen(true)} className="w-full flex items-center gap-3 py-4 text-left">
+            <span className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center"><Trash2 className="w-4 h-4 text-red-400 dark:text-red-300" /></span>
+            <span className="flex-1">
+              <span className="block text-red-600 dark:text-red-300 text-sm font-bold">Delete my account</span>
+              <span className="block text-green-500 dark:text-night-300 text-xs">Permanently erase your account and personal data</span>
+            </span>
+          </button>
+        </div>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={close}>
