@@ -43,7 +43,7 @@ export function usePayBill(customerId?: string) {
           { params: customerId ? { customer_id: customerId } : {}, timeout: 90_000 },
         )
         return data
-      }, { title: 'Confirm with your PIN', message: 'Enter your 4-digit payment PIN to complete this payment.' })
+      }, { title: 'Confirm with your PIN', message: 'Enter your 4-digit payment PIN to complete this payment.', processing: 'Processing your payment…' })
     },
     onSuccess: () => {
       // Wallet balance changed — same invalidation pattern used by

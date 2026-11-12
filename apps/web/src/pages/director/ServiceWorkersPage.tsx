@@ -18,6 +18,7 @@ interface WorkerListItem {
   status: string
   state_of_residence?: string | null
   commission_balance_kobo: number
+  worker_type?: 'affiliated' | 'company'
   onboarding_completed: boolean
   is_busy: boolean
   active_job_id?: string | null
@@ -90,6 +91,7 @@ export default function ServiceWorkersPage() {
   // Create Worker Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [newPhone, setNewPhone] = useState('')
+  const [newType, setNewType] = useState<'affiliated' | 'company'>('affiliated')
   const [createdResult, setCreatedResult] = useState<{
     whatsapp_invite_text: string
     default_password: string
@@ -154,8 +156,8 @@ export default function ServiceWorkersPage() {
 
   // Create Worker Mutation
   const createWorkerMutation = useMutation({
-    mutationFn: async (phone: string) => {
-      const res = await api.post('/worker/create', { phone_number: phone })
+    mutationFn: async (vars: { phone: string; type: 'affiliated' | 'company' }) => {
+      const res = await api.post('/worker/create', { phone_number: vars.phone, worker_type: vars.type })
       return res.data
     },
     onSuccess: (data) => {
@@ -167,6 +169,19 @@ export default function ServiceWorkersPage() {
     onError: (err) => {
       toast.error(getErrorMessage(err))
     },
+  })
+
+  // Change a worker between Affiliated (wallet + commission) and Company (no wallet, no commission)
+  const setTypeMutation = useMutation({
+    mutationFn: async (vars: { id: string; type: 'affiliated' | 'company' }) => {
+      const res = await api.patch(`/worker/${vars.id}/type`, { worker_type: vars.type })
+      return res.data
+    },
+    onSuccess: (d) => {
+      toast.success(d.worker_type === 'company' ? 'Now a Company worker: no wallet, no commission.' : 'Now an Affiliated worker: earns commission into a wallet.')
+      queryClient.invalidateQueries({ queryKey: ['director-workers-list'] })
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
   })
 
   // Approve Payout Mutation
@@ -474,6 +489,15 @@ export default function ServiceWorkersPage() {
                           >
                             {w.is_busy ? 'Busy (Handling Job)' : 'Free'}
                           </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              w.worker_type === 'company'
+                                ? 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300'
+                                : 'bg-green-100 text-green-800 dark:bg-night-700 dark:text-night-100'
+                            }`}
+                          >
+                            {w.worker_type === 'company' ? 'Company' : 'Affiliated'}
+                          </span>
                           {Boolean(w.pending_referred_count && w.pending_referred_count > 0) && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
                               {w.pending_referred_count} in referral hold
@@ -506,10 +530,10 @@ export default function ServiceWorkersPage() {
                     <div className="pt-2 border-t border-green-100 dark:border-night-700 grid grid-cols-2 gap-2 text-xs">
                       <div>
                         <span className="text-[11px] text-green-600 dark:text-night-400 block">
-                          Commission Balance
+                          {w.worker_type === 'company' ? 'Wallet' : 'Commission Balance'}
                         </span>
                         <span className="font-mono font-bold text-green-950 dark:text-white">
-                          {formatNaira(w.commission_balance_kobo)}
+                          {w.worker_type === 'company' ? 'None (company account)' : formatNaira(w.commission_balance_kobo)}
                         </span>
                       </div>
                       <div>
@@ -519,6 +543,21 @@ export default function ServiceWorkersPage() {
                         <span className="font-mono font-bold text-green-950 dark:text-white">
                           {w.jobs_completed} jobs
                         </span>
+                      </div>
+                      <div className="col-span-2">
+                        <button
+                          onClick={() => {
+                            const to = w.worker_type === 'company' ? 'affiliated' : 'company'
+                            const msg = to === 'company'
+                              ? 'Move this worker to Company? They will stop earning commission and lose their wallet and payouts. Their balance must be zero first.'
+                              : 'Move this worker to Affiliated? They will earn commission into a wallet from now on.'
+                            if (window.confirm(msg)) setTypeMutation.mutate({ id: w.id, type: to })
+                          }}
+                          disabled={setTypeMutation.isPending}
+                          className="mt-1 w-full rounded-xl border border-green-200 dark:border-night-600 py-2 text-xs font-bold text-green-800 dark:text-night-100 disabled:opacity-50"
+                        >
+                          {w.worker_type === 'company' ? 'Change to Affiliated worker' : 'Change to Company worker'}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -816,11 +855,30 @@ export default function ServiceWorkersPage() {
                   onSubmit={(e) => {
                     e.preventDefault()
                     if (newPhone.trim().length >= 10) {
-                      createWorkerMutation.mutate(newPhone.trim())
+                      createWorkerMutation.mutate({ phone: newPhone.trim(), type: newType })
                     }
                   }}
                   className="space-y-4"
                 >
+                  <div>
+                    <span className="block text-xs font-bold text-green-900 dark:text-night-200 mb-1">Worker type *</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        { id: 'affiliated', title: 'Affiliated', sub: 'Earns commission. Has a wallet and payouts.' },
+                        { id: 'company', title: 'Company', sub: 'Uses the company account. No wallet, no commission.' },
+                      ] as const).map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setNewType(t.id)}
+                          className={`text-left rounded-xl border-2 p-3 transition-colors ${newType === t.id ? 'border-green-700 bg-green-50 dark:bg-night-700 dark:border-brand-gold' : 'border-green-100 dark:border-night-600'}`}
+                        >
+                          <span className="block text-sm font-extrabold text-green-950 dark:text-white">{t.title}</span>
+                          <span className="block text-[11px] text-green-700 dark:text-night-300 mt-0.5">{t.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-xs font-bold text-green-900 dark:text-night-200 mb-1">
                       Worker Phone Number *

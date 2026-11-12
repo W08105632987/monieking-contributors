@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthGuard, roleDashboard } from '@/components/layout/AuthGuard'
 import { PlayAppGate } from '@/components/layout/PlayAppGate'
+import { AffiliatedWorkerOnly } from '@/components/layout/CompanyWorkerRedirect'
 import { InactivityMonitor } from '@/components/layout/InactivityMonitor'
 import { MaintenancePage } from '@/components/layout/MaintenancePage'
 import { MaintenanceModeScreen } from '@/components/layout/MaintenanceModeScreen'
@@ -432,7 +433,7 @@ export default function App() {
             <Route path="/worker/dashboard"      element={<AuthGuard allowedRoles={['service_worker']}><WorkerDashboardPage /></AuthGuard>} />
             <Route path="/worker/my-jobs"        element={<AuthGuard allowedRoles={['service_worker']}><WorkerMyJobsPage /></AuthGuard>} />
             <Route path="/worker/jobs"           element={<AuthGuard allowedRoles={['service_worker']}><WorkerMyJobsPage /></AuthGuard>} />
-            <Route path="/worker/earnings"       element={<AuthGuard allowedRoles={['service_worker']}><WorkerEarningsPage /></AuthGuard>} />
+            <Route path="/worker/earnings"       element={<AuthGuard allowedRoles={['service_worker']}><AffiliatedWorkerOnly><WorkerEarningsPage /></AffiliatedWorkerOnly></AuthGuard>} />
             <Route path="/worker/disputes"       element={<AuthGuard allowedRoles={['service_worker']}><WorkerDisputesPage /></AuthGuard>} />
             <Route path="/worker/profile"        element={<AuthGuard allowedRoles={['service_worker']}><WorkerProfilePage /></AuthGuard>} />
             <Route path="/worker/notifications"  element={<AuthGuard allowedRoles={['service_worker']}><WorkerNotificationsPage /></AuthGuard>} />

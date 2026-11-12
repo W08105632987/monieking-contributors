@@ -89,6 +89,7 @@ function CountdownTimer({ expiresAt, onExpire }: { expiresAt: string; onExpire?:
 export default function WorkerDashboardPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const isCompany = user?.worker_type === 'company'
   const queryClient = useQueryClient()
 
   // Realtime subscription for automatic instant updates
@@ -233,7 +234,7 @@ export default function WorkerDashboardPage() {
     onSuccess: () => {
       toast.success(
         resolveStatus === 'successful'
-          ? `Job resolved! Commission credited to your balance.`
+          ? (isCompany ? `Job resolved!` : `Job resolved! Commission credited to your balance.`)
           : `Job marked as failed.`
       )
       setResolveModalJob(null)
@@ -347,7 +348,8 @@ export default function WorkerDashboardPage() {
                     Category: {formatServiceCategory(activeJob.service_category)}
                   </p>
                 </div>
-                <div className="text-right">
+                {!isCompany && (
+<div className="text-right">
                   <span className="text-[10px] text-green-600 dark:text-night-400 uppercase font-semibold">
                     Commission
                   </span>
@@ -355,6 +357,7 @@ export default function WorkerDashboardPage() {
                     +{formatNaira(activeJob.worker_commission_kobo)}
                   </p>
                 </div>
+)}
               </div>
 
               {/* Customer information */}
@@ -445,7 +448,8 @@ export default function WorkerDashboardPage() {
                         </p>
                       )}
                     </div>
-                    <div className="text-right">
+                    {!isCompany && (
+<div className="text-right">
                       <span className="text-[10px] uppercase font-bold text-green-600 dark:text-night-400">
                         Commission
                       </span>
@@ -453,6 +457,7 @@ export default function WorkerDashboardPage() {
                         +{formatNaira(job.worker_commission_kobo)}
                       </div>
                     </div>
+)}
                   </div>
 
                   {/* Referral hold countdown */}
@@ -587,7 +592,8 @@ export default function WorkerDashboardPage() {
                       )}
                     </div>
 
-                    <div className="text-right">
+                    {!isCompany && (
+<div className="text-right">
                       <span className="text-[10px] uppercase font-bold text-green-600 dark:text-night-400">
                         Commission
                       </span>
@@ -595,6 +601,7 @@ export default function WorkerDashboardPage() {
                         +{formatNaira(job.worker_commission_kobo)}
                       </div>
                     </div>
+)}
                   </div>
 
                   <div className="pt-2 border-t border-green-100 dark:border-night-700 flex items-center justify-between">

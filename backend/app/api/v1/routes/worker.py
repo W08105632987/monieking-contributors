@@ -59,6 +59,13 @@ class PayoutRequest(BaseModel):
 
 class CreateWorkerRequest(BaseModel):
     phone_number: str = Field(..., min_length=10, max_length=20)
+    # 'affiliated' = commission earner with a wallet (what every worker has been so far); 'company' = works on the
+    # company account: no commission, no wallet, no payouts.
+    worker_type: str = Field("affiliated", pattern="^(affiliated|company)$")
+
+
+class WorkerTypeRequest(BaseModel):
+    worker_type: str = Field(..., pattern="^(affiliated|company)$")
 
 
 def mask_name(name: str | None) -> str | None:
@@ -216,6 +223,7 @@ async def create_service_worker(
         status=UserStatus.ACTIVE,
         onboarding_completed=False,
         referral_code=referral_code,
+        worker_type=body.worker_type,
     )
     db.add(worker)
     await db.commit()
@@ -238,7 +246,7 @@ async def create_service_worker(
         action="create_service_worker",
         entity_type="user",
         entity_id=str(worker.id),
-        new_value={"worker_id": str(worker.id), "phone": worker.phone_number, "role": "service_worker"},
+        new_value={"worker_id": str(worker.id), "phone": worker.phone_number, "role": "service_worker", "worker_type": body.worker_type},
     )
     await db.commit()
 
@@ -248,6 +256,7 @@ async def create_service_worker(
             "phone_number": worker.phone_number,
             "referral_code": worker.referral_code,
             "role": "service_worker",
+            "worker_type": body.worker_type,
         },
         "whatsapp_invite_text": whatsapp_text,
         "default_password": default_password,
@@ -498,6 +507,7 @@ async def get_earnings_summary(
         "account_number": worker.account_number if worker else None,
         "account_name": worker.account_name if worker else None,
         "bank_name": worker.bank_name if worker else None,
+        "worker_type": (worker.worker_type if worker else None) or "affiliated",
     }
 
 
@@ -541,6 +551,8 @@ async def request_payout(
     db: AsyncSession = Depends(get_db),
 ):
     """Request a commission payout (Director approval required)."""
+    if current_user.worker_type == "company":
+        raise HTTPException(status_code=403, detail="Company workers have no wallet or payouts.")
     try:
         payout = await job_pool_service.request_payout(
             db,
@@ -580,6 +592,46 @@ async def get_worker_stats(
 ):
     """Live director overview: free/busy workers, job pool depth, daily stats."""
     return await job_pool_service.get_worker_stats(db)
+
+
+@router.patch("/{worker_id}/type")
+async def set_worker_type(
+    worker_id: uuid.UUID,
+    body: WorkerTypeRequest,
+    current_user: DirectorOrAdmin,
+    db: AsyncSession = Depends(get_db),
+):
+    """Director changes a worker between 'affiliated' (wallet + commission) and 'company' (no wallet, no commission).
+    Past jobs keep the type they were done under. Moving a worker to 'company' needs their wallet settled first, so no
+    money is ever stranded or silently removed."""
+    from sqlalchemy import func as sqlfunc
+    worker = await db.get(User, worker_id)
+    if not worker or worker.role != UserRole.SERVICE_WORKER:
+        raise HTTPException(status_code=404, detail="Service worker not found.")
+    before = worker.worker_type or "affiliated"
+    if before == body.worker_type:
+        return {"worker_id": str(worker.id), "worker_type": before, "changed": False}
+    if body.worker_type == "company":
+        pending = await db.scalar(
+            select(sqlfunc.count()).select_from(ServiceWorkerWithdrawal).where(
+                ServiceWorkerWithdrawal.worker_id == worker.id, ServiceWorkerWithdrawal.status == SWWithdrawalStatus.PENDING)
+        ) or 0
+        problems = []
+        if (worker.commission_balance_kobo or 0) > 0:
+            problems.append("a commission balance (pay it out first)")
+        if (worker.commission_held_kobo or 0) > 0:
+            problems.append("commission held for a dispute")
+        if (worker.commission_debt_kobo or 0) > 0:
+            problems.append("commission debt")
+        if pending:
+            problems.append("a payout request that is still pending")
+        if problems:
+            raise HTTPException(status_code=409, detail="Settle this worker's wallet before moving them to Company: they still have " + ", ".join(problems) + ".")
+    worker.worker_type = body.worker_type
+    await log_action(db, actor_id=current_user.id, action="set_worker_type", entity_type="user", entity_id=str(worker.id),
+                     old_value={"worker_type": before}, new_value={"worker_type": body.worker_type})
+    await db.commit()
+    return {"worker_id": str(worker.id), "worker_type": body.worker_type, "changed": True}
 
 
 @router.get("/list")
@@ -639,6 +691,7 @@ async def list_all_workers(
             "status": w.status.value if hasattr(w.status, "value") else w.status,
             "state_of_residence": w.state_of_residence,
             "commission_balance_kobo": w.commission_balance_kobo,
+            "worker_type": w.worker_type or "affiliated",
             "onboarding_completed": w.onboarding_completed,
             "is_busy": active_job is not None,
             "active_job_id": str(active_job.id) if active_job else None,

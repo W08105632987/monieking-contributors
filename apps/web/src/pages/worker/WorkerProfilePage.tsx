@@ -343,6 +343,7 @@ function MenuRow({
 export default function WorkerProfilePage() {
   const navigate = useNavigate()
   const { user, setUser } = useAuthStore()
+  const isCompany = user?.worker_type === 'company'
   const qc = useQueryClient()
   const [showWithdrawSheet, setShowWithdrawSheet] = useState(false)
   const [showEditInfoSheet, setShowEditInfoSheet] = useState(false)
@@ -455,7 +456,8 @@ export default function WorkerProfilePage() {
         )}
 
         {/* Commission Wallet & Stats summary */}
-        <div
+        {!isCompany && (
+<div
           className="rounded-2xl p-4 mb-4 text-white shadow-card"
           style={{ background: 'linear-gradient(135deg, #052E16 0%, #064E3B 100%)' }}
         >
@@ -498,6 +500,7 @@ export default function WorkerProfilePage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Personal & Worker Information Card */}
         <div className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 shadow-card px-4 mb-4">
@@ -553,6 +556,7 @@ export default function WorkerProfilePage() {
             iconColor="text-green-700 dark:text-night-100"
             onClick={() => navigate('/worker/dashboard')}
           />
+          {!isCompany && (
           <MenuRow
             icon={Wallet}
             label="Earnings & Payouts"
@@ -561,6 +565,7 @@ export default function WorkerProfilePage() {
             iconColor="text-amber-500 dark:text-amber-300"
             onClick={() => navigate('/worker/earnings')}
           />
+          )}
           <MenuRow
             icon={AlertTriangle}
             label="Job Disputes"

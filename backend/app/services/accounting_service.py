@@ -141,10 +141,15 @@ async def _titles(db: AsyncSession) -> dict[str, str]:
     return out
 
 
-def _manual_row(cat: str, title: str, rev, comm, c, n, un) -> dict:
+def _manual_row(cat: str, title: str, rev, comm, c, n, un, company_n=0) -> dict:
     key = f"identity.{cat}"
-    return _row(f"manual_{cat}", title, "Services", rev, int(comm) + int(c), n, 0, "rate", un, [key],
-                "Cost = the worker's commission + what the provider charges us per request (price book). Counted when the job is completed successfully; failed jobs are refunded and earn nothing.")
+    note = ("Cost = the worker's commission + what the provider charges us per request (price book). Counted when the job is completed successfully; failed jobs are refunded and earn nothing.")
+    if company_n:
+        note += (f" {int(company_n)} of these {int(n)} jobs were done by company workers: no commission, so only the provider charge is the cost.")
+    row = _row(f"manual_{cat}", title, "Services", rev, int(comm) + int(c), n, 0, "rate", un, [key], note)
+    row["company_jobs"] = int(company_n or 0)
+    row["affiliated_jobs"] = max(0, int(n or 0) - int(company_n or 0))
+    return row
 
 
 async def service_rows(db: AsyncSession, start: datetime, end: datetime, rates: dict | None = None) -> list[dict]:
@@ -225,10 +230,10 @@ async def service_rows(db: AsyncSession, start: datetime, end: datetime, rates: 
 
     # Worker/provider-handled services (NIN modification, BVN modification ...): one row per service so each can be priced.
     titles = await _titles(db)
-    for cat, n, rev, comm in (await db.execute(text("SELECT service_category, COUNT(*), COALESCE(SUM(price_kobo),0), COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0) FROM manual_service_requests WHERE status = 'successful' AND completed_at >= :s AND completed_at < :e GROUP BY 1 ORDER BY 1"), P)).all():
+    for cat, n, rev, comm, company_n in (await db.execute(text("SELECT service_category, COUNT(*), COALESCE(SUM(price_kobo),0), COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0), COALESCE(SUM(CASE WHEN worker_type = 'company' THEN 1 ELSE 0 END),0) FROM manual_service_requests WHERE status = 'successful' AND completed_at >= :s AND completed_at < :e GROUP BY 1 ORDER BY 1"), P)).all():
         sc = _safe(cat)
         c, _, un = await _priced(db, rates, f"identity.{sc}", start, end, "manual_service_requests", "completed_at", f"status = 'successful' AND service_category = '{sc}'", "price_kobo")
-        rows.append(_manual_row(sc, titles.get(cat, cat.replace("_", " ").title()), rev, comm, c, n, un))
+        rows.append(_manual_row(sc, titles.get(cat, cat.replace("_", " ").title()), rev, comm, c, n, un, company_n))
 
     # Affiliated officers earn a share of the withdrawal charge: that is money the company pays out.
     (oc, on_) = await _one(db, "SELECT COALESCE(SUM(amount_kobo),0), COUNT(*) FROM officer_commissions WHERE created_at >= :s AND created_at < :e", **P)
@@ -387,11 +392,11 @@ async def service_rows_multi(db: AsyncSession, windows: list[Window], rates: dic
     for cat in sorted(mcats):
         sc = _safe(cat)
         where = f"status = 'successful' AND service_category = '{sc}'"
-        agg = await _one_multi(db, windows, "completed_at", "COALESCE(SUM(price_kobo),0), COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0), COUNT(*)", "manual_service_requests", where, width=3)
+        agg = await _one_multi(db, windows, "completed_at", "COALESCE(SUM(price_kobo),0), COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0), COUNT(*), COALESCE(SUM(CASE WHEN worker_type = 'company' THEN 1 ELSE 0 END),0)", "manual_service_requests", where, width=4)
         pr = await _priced_multi(db, rates, f"identity.{sc}", windows, "manual_service_requests", "completed_at", where, "price_kobo")
         for i in sorted(mcats[cat]):
-            rev, comm, n = agg[i]
-            out[i].append(_manual_row(sc, titles.get(cat, cat.replace("_", " ").title()), rev, comm, pr[i][0], n, pr[i][2]))
+            rev, comm, n, company_n = agg[i]
+            out[i].append(_manual_row(sc, titles.get(cat, cat.replace("_", " ").title()), rev, comm, pr[i][0], n, pr[i][2], company_n))
 
     oc = await _one_multi(db, windows, "created_at", "COALESCE(SUM(amount_kobo),0), COUNT(*)", "officer_commissions", width=2)
     for i in range(W):

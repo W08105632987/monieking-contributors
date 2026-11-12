@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -14,6 +14,7 @@ interface Service { key: string; label: string; group: string; count: number; vo
 interface Report {
   start: string; end: string; totals: Totals; services: Service[]
   expenses: { total_kobo: number; by_category: { category: string; total_kobo: number; count: number }[] }
+  other_income?: { total_kobo: number; by_source: { source: string; total_kobo: number; count: number }[] }
   warnings: { key: string; label: string; events: number }[]
   series?: (Totals & { label: string })[]
 }
@@ -137,11 +138,6 @@ function OverviewSkeleton() {
 function Overview({ rep, series, seriesLoading, seriesError, loading, goPrices }: { rep?: Report; series?: Report['series']; seriesLoading: boolean; seriesError: boolean; loading: boolean; goPrices: () => void }) {
   if (loading || !rep) return <OverviewSkeleton />
   const t = rep.totals
-  const groups = useMemo(() => {
-    const m = new Map<string, { revenue: number; cost: number }>()
-    rep.services.forEach((s) => { const g = m.get(s.group) ?? { revenue: 0, cost: 0 }; g.revenue += s.revenue_kobo; g.cost += s.cost_kobo; m.set(s.group, g) })
-    return [...m.entries()].sort((a, b) => b[1].revenue - a[1].revenue)
-  }, [rep])
   const chart = (series ?? []).map((p) => ({ name: p.label, Revenue: p.revenue_kobo / 100, 'Provider cost': p.provider_cost_kobo / 100, Expenses: p.expenses_kobo / 100, Net: p.net_profit_kobo / 100 }))
   return (
     <div className="space-y-4">
@@ -183,30 +179,97 @@ function Overview({ rep, series, seriesLoading, seriesError, loading, goPrices }
           </div>
         </div>
       )}
-      <div className={card}>
-        <p className="mb-1 text-sm font-extrabold text-green-950 dark:text-white">Where the profit comes from</p>
-        <p className="mb-2 text-xs text-green-600 dark:text-night-300">Revenue is what we charged customers. Cost is what the provider charged us for the same activity.</p>
-        <table className="w-full text-xs">
-          <thead><tr className="text-left text-green-600 dark:text-night-300"><th className="py-1">Area</th><th className="text-right">Revenue</th><th className="text-right">Cost</th><th className="text-right">Profit</th></tr></thead>
-          <tbody>
-            {groups.map(([g, v]) => (
-              <tr key={g} className="border-t border-green-100 dark:border-night-500">
-                <td className="py-1.5 font-semibold text-green-950 dark:text-white">{g}</td>
-                <td className="text-right">{money(v.revenue)}</td><td className="text-right">{money(v.cost)}</td>
-                <td className={`text-right font-bold ${tone(v.revenue - v.cost)}`}>{money(v.revenue - v.cost)}</td>
+      <PnlStatement rep={rep} />
+    </div>
+  )
+}
+
+const isKyc = (s: Service) => s.key.startsWith('techhub_kyc_nin')
+
+function PnlStatement({ rep }: { rep: Report }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  const kyc = rep.services.filter(isKyc)
+  const rest = rep.services.filter((s) => !isKyc(s))
+  const groups = useMemo(() => {
+    const m = new Map<string, Service[]>()
+    rest.forEach((s) => m.set(s.group, [...(m.get(s.group) ?? []), s]))
+    return [...m.entries()].map(([g, items]) => ({ g, items, revenue: items.reduce((a, s) => a + s.revenue_kobo, 0), cost: items.reduce((a, s) => a + s.cost_kobo, 0) })).sort((a, b) => b.revenue - a.revenue)
+  }, [rep])
+  const kycCost = kyc.reduce((a, s) => a + s.cost_kobo, 0)
+  const kycRev = kyc.reduce((a, s) => a + s.revenue_kobo, 0)
+  const kycCount = kyc.reduce((a, s) => a + s.count, 0)
+  const income = rep.other_income?.by_source ?? []
+  const incomeTotal = rep.other_income?.total_kobo ?? 0
+  const t = rep.totals
+  const row = 'border-t border-green-100 dark:border-night-500'
+  return (
+    <div className={card}>
+      <p className="mb-1 text-sm font-extrabold text-green-950 dark:text-white">Profit and loss statement</p>
+      <p className="mb-2 text-xs text-green-600 dark:text-night-300">Everything for the period in one place: services, onboarding checks, money earned outside the app, expenses, and the bottom line. Tap an area to see its lines.</p>
+      <table className="w-full text-xs">
+        <thead><tr className="text-left text-green-600 dark:text-night-300"><th className="py-1">Area</th><th className="text-right">Revenue</th><th className="text-right">Cost</th><th className="text-right">Profit</th></tr></thead>
+        <tbody>
+          {groups.map(({ g, items, revenue, cost }) => (
+            <Fragment key={g}>
+              <tr className={`${row} cursor-pointer`} onClick={() => setOpen((o) => ({ ...o, [g]: !o[g] }))}>
+                <td className="py-1.5 font-semibold text-green-950 dark:text-white">{open[g] ? '▾' : '▸'} {g}</td>
+                <td className="text-right">{money(revenue)}</td><td className="text-right">{money(cost)}</td>
+                <td className={`text-right font-bold ${tone(revenue - cost)}`}>{money(revenue - cost)}</td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {rep.expenses.by_category.length > 0 && (
-        <div className={card}>
-          <p className="mb-2 text-sm font-extrabold text-green-950 dark:text-white">Expenses by category</p>
-          {rep.expenses.by_category.map((c) => (
-            <div key={c.category} className="flex justify-between border-t border-green-100 py-1.5 text-xs first:border-0 dark:border-night-500"><span>{c.category} ({c.count})</span><b>{money(c.total_kobo)}</b></div>
+              {open[g] && items.map((s) => (
+                <tr key={s.key} className="text-[11px] text-green-700 dark:text-night-300">
+                  <td className="py-1 pl-4">{s.label} <span className="opacity-70">({s.count.toLocaleString()})</span></td>
+                  <td className="text-right">{money(s.revenue_kobo)}</td><td className="text-right">{money(s.cost_kobo)}</td>
+                  <td className={`text-right ${tone(s.margin_kobo)}`}>{money(s.margin_kobo)}</td>
+                </tr>
+              ))}
+            </Fragment>
           ))}
+          <tr className={`${row} bg-green-50 font-extrabold dark:bg-night-600`}>
+            <td className="py-1.5">Gross profit from services</td>
+            <td className="text-right">{money(t.revenue_kobo)}</td><td className="text-right">{money(t.provider_cost_kobo)}</td>
+            <td className={`text-right ${tone(t.gross_profit_kobo)}`}>{money(t.gross_profit_kobo)}</td>
+          </tr>
+          {kyc.length > 0 && (
+            <tr className="border-t-2 border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/20">
+              <td className="py-1.5 font-semibold text-red-700 dark:text-red-300">KYC onboarding checks <span className="font-normal">({kycCount.toLocaleString()}, not charged to customers)</span></td>
+              <td className="text-right">{money(kycRev)}</td><td className="text-right">{money(kycCost)}</td>
+              <td className="text-right font-bold text-red-600">{money(kycRev - kycCost)}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <div className="mt-3 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/20">
+        <p className="text-xs font-extrabold text-amber-800 dark:text-amber-300">Other income (outside the app)</p>
+        {income.length === 0 ? <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">None recorded for this period. Add some in the Other income tab.</p> : (
+          <>
+            {income.map((i) => (
+              <div key={i.source} className="flex justify-between border-t border-amber-200 py-1 text-xs first:border-0 dark:border-amber-900">
+                <span>{i.source} <span className="opacity-70">({i.count})</span></span><b>{money(i.total_kobo)}</b>
+              </div>
+            ))}
+            <div className="mt-1 flex justify-between border-t-2 border-amber-400 pt-1.5 text-sm font-extrabold text-amber-900 dark:text-amber-200"><span>Total other income</span><span>{money(incomeTotal)}</span></div>
+          </>
+        )}
+      </div>
+
+      {rep.expenses.by_category.length > 0 && (
+        <div className="mt-3 rounded-xl border border-green-100 p-3 dark:border-night-500">
+          <p className="text-xs font-extrabold text-green-950 dark:text-white">Expenses</p>
+          {rep.expenses.by_category.map((c) => (
+            <div key={c.category} className="flex justify-between border-t border-green-100 py-1 text-xs first:border-0 dark:border-night-500"><span>{c.category} <span className="opacity-70">({c.count})</span></span><b>{money(c.total_kobo)}</b></div>
+          ))}
+          <div className="mt-1 flex justify-between border-t-2 border-green-200 pt-1.5 text-sm font-extrabold dark:border-night-400"><span>Total expenses</span><span>{money(rep.expenses.total_kobo)}</span></div>
         </div>
       )}
+
+      <div className="mt-3 space-y-1 rounded-xl bg-green-900 p-3 text-xs text-white">
+        <div className="flex justify-between"><span>Gross profit from services (KYC cost included)</span><span>{money(t.gross_profit_kobo)}</span></div>
+        <div className="flex justify-between"><span>+ Other income</span><span>{money(t.other_income_kobo ?? incomeTotal)}</span></div>
+        <div className="flex justify-between"><span>− Expenses</span><span>{money(t.expenses_kobo)}</span></div>
+        <div className="flex justify-between border-t border-green-600 pt-1.5 text-base font-extrabold"><span>Net profit</span><span>{money(t.net_profit_kobo)}</span></div>
+      </div>
     </div>
   )
 }

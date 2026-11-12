@@ -186,6 +186,10 @@ class User(Base):
     commission_held_kobo:    Mapped[int]         = mapped_column(default=0, server_default="0")  # held pending dispute
     commission_debt_kobo:    Mapped[int]         = mapped_column(default=0, server_default="0")  # owed from reversed commission
 
+    # Service workers: 'affiliated' (commission earner, has a wallet and payouts) or 'company' (works on the company
+    # account: no commission, no wallet, no payout). NULL is read as 'affiliated'. See 071_worker_types.sql
+    worker_type:                Mapped[str | None]      = mapped_column(String(10), nullable=True)
+
     # Officers: 'salary' or 'affiliated' (commission). NULL = not classified yet. See 066_affiliated_officers.sql
     officer_type:               Mapped[str | None]      = mapped_column(String(12), nullable=True)
     officer_commission_percent: Mapped[int | None]      = mapped_column(nullable=True)          # NULL = the global setting

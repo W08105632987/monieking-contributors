@@ -406,6 +406,7 @@ async def list_disputes(
     page_size: int = Query(20, ge=1, le=100),
     include_resolved: bool = Query(False),
     status: DisputeStatus | None = Query(None),
+    scope: str = Query("mine", pattern="^(mine|all)$"),
     db: AsyncSession = Depends(get_db),
 ):
     # 4.1.9 — sweep any overdue disputes past dispute_sla_minutes (debounced)
@@ -438,9 +439,11 @@ async def list_disputes(
             (Dispute.assigned_worker_id == current_user.id) | (Dispute.raised_by == current_user.id)
         )
     elif current_user.role in (UserRole.DIRECTOR, UserRole.ADMIN):
-        query = query.where(
-            (Dispute.assigned_to.is_(None)) | (Dispute.assigned_to == current_user.id)
-        )
+        # scope=all lets a director see (and join the conversation on) disputes held by officers and workers too
+        if scope != "all":
+            query = query.where(
+                (Dispute.assigned_to.is_(None)) | (Dispute.assigned_to == current_user.id)
+            )
     else:
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -569,6 +572,10 @@ async def add_message(
     # An officer who answers a customer's dispute takes it over. An officer who RAISED the dispute (marking corrections)
     # must never become its handler, or the director could no longer claim or resolve it.
     if current_user.role == UserRole.OFFICER and dispute.assigned_to != current_user.id and dispute.raised_by != current_user.id:
+        dispute.assigned_to = current_user.id
+    # A director who answers an unclaimed dispute takes it, so the conversation and the Resolve button live together.
+    if current_user.role in (UserRole.DIRECTOR, UserRole.ADMIN) and dispute.assigned_to is None and not is_internal \
+            and dispute.raised_by != current_user.id:
         dispute.assigned_to = current_user.id
     await db.flush()
 

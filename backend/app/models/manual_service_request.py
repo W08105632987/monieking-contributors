@@ -79,6 +79,10 @@ class ManualServiceRequest(Base):
     worker_additional_info: Mapped[str | None] = mapped_column(Text, nullable=True)
     worker_result_file_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Snapshot of the resolving worker's type at completion ('affiliated' | 'company'), so later reassignment never
+    # rewrites past profit. NULL = completed before worker types existed (affiliated).
+    worker_type: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
     # Commission awarded upon successful completion
     worker_commission_kobo: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     commission_status: Mapped[CommissionStatus] = mapped_column(

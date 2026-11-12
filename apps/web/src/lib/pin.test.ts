@@ -44,3 +44,16 @@ describe('withPin', () => {
     await expect(q).rejects.toMatchObject({ response: { status: 500 } })
   })
 })
+
+
+describe('withPin processing cover', () => {
+  it('shows the cover once the PIN is in, and hides it at once when the action fails', async () => {
+    const { useProcessingStore } = await import('@/store/processing.store')
+    useProcessingStore.getState().hide()
+    const p = withPin(async () => { expect(useProcessingStore.getState().label).toBe('Working…'); throw err(500, 'boom') }, { processing: 'Working…' })
+    await Promise.resolve()
+    usePinStore.getState().current?.resolve('1234')
+    await expect(p).rejects.toBeTruthy()
+    expect(useProcessingStore.getState().label).toBeNull()
+  })
+})

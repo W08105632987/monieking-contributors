@@ -51,6 +51,7 @@ export interface User {
   nin_linked?: boolean
   /** Officers only: 'salary' (paid as before) or 'affiliated' (earns commission). null = the director has not chosen yet. */
   officer_type?: 'salary' | 'affiliated' | null
+  worker_type?: 'affiliated' | 'company' | null
   officer_commission_percent?: number | null
   officer_welcome_seen_at?: string | null
   /** Customers: set by the server only when the 'Join WhatsApp group' tap was received. */

@@ -251,6 +251,7 @@
  "PATCH /api/v1/users/me/location": "ANY LOGIN",
  "PATCH /api/v1/users/{user_id}/sms-alerts": "ANY LOGIN",
  "PATCH /api/v1/users/{user_id}/status": "admin,director",
+ "PATCH /api/v1/worker/{worker_id}/type": "admin,director",
  "POST /api/v1/admin/billing/charge-monthly-sms": "admin,director",
  "POST /api/v1/admin/crm/users/{user_id}/force-password-reset": "admin",
  "POST /api/v1/analytics/track": "PUBLIC",

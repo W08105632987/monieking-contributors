@@ -72,7 +72,11 @@ export const BottomNav = forwardRef<HTMLElement>(function BottomNav(_props, ref)
   const unreadCount = useNotificationsStore((s) => s.unreadCount)
 
   const inCoop = user?.role === 'customer' && (location.pathname === '/coop' || location.pathname.startsWith('/coop/'))
-  const navItems = inCoop ? coopNav : (navByRole[user?.role ?? 'customer'] ?? customerNav)
+  const rawNav = inCoop ? coopNav : (navByRole[user?.role ?? 'customer'] ?? customerNav)
+  // Company workers work on the company account: no wallet, so no Earnings tab.
+  const navItems = user?.role === 'service_worker' && user.worker_type === 'company'
+    ? rawNav.filter((item) => item.href !== '/worker/earnings')
+    : rawNav
 
   // Longest matching href wins, so "/coop/loans" lights up Loans rather than the shorter "/coop" (Home).
   const activeIdx = (() => {

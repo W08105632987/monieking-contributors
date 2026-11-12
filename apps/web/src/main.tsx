@@ -13,6 +13,7 @@ import { CelebrationHost } from '@/components/ui/CelebrationHost'
 import { SeasonalLayer } from '@/components/ui/SeasonalLayer'
 import { DialogHost } from '@/components/ui/DialogHost'
 import { PinHost } from '@/components/ui/PinHost'
+import { ProcessingOverlay } from '@/components/ui/ProcessingOverlay'
 import { NoticeHost } from '@/components/ui/NoticeHost'
 import { KycGateHost } from '@/components/ui/KycGateHost'
 import { ChangeDefaultPasswordHost } from '@/components/ui/ChangeDefaultPasswordHost'
@@ -39,6 +40,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <FeedbackModalHost />
           <DialogHost />
           <PinHost />
+          <ProcessingOverlay />
           <DownloadHost />
           <CelebrationHost />
           <SeasonalLayer />

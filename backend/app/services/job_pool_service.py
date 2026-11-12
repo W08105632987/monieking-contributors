@@ -230,7 +230,20 @@ async def claim_job(
     return job
 
 
+async def is_company_worker(db: AsyncSession, worker_id: uuid.UUID | None) -> bool:
+    """Company workers do jobs on the company account: they earn no commission and have no wallet."""
+    if not worker_id:
+        return False
+    worker = await db.get(User, worker_id)
+    return bool(worker and worker.worker_type == "company")
+
+
 async def compute_commission(db: AsyncSession, job: ManualServiceRequest) -> int:
+    if await is_company_worker(db, job.claimed_by_id):
+        job.worker_type = "company"
+        return 0
+    if job.claimed_by_id:
+        job.worker_type = "affiliated"
     if job.price_kobo and job.price_kobo > 0:
         return int(job.price_kobo * (await _get_commission_percent(db)) / 100)
     return 0
@@ -241,7 +254,7 @@ async def credit_worker_commission(db: AsyncSession, worker_id: uuid.UUID, commi
     if commission_kobo <= 0:
         return
     worker = await db.get(User, worker_id)
-    if not worker:
+    if not worker or worker.worker_type == "company":
         return
     debt = worker.commission_debt_kobo or 0
     surplus = commission_kobo
@@ -300,7 +313,9 @@ async def resolve_job(
         raise ValueError("Please write the reason this service could not be completed. The customer is refunded in full.")
 
     commission_kobo = 0
-    if final_status == ManualServiceStatus.SUCCESSFUL and job.price_kobo > 0:
+    company = await is_company_worker(db, worker_id)
+    job.worker_type = "company" if company else "affiliated"
+    if final_status == ManualServiceStatus.SUCCESSFUL and job.price_kobo > 0 and not company:
         pct = await _get_commission_percent(db)
         commission_kobo = int(job.price_kobo * pct / 100)
 
@@ -584,6 +599,8 @@ async def request_payout(
     worker = await db.get(User, worker_id)
     if not worker:
         raise ValueError("Worker not found.")
+    if worker.worker_type == "company":
+        raise ValueError("Company workers have no wallet and cannot request payouts.")
     if (worker.commission_balance_kobo or 0) < amount_kobo:
         raise ValueError("Insufficient commission balance.")
 

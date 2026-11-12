@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { cn, timeAgo } from '@/lib/utils'
 import type { Dispute, DisputeStatus } from '@/types'
 import { DISPUTE_REASON_LABEL } from '@/types'
+import { useAuthStore } from '@/store/auth.store'
 
 const STATUS_STYLE: Record<DisputeStatus, string> = {
   open:          'bg-amber-50 text-amber-600',
@@ -32,9 +33,11 @@ export default function DisputesListPage() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<'active' | 'resolved'>('active')
   const [page, setPage] = useState(1)
+  const isDirector = useAuthStore((st) => st.user?.role === 'director' || st.user?.role === 'admin')
+  const [scope, setScope] = useState<'mine' | 'all'>('mine')
 
   const { data, isLoading } = useQuery<PaginatedDisputes>({
-    queryKey: ['my-disputes', tab, page],
+    queryKey: ['my-disputes', tab, page, scope],
     queryFn: async () => {
       const res = await api.get('/disputes', {
         params: {
@@ -42,6 +45,7 @@ export default function DisputesListPage() {
           page_size: 20,
           include_resolved: tab === 'resolved',
           status: tab === 'resolved' ? 'resolved' : undefined,
+          scope: isDirector ? scope : undefined,
         },
       })
       // Normalize response if direct array or paginated object
@@ -93,6 +97,17 @@ export default function DisputesListPage() {
         </div>
       </div>
 
+      {isDirector && (
+        <div className="px-4 pt-2">
+          <div className="flex max-w-sm gap-1 rounded-xl bg-green-100/70 p-1 dark:bg-night-700/60">
+            {([['mine', 'Unclaimed & mine'], ['all', 'Everyone (officers, workers)']] as const).map(([k, l]) => (
+              <button key={k} onClick={() => { setScope(k); setPage(1) }}
+                className={cn('flex-1 rounded-lg py-1.5 text-xs font-semibold', scope === k ? 'bg-white text-green-900 shadow-sm dark:bg-night-600 dark:text-white' : 'text-green-700 dark:text-night-300')}>{l}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto px-4 pb-safe-nav">
         {isLoading ? (
           <div className="space-y-3 mt-2">
@@ -132,7 +147,7 @@ export default function DisputesListPage() {
                 <p className="text-green-900 dark:text-white font-semibold text-sm">
                   {d.entity_type === 'contribution_marking'
                     ? 'Wrong marking'
-                    : d.entity_type === 'manual_service'
+                    : (d.entity_type as string) === 'manual_service_request'
                     ? 'Manual Identity Service'
                     : d.entity_type === 'wallet_transaction'
                     ? 'Wallet transaction'

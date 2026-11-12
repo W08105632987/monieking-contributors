@@ -136,6 +136,7 @@ class UserResponse(BaseModel):
     state_of_residence: Optional[str] = None
     referral_code:      Optional[str] = None
     commission_balance_kobo: int = 0
+    worker_type: Optional[str] = None
     officer_type: Optional[str] = None
     officer_commission_percent: Optional[int] = None
     officer_welcome_seen_at: Optional[datetime] = None

@@ -1,6 +1,7 @@
 import { usePinStore } from '@/store/pin.store'
 import { useAuthStore } from '@/store/auth.store'
 import { ensureKyc } from '@/lib/kyc'
+import { useProcessingStore } from '@/store/processing.store'
 
 let seq = 0
 
@@ -26,16 +27,22 @@ const detail = (e: any): string => String(e?.response?.data?.detail ?? e?.respon
  *  - wrong PIN (401)       -> asks again with the error shown inside the prompt
  *  - cancelled             -> throws PinCancelled (callers simply stop)
  */
-export async function withPin<T>(action: (pin: string) => Promise<T>, opts: { title?: string; message?: string; skipKyc?: boolean } = {}): Promise<T> {
+export async function withPin<T>(action: (pin: string) => Promise<T>, opts: { title?: string; message?: string; skipKyc?: boolean; processing?: string } = {}): Promise<T> {
   // No KYC, no service: show the "Complete your KYC" box before even asking for the PIN.
   if (!opts.skipKyc && !ensureKyc()) throw new PinCancelled()
   let error: string | undefined
   for (let attempt = 0; attempt < 6; attempt++) {
     const pin = await requestPin({ title: opts.title, message: opts.message, error })
     if (!pin) throw new PinCancelled()
+    // The moment the PIN is in, cover the screen with the spinner (when the caller asked for it), so the confirm sheet
+    // underneath can never show a half-updated balance. It stays up a beat after success so the receipt replaces it.
+    if (opts.processing) useProcessingStore.getState().show(opts.processing)
     try {
-      return await action(pin)
+      const result = await action(pin)
+      if (opts.processing) setTimeout(() => useProcessingStore.getState().hide(), 450)
+      return result
     } catch (e) {
+      if (opts.processing) useProcessingStore.getState().hide()
       const st = status(e)
       if (st === 428 && /pin/i.test(detail(e))) {
         const u = useAuthStore.getState().user
