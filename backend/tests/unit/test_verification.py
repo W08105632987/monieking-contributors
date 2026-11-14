@@ -468,3 +468,20 @@ def test_person_lookup_still_requires_person_data():
 def test_shape_description_has_key_names_but_no_values():
     d = T.describe_shape(200, {"status": "success", "result": {"slip": {"document": _PDF}, "name": "SECRETNAME"}})
     assert "result.slip.document" in d and "SECRETNAME" not in d and "pdf_found=True" in d
+
+
+def test_phone_lookup_is_sent_the_way_live_techhub_requires():
+    """Found 14 Nov by live test: nin_by_phone_*.php 400s on {"phone"} alone and works when the number
+    is also sent as "nin". Only the premium phone endpoint has been verified live."""
+    from app.verification import constants as C
+    assert C.PHONE_TIER == "premium" and ("phone", C.PHONE_TIER) in C.ENDPOINTS
+    assert C.PHONE_ALSO_SEND_AS == ("nin",)
+
+
+def test_phone_number_is_never_recorded_as_the_nin():
+    """The extra "nin" is added to the outgoing request only; the normalised inputs (used as the
+    requested-ID fallback for the stored result) must stay phone-only."""
+    import ast, pathlib
+    src = pathlib.Path(__file__).resolve().parents[2].joinpath("app/verification/service.py").read_text()
+    assert "outgoing = dict(normalized)" in src
+    assert "requested_id=str(normalized.get(id_key)" in src

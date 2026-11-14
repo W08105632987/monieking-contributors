@@ -255,7 +255,7 @@ async def create_lookup(db: AsyncSession, *, actor: User, customer_id: uuid.UUID
     if wallet.balance_kobo < fee:
         raise HTTPException(status_code=400, detail=f"Insufficient wallet balance. Available: ₦{wallet.balance_kobo // 100:,}")
 
-    tier = C.DEMOGRAPHIC_TIER if method == "demographic" else cfg.lookup_tier[kind]
+    tier = C.DEMOGRAPHIC_TIER if method == "demographic" else C.PHONE_TIER if method == "phone" else cfg.lookup_tier[kind]
     endpoint = C.ENDPOINTS.get((method, tier))
     if endpoint is None:
         raise HTTPException(status_code=503, detail=UNAVAILABLE_MSG)
@@ -277,7 +277,13 @@ async def create_lookup(db: AsyncSession, *, actor: User, customer_id: uuid.UUID
         return await lookup_full_view(db, prior)
 
     try:
-        result = await call_techhub(endpoint, normalized)
+        # Exactly what Techhub is sent. For a phone lookup the number is also sent under the extra
+        # field(s) Techhub insists on; `normalized` stays untouched so the phone is never mistaken for a NIN.
+        outgoing = dict(normalized)
+        if method == "phone":
+            for extra in C.PHONE_ALSO_SEND_AS:
+                outgoing[extra] = normalized["phone"]
+        result = await call_techhub(endpoint, outgoing)
     except TechhubNotFound:
         await record_outcome(db, kind, ok=True)
         row = await db.get(VerificationLookup, row.id)

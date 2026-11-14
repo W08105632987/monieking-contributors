@@ -31,6 +31,15 @@ ENDPOINTS = {
 # Tier a demographic lookup is assumed to return (see ENDPOINTS note).
 DEMOGRAPHIC_TIER = "premium"
 
+# Phone lookups always use the premium endpoint: it is the only phone endpoint verified against the live
+# Techhub (14 Nov: nin_by_phone_regular.php rejected every request with "Missing required parameters").
+PHONE_TIER = "premium"
+
+# Live Techhub behaviour, found by test: nin_by_phone_*.php rejects {"phone": ...} alone with HTTP 400
+# "Missing required parameters: api_key and/or nin". It succeeds when the same number is ALSO sent as "nin".
+# Fields added to the outgoing request only (never used as the person's NIN anywhere in our records).
+PHONE_ALSO_SEND_AS = ("nin",)
+
 # Which Techhub field name carries each input.
 FIELD_NAMES = {
     "nin": ("nin",),
