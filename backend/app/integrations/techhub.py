@@ -34,12 +34,24 @@ class TechhubError(Exception):
     # Does this count toward tripping the circuit breaker?
     counts_as_failure = True
     reason = "unavailable"
+    detail = ""   # short, digit-free note for the director/diagnostics only. Never shown to customers.
 
 
 class TechhubUnavailable(TechhubError):
     """Timeout, network, 5xx, malformed answer, blocked IP, our Techhub balance empty."""
     def __init__(self, reason: str = "unavailable"):
         self.reason = reason
+        super().__init__(reason)
+
+
+class TechhubRejected(TechhubUnavailable):
+    """Techhub answered a 400 we cannot classify. That is about THIS request, not proof the provider
+    is down, so it must not switch off lookups for everyone. The customer still sees the safe
+    'unavailable, not charged' message and the reason is kept in diagnostics."""
+    counts_as_failure = False
+
+    def __init__(self, reason: str = "unclassified_400", detail: str = ""):
+        self.detail = detail
         super().__init__(reason)
 
 
@@ -75,6 +87,17 @@ class TechhubNotFound(TechhubError):
 class TechhubResult:
     user_data: dict
     pdf: bytes   # b"" when Techhub sent no usable PDF
+
+
+_NOT_FOUND_PHRASES = ("not found", "no record", "no nin", "no match", "does not exist", "doesn't exist",
+                      "could not find", "couldn't find", "not linked", "not registered", "no data", "no result")
+
+
+def _looks_like_not_found(message: str) -> bool:
+    """A clean 'there is no such person' answer. Phone lookups word this many ways
+    ('No NIN linked to this phone number', 'Record not found', ...)."""
+    m = (message or "").lower()
+    return any(p in m for p in _NOT_FOUND_PHRASES)
 
 
 def _looks_like_balance(message: str) -> bool:
@@ -218,7 +241,7 @@ def interpret(status_code: int, body, want: str = "person") -> TechhubResult:
             return TechhubResult(user_data=canonical_user_data(data) if isinstance(data, dict) else {}, pdf=pdf)
         raise TechhubUnavailable("no_pdf")
 
-    if code == "02" or (status_code == 400 and "not found" in message.lower() and "record" in message.lower()):
+    if code == "02" or (status_code == 400 and _looks_like_not_found(message)):
         raise TechhubNotFound()
     if code == "01" or str(body.get("error_code") or "").startswith("INVALID"):
         raise TechhubInvalidInput()
@@ -229,7 +252,7 @@ def interpret(status_code: int, body, want: str = "person") -> TechhubResult:
     if status_code == 400:
         # Any other 400 we cannot classify is treated as OUR problem, not the
         # customer's: safer to say "unavailable, not charged" than to blame input.
-        raise TechhubUnavailable("unclassified_400")
+        raise TechhubRejected("unclassified_400", _safe_text(message, 120))
     raise TechhubUnavailable("unexpected_status")
 
 

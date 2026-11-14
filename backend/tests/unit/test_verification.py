@@ -116,9 +116,19 @@ def test_balance_400_is_our_outage_not_customer_error():
     assert e.value.reason == "provider_balance" and e.value.counts_as_failure
 
 
-def test_unclassified_400_is_unavailable():
-    with pytest.raises(T.TechhubUnavailable):
-        T.interpret(400, {"status": "error", "message": "something odd"})
+def test_unclassified_400_is_unavailable_but_does_not_trip_breaker():
+    with pytest.raises(T.TechhubUnavailable) as e:
+        T.interpret(400, {"status": "error", "message": "something odd 08012345678"})
+    assert e.value.reason == "unclassified_400" and e.value.counts_as_failure is False
+    assert "something odd" in e.value.detail and "0801" not in e.value.detail   # digits masked
+
+
+@pytest.mark.parametrize("msg", ["No NIN linked to this phone number", "Record not found", "NIN not found for phone",
+                                 "Phone number is not registered", "No record matched", "Could not find any NIN"])
+def test_phone_not_found_wordings_are_clean_not_found(msg):
+    with pytest.raises(T.TechhubNotFound) as e:
+        T.interpret(400, {"status": "error", "message": msg})
+    assert e.value.counts_as_failure is False
 
 
 @pytest.mark.parametrize("status,exc", [(429, T.TechhubBusy), (401, T.TechhubAuthError), (403, T.TechhubUnavailable),

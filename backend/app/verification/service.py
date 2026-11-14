@@ -296,6 +296,8 @@ async def create_lookup(db: AsyncSession, *, actor: User, customer_id: uuid.UUID
             await record_outcome(db, kind, ok=False, reason=e.reason)
         row = await db.get(VerificationLookup, row.id)
         row.status, row.failure_reason, row.completed_at = "failed", e.user_message, _now()
+        # Why it really failed, for directors/engineers only (lookup_summary_view hides "diag" from customers).
+        row.summary = {"method": method, "diag": {"reason": e.reason, "detail": getattr(e, "detail", "") or None}}
         await db.commit()
         return await lookup_full_view(db, row)
 
