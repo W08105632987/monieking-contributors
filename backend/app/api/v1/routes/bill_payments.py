@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -13,7 +13,7 @@ from app.schemas.bill_payment import (
     BillerItem, ValidateBillRequest, ValidateBillResponse,
     PayBillRequest, BillPaymentRequestItem, PricingPatch, BulkPricing,
 )
-from app.services import bill_payment_service, bill_config, bill_pricing, bill_admin
+from app.services import bill_payment_service, bill_config, bill_pricing, bill_admin, provider_router
 from app.core.public_errors import public_message
 from app.integrations.monnify_bills import get_bills_provider, MonnifyBillsError
 from pydantic import BaseModel, Field
@@ -58,6 +58,16 @@ class BillsConfigPatch(BaseModel):
     bills_enabled: bool | None = None
     data_vtu_enabled: bool | None = None
     data_standard_enabled: bool | None = None
+    airtime_provider: str | None = Field(None, pattern="^(monnify|vtu)$")
+    provider_auto_failover: bool | None = None
+    data_default_kind: str | None = Field(None, pattern="^(vtu|standard)$")
+    vtu_default_markup_percent: float | None = Field(None, ge=0, le=100)
+    a2c_enabled: bool | None = None
+    a2c_margin_percent: float | None = Field(None, ge=0, le=60)
+    a2c_min_naira: int | None = Field(None, ge=50)
+    a2c_max_naira: int | None = Field(None, ge=50)
+    a2c_daily_max_naira: int | None = Field(None, ge=50)
+    a2c_min_account_age_days: int | None = Field(None, ge=0, le=365)
     networks: dict[str, bool] | None = None
     min_airtime_naira: int | None = Field(None, ge=10, le=1_000_000)
     max_airtime_naira: int | None = Field(None, ge=10, le=1_000_000)
@@ -71,8 +81,17 @@ class ValidatePhoneRequest(BaseModel):
 
 @router.get("/config")
 async def public_config(db: AsyncSession = Depends(get_db)):
-    """What the Airtime/Data/Bills screens may offer right now."""
-    return await bill_config.get_bills_config(db)
+    """What the Airtime/Data/Bills screens may offer right now, including which data catalogues are actually usable at this moment
+    (a supplier that is switched off, not set up, has no plans, or is currently down is not offered)."""
+    cfg = await bill_config.get_bills_config(db)
+    vtu_plans = (await db.execute(select(func.count()).select_from(Biller).where(
+        Biller.provider == "vtu", Biller.is_active.is_(True), Biller.category == BillerCategory.DATA))).scalar() or 0
+    vtu_up = provider_router.vtu_ready() and not await provider_router.is_down("vtu") and vtu_plans > 0
+    monnify_down = await provider_router.is_down("monnify")
+    cfg["data_vtu_available"] = bool(cfg["data_vtu_enabled"] and vtu_up)
+    # Standard data steps aside only when Monnify is down AND VTU plans can take over; otherwise we still let people try.
+    cfg["data_standard_available"] = bool(cfg["data_standard_enabled"] and not (monnify_down and cfg["data_vtu_available"]))
+    return cfg
 
 
 @router.get("/admin/config")
@@ -133,17 +152,71 @@ async def list_billers(category: str = Query(...), db: AsyncSession = Depends(ge
             id=b.id, category=b.category.value, name=b.name, product_id=b.product_id, product_name=b.product_name,
             price_kobo=bill_pricing.customer_unit_price_kobo(b), requires_validation=b.requires_validation,
             markup_percent=float(b.markup_percent or 0), min_amount_kobo=b.min_amount_kobo, max_amount_kobo=b.max_amount_kobo,
+            provider=b.provider,
         )
         for b in rows
     ]
 
 
+# ── Director: GYKDATASUB (the VTU supplier) ───────────────────────────────
+
+@router.get("/admin/vtu/status")
+async def admin_vtu_status(user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Is GYKDATASUB connected, what is its wallet balance, how many plans do we hold, and how is it performing."""
+    from app.integrations.gyk import get_vtu_provider
+    from app.services import bill_health_service
+    vtu = get_vtu_provider()
+    plans = (await db.execute(select(func.count(), func.max(Biller.last_synced_at)).where(
+        Biller.provider == "vtu", Biller.is_active.is_(True), Biller.category == BillerCategory.DATA))).one()
+    balance = await vtu.wallet_balance() if vtu.configured else None
+    cfg = await bill_config.get_bills_config(db)
+    success = None
+    try:
+        stats = await bill_health_service.provider_stats(db, "data")
+        mine = [p for pid, p in stats["providers"].items() if str(pid).startswith("vtu:")]
+        completed, failed = sum(p["completed"] for p in mine), sum(p["failed"] for p in mine)
+        success = {"completed": completed, "failed": failed, "window_minutes": stats["window_minutes"],
+                   "success_rate": round(completed * 100 / (completed + failed)) if (completed + failed) else None}
+    except Exception:  # noqa: BLE001
+        success = None
+    return {
+        "configured": vtu.configured, "balance_naira": balance, "plans": int(plans[0] or 0),
+        "last_sync": plans[1].isoformat() if plans[1] else None,
+        "down_now": await provider_router.is_down("vtu"), "monnify_down_now": await provider_router.is_down("monnify"),
+        "success": success, "airtime_provider": cfg["airtime_provider"], "auto_failover": cfg["provider_auto_failover"],
+    }
+
+
+@router.post("/admin/vtu/sync")
+async def admin_vtu_sync(user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Pull the supplier's live data plans. Safe to repeat: prices you set are never overwritten, only the supplier's cost follows."""
+    try:
+        return await bill_payment_service.sync_vtu_plans(db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class VtuMarkupBody(BaseModel):
+    markup_percent: float = Field(ge=0, le=100)
+    clear_overrides: bool = False
+
+
+@router.post("/admin/vtu/apply-markup")
+async def admin_vtu_apply_markup(body: VtuMarkupBody, user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Set one markup on EVERY VTU plan (also saved as the default for plans added later). Individual plans can still be edited after."""
+    cfg = await bill_config.save_bills_config(db, {"vtu_default_markup_percent": body.markup_percent}, user.id)
+    changed = await bill_admin.bulk_update(db, category=None, name_contains=None, supplier="vtu", clear_overrides=body.clear_overrides,
+                                           fields={"markup_percent": body.markup_percent})
+    await db.commit()
+    return {"updated": changed, "default_markup_percent": cfg["vtu_default_markup_percent"]}
+
+
 # ── Director: prices, commission and profit ───────────────────────────────
 
 @router.get("/admin/pricing")
-async def admin_pricing(user: DirectorOnly, category: str | None = None, db: AsyncSession = Depends(get_db)):
+async def admin_pricing(user: DirectorOnly, category: str | None = None, supplier: str | None = None, db: AsyncSession = Depends(get_db)):
     try:
-        return await bill_admin.list_prices(db, category)
+        return await bill_admin.list_prices(db, category, supplier)
     except ValueError:
         raise HTTPException(status_code=400, detail="Unknown category.")
 
@@ -152,7 +225,7 @@ async def admin_pricing(user: DirectorOnly, category: str | None = None, db: Asy
 async def admin_pricing_bulk(body: BulkPricing, user: DirectorOnly, db: AsyncSession = Depends(get_db)):
     try:
         changed = await bill_admin.bulk_update(
-            db, category=body.category, name_contains=body.name_contains, clear_overrides=body.clear_overrides,
+            db, category=body.category, name_contains=body.name_contains, clear_overrides=body.clear_overrides, supplier=body.supplier,
             fields=body.model_dump(include={"markup_percent", "commission_percent"}, exclude_none=True),
         )
     except ValueError as e:

@@ -152,6 +152,21 @@ def _manual_row(cat: str, title: str, rev, comm, c, n, un, company_n=0) -> dict:
     return row
 
 
+def _bill_row(cat: str, label: str, prov: str, markup: int, commission: int, n: int, vol: int) -> dict:
+    """One bills row for one supplier. Monnify keeps the historic id (bill_<category>); VTU (GYKDATASUB) gets bill_<category>_vtu."""
+    if prov == "vtu":
+        title = f"{label} bills (VTU)"
+        note = "We earn the price the customer paid minus what GYKDATASUB charged us. There is no separate commission."
+        rid = f"bill_{cat}_vtu"
+    else:
+        title = f"{label} bills (Standard)" if cat == "data" else f"{label} bills"
+        note = "We earn this: our markup plus the commission Monnify pays us. Monnify does not charge us for it."
+        rid = f"bill_{cat}"
+    row = _row(rid, title, "Bills", markup + commission, 0, n, vol, "commission", 0, [], note)
+    row["markup_kobo"], row["commission_kobo"] = markup, commission
+    return row
+
+
 async def service_rows(db: AsyncSession, start: datetime, end: datetime, rates: dict | None = None) -> list[dict]:
     rates = rates if rates is not None else await _all_rates(db)
     P = {"s": start, "e": end}
@@ -179,15 +194,25 @@ async def service_rows(db: AsyncSession, start: datetime, end: datetime, rates: 
     # Bills, one row per category. Monnify does NOT charge us for airtime, data or bills: we EARN from them.
     # Profit on a completed payment = our markup (what the customer paid above the face value, set on the Prices & profit
     # page) + the commission Monnify pays us. Same numbers the Prices & profit page shows, so the two always agree.
+    # Each category is split by the supplier that ACTUALLY served the purchase (Monnify, or GYKDATASUB = "VTU"), so the Accounting
+    # Center shows exactly what the cheaper VTU plans earn. The Monnify row keeps its old id; the VTU row only appears once it has sales.
     for cat, label in (("airtime", "Airtime"), ("data", "Data"), ("electricity", "Electricity"), ("cable_tv", "Cable TV"), ("education", "Education")):
-        frm = "bill_payment_requests r JOIN billers b ON b.id = r.biller_id"
-        where = f"r.status = 'completed' AND b.category = '{cat}' AND r.completed_at >= :s AND r.completed_at < :e"
-        n, vol, markup, commission = await _one(
-            db, f"SELECT COUNT(*), COALESCE(SUM(r.amount_kobo),0), COALESCE(SUM(r.markup_kobo),0), COALESCE(SUM(r.commission_kobo),0) FROM {frm} WHERE {where}", **P)
-        row = _row(f"bill_{cat}", f"{label} bills", "Bills", int(markup) + int(commission), 0, n, vol, "commission", 0, [],
-                   "We earn this: our markup plus the commission Monnify pays us. Monnify does not charge us for it.")
-        row["markup_kobo"], row["commission_kobo"] = int(markup), int(commission)
-        rows.append(row)
+        for prov in ("monnify", "vtu"):
+            frm = "bill_payment_requests r JOIN billers b ON b.id = r.biller_id"
+            where = f"r.status = 'completed' AND b.category = '{cat}' AND r.provider = '{prov}' AND r.completed_at >= :s AND r.completed_at < :e"
+            n, vol, markup, commission = await _one(
+                db, f"SELECT COUNT(*), COALESCE(SUM(r.amount_kobo),0), COALESCE(SUM(r.markup_kobo),0), COALESCE(SUM(r.commission_kobo),0) FROM {frm} WHERE {where}", **P)
+            if prov == "vtu" and not n:
+                continue
+            row = _bill_row(cat, label, prov, int(markup), int(commission), n, vol)
+            rows.append(row)
+
+    # Airtime to Cash: we earn our margin on the airtime customers sell us (revenue = fee; the rest is paid to the customer).
+    n_a2c, vol_a2c, fee_a2c = await _one(
+        db, "SELECT COUNT(*), COALESCE(SUM(amount_kobo),0), COALESCE(SUM(fee_kobo),0) FROM airtime_cash_requests WHERE status = 'completed' AND completed_at >= :s AND completed_at < :e", **P)
+    if n_a2c:
+        rows.append(_row("airtime_cash", "Airtime to Cash", "Bills", int(fee_a2c), 0, n_a2c, vol_a2c, "commission", 0, [],
+                         "We earn the margin between what the supplier credits us for the airtime and what the customer is paid."))
 
     # Identity services (revenue = what the customer paid).
     for code, name in (await db.execute(text("SELECT code, name FROM identity_services ORDER BY name"))).all():
@@ -328,15 +353,22 @@ async def service_rows_multi(db: AsyncSession, windows: list[Window], rates: dic
 
     # Bills: we EARN from them (our markup + the commission Monnify pays us); cost is zero. Mirrors service_rows().
     for cat, label in (("airtime", "Airtime"), ("data", "Data"), ("electricity", "Electricity"), ("cable_tv", "Cable TV"), ("education", "Education")):
-        frm = "bill_payment_requests r JOIN billers b ON b.id = r.biller_id"
-        where = f"r.status = 'completed' AND b.category = '{cat}'"
-        agg = await _one_multi(db, windows, "r.completed_at", "COUNT(*), COALESCE(SUM(r.amount_kobo),0), COALESCE(SUM(r.markup_kobo),0), COALESCE(SUM(r.commission_kobo),0)", frm, where, width=4)
+        for prov in ("monnify", "vtu"):
+            frm = "bill_payment_requests r JOIN billers b ON b.id = r.biller_id"
+            where = f"r.status = 'completed' AND b.category = '{cat}' AND r.provider = '{prov}'"
+            agg = await _one_multi(db, windows, "r.completed_at", "COUNT(*), COALESCE(SUM(r.amount_kobo),0), COALESCE(SUM(r.markup_kobo),0), COALESCE(SUM(r.commission_kobo),0)", frm, where, width=4)
+            if prov == "vtu" and not any(agg[i][0] for i in range(W)):
+                continue
+            for i in range(W):
+                n, vol, markup, commission = agg[i]
+                out[i].append(_bill_row(cat, label, prov, int(markup), int(commission), n, vol))
+
+    a2c = await _one_multi(db, windows, "completed_at", "COUNT(*), COALESCE(SUM(amount_kobo),0), COALESCE(SUM(fee_kobo),0)", "airtime_cash_requests", "status = 'completed'", width=3)
+    if any(a2c[i][0] for i in range(W)):
         for i in range(W):
-            n, vol, markup, commission = agg[i]
-            row = _row(f"bill_{cat}", f"{label} bills", "Bills", int(markup) + int(commission), 0, n, vol, "commission", 0, [],
-                       "We earn this: our markup plus the commission Monnify pays us. Monnify does not charge us for it.")
-            row["markup_kobo"], row["commission_kobo"] = int(markup), int(commission)
-            out[i].append(row)
+            n, vol, fee = a2c[i]
+            out[i].append(_row("airtime_cash", "Airtime to Cash", "Bills", int(fee), 0, n, vol, "commission", 0, [],
+                               "We earn the margin between what the supplier credits us for the airtime and what the customer is paid."))
 
     for code, name in (await db.execute(text("SELECT code, name FROM identity_services ORDER BY name"))).all():
         frm = "identity_service_requests r JOIN identity_services s ON s.id = r.service_id"

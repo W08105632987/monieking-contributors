@@ -126,6 +126,14 @@ class Settings(BaseSettings):
     ALERT_PHONE_TO: str = ""             # comma-separated if more than one
     ALERT_HEARTBEAT_URL: str = ""        # an EXTERNAL watchdog (Healthchecks.io / Better Stack) pinged every monitor run:
                                          # if our servers die, the pings stop and THEY email you. The only way to hear "Railway is down".
+    # GYKDATASUB (https://gykdatasub.com): VTU supplier for cheap data, backup airtime, and Airtime-to-Cash.
+    GYK_API_KEY: str = ""                                  # Developer Hub > API Authorization Token. NEVER paste it into chats or screenshots.
+    GYK_BASE_URL: str = "https://gykdatasub.com"
+    GYK_AIRTIME_PATH: str = "/api/topup/"                  # their docs say /api/topup/, their own app uses /api/airtime/: scripts/diagnose_gyk.py tells you which works
+    GYK_DATA_PATH: str = "/api/data/"
+    GYK_TRANSACTION_PIN: str = ""                          # only if purchases through the API also require your account PIN
+    GYK_MIN_WALLET_NAIRA: int = 10000                      # warn when the GYKDATASUB wallet falls below this
+    GYK_UNMATCHED_FAIL_MINUTES: int = 90                   # a purchase we cannot find in their history after this long is treated as not delivered (refunded)
     MONNIFY_MIN_WALLET_NAIRA: int = 20000    # warn when the Monnify wallet that pays for bills falls below this
     TERMII_MIN_BALANCE_NAIRA: int = 1000     # warn when SMS credit falls below this
     TERMII_CHANNEL: str = "generic"          # "dnd" delivers to Do-Not-Disturb numbers (needs an approved sender ID)

@@ -65,6 +65,17 @@ def eval_wallet(available_naira: float, minimum_naira: float) -> tuple[str, str 
 
 
 async def check_monnify_api() -> dict:
+    """The Monnify check, plus: tell the provider router, so airtime fails over to the VTU supplier and data tabs rearrange."""
+    from app.services import provider_router
+    result = await _check_monnify_api_inner()
+    if result["status"] == "down":
+        await provider_router.mark_down("monnify")
+    elif result["status"] == "healthy":
+        await provider_router.clear_down("monnify")
+    return result
+
+
+async def _check_monnify_api_inner() -> dict:
     from fastapi import HTTPException
     from app.integrations.monnify import get_payment_provider
     from app.integrations.monnify_bills import MonnifyBillsError, get_bills_provider
@@ -92,6 +103,28 @@ async def check_monnify_api() -> dict:
         if status != "healthy":
             return _r("monnify_api", status, msg, metrics, hard=(status == "down"))
     return _r("monnify_api", "healthy", None, metrics)
+
+
+async def check_vtu_api() -> dict:
+    """GYKDATASUB (the VTU supplier): can we use the key, and is its wallet funded? Not set up = healthy (nothing to watch)."""
+    from app.integrations.gyk import get_vtu_provider
+    from app.services import provider_router
+    vtu = get_vtu_provider()
+    if not vtu.configured:
+        return _r("vtu_api", "healthy", "VTU supplier is not set up (GYK_API_KEY missing); nothing to watch")
+    balance = await vtu.wallet_balance()
+    if balance is None:
+        await provider_router.mark_down("vtu")
+        return _r("vtu_api", "down", "GYKDATASUB is not answering or rejected our key (could not read the wallet). VTU plans are hidden until it recovers.", hard=True)
+    metrics = {"wallet_balance_naira": balance}
+    status, msg = eval_wallet(balance, float(settings.GYK_MIN_WALLET_NAIRA))
+    if status == "down":
+        await provider_router.mark_down("vtu")
+        return _r("vtu_api", "down", msg.replace("Monnify wallet", "GYKDATASUB wallet"), metrics, hard=True)
+    await provider_router.clear_down("vtu")
+    if status == "degraded":
+        return _r("vtu_api", "degraded", msg.replace("Monnify wallet", "GYKDATASUB wallet"), metrics)
+    return _r("vtu_api", "healthy", None, metrics)
 
 
 async def check_monnify_status() -> dict:

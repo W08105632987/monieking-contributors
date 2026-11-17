@@ -16,7 +16,7 @@ interface StatusResponse { checks: CheckResult[]; overall_status: 'healthy' | 'd
 
 const CHECK_ICON: Record<string, any> = {
   database: Database, redis: Zap, monnify: Send, termii: MessageSquare, transactions: Activity, traffic: Users,
-  monnify_api: Send, monnify_status: Radio, bills: Wallet, resources: Cpu, error_rate: FileWarning, db_load: Gauge,
+  vtu_api: Send, monnify_api: Send, monnify_status: Radio, bills: Wallet, resources: Cpu, error_rate: FileWarning, db_load: Gauge,
   integrity: ShieldAlert, fraud: ShieldAlert, sms: MessageSquare, alerting: Bell,
 }
 const STATUS_TINT: Record<string, string> = {

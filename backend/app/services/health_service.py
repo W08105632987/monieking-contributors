@@ -184,7 +184,7 @@ async def check_traffic(db: AsyncSession) -> dict:
 # ── Orchestration ────────────────────────────────────────────────────
 
 ALL_CHECKS_DB = ["database", "transactions", "traffic", "bills", "db_load", "integrity", "fraud"]   # need a db session
-ALL_CHECKS_NO_DB = ["redis", "monnify", "termii", "monnify_api", "monnify_status", "resources", "error_rate", "sms", "alerting"]   # don't
+ALL_CHECKS_NO_DB = ["redis", "monnify", "termii", "monnify_api", "vtu_api", "monnify_status", "resources", "error_rate", "sms", "alerting"]   # don't
 
 STATUS_EMOJI = {"healthy": "\u2705", "degraded": "\u26a0\ufe0f", "down": "\U0001f534"}
 
@@ -254,7 +254,7 @@ async def _send_alert(db: AsyncSession, *, check_name: str, status: str, previou
 
 async def run_all_checks(db: AsyncSession) -> list[dict]:
     from app.services import monitor_checks as M
-    no_db = {"redis": check_redis, "monnify": check_monnify, "termii": check_termii, "monnify_api": M.check_monnify_api,
+    no_db = {"redis": check_redis, "monnify": check_monnify, "termii": check_termii, "monnify_api": M.check_monnify_api, "vtu_api": M.check_vtu_api,
              "monnify_status": M.check_monnify_status, "resources": M.check_resources, "error_rate": M.check_error_rate,
              "sms": M.check_sms, "alerting": M.check_alerting}
     with_db = {"database": check_database, "transactions": check_transactions, "traffic": check_traffic, "bills": M.check_bills,

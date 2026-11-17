@@ -14,6 +14,7 @@ class BillerItem(BaseModel):
     markup_percent: float = 0          # lets the app preview what a typed amount will cost
     min_amount_kobo: int | None = None
     max_amount_kobo: int | None = None
+    provider: str = "monnify"          # "vtu" = sold through GYKDATASUB (the VTU tab); anything else is a Standard plan
 
     class Config:
         from_attributes = True
@@ -32,6 +33,7 @@ class BulkPricing(BaseModel):
     markup_percent: float | None = None
     commission_percent: float | None = None
     clear_overrides: bool = False
+    supplier: str | None = Field(None, pattern="^(monnify|vtu)$")   # limit the change to one supplier's products
 
 
 class ValidateBillRequest(BaseModel):

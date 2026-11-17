@@ -25,6 +25,20 @@ logger = logging.getLogger(__name__)
 # — Sentry tells you an endpoint is throwing, the health monitor tells
 # you the database is slow or a payment provider is unreachable, which
 # Sentry alone wouldn't notice.
+def _scrub_sentry_event(event, hint):
+    """Never let a SIM transfer PIN, an OTP or a PIN reach an error-reporting service. The whole Airtime to Cash request body is
+    dropped, and any field with a PIN/OTP-like name is masked everywhere else."""
+    req = event.get("request") or {}
+    if "/airtime-cash/" in str(req.get("url", "")):
+        req.pop("data", None)
+    data = req.get("data")
+    if isinstance(data, dict):
+        for key in list(data):
+            if key.lower() in ("simpin", "sim_pin", "pin", "otp", "password", "withdrawal_password"):
+                data[key] = "[Filtered]"
+    return event
+
+
 if settings.SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.fastapi import FastApiIntegration
@@ -32,6 +46,7 @@ if settings.SENTRY_DSN:
         dsn=settings.SENTRY_DSN,
         environment=settings.APP_ENV,
         integrations=[FastApiIntegration()],
+        before_send=_scrub_sentry_event,
         traces_sample_rate=0.1,   # 10% of requests get full performance tracing — enough to spot trends without the overhead/cost of tracing every request
     )
 
@@ -184,7 +199,7 @@ app.add_middleware(TrustedProxyMiddleware)
 from app.api.v1.routes import (
     auth, users, wallets, cards, notifications, admin, withdrawals,
     settings as settings_routes, instant_messages, promo_banners, zones,
-    webauthn as webauthn_routes, disputes, identity_services, bill_payments, seasonal, cleanup, zonal_customers, customer_admin, officer_earnings, system_alerts, email_account, kyc,
+    webauthn as webauthn_routes, disputes, identity_services, bill_payments, seasonal, cleanup, zonal_customers, customer_admin, officer_earnings, system_alerts, airtime_cash, email_account, kyc,
     customer_stats, auth_admin, admin_crm, analytics, system_health,
     food_collections,
     food_ledger,
@@ -236,6 +251,7 @@ app.include_router(cleanup.router,           prefix=PREFIX)
 app.include_router(customer_admin.router,     prefix=PREFIX)
 app.include_router(officer_earnings.router,   prefix=PREFIX)
 app.include_router(system_alerts.router,      prefix=PREFIX)
+app.include_router(airtime_cash.router,       prefix=PREFIX)
 app.include_router(email_account.router,      prefix=PREFIX)
 app.include_router(kyc.router,                prefix=PREFIX)
 app.include_router(zonal_customers.router,   prefix=PREFIX)

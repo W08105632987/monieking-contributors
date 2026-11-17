@@ -51,6 +51,8 @@ def quote(biller, *, amount_kobo: int | None, quantity: int = 1) -> Quote:
         vend = biller.price_kobo * quantity
         override = getattr(biller, "customer_price_kobo", None)
         charge = override * quantity if override is not None else kobo_round(_d(vend) * (1 + markup / 100))
+        if override is None and getattr(biller, "provider", "monnify") == "vtu":
+            charge = -(-charge // 100) * 100          # VTU plans: round the customer price UP to a whole naira (no kobo prices on bundles)
     else:
         if not amount_kobo or amount_kobo <= 0:
             raise ValueError("An amount is required for this bill.")

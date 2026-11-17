@@ -29,6 +29,8 @@ def price_row(b: Biller) -> dict:
         "id": str(b.id),
         "category": b.category.value,
         "provider": b.name,
+        "supplier": getattr(b, "provider", "monnify"),                      # "monnify" | "vtu" (the supplier we buy it from)
+        "cost_kobo": b.price_kobo,                   # what the supplier charges us
         "product_name": b.product_name,
         "product_id": b.product_id,
         "is_active": b.is_active,
@@ -47,10 +49,12 @@ def price_row(b: Biller) -> dict:
     }
 
 
-async def list_prices(db: AsyncSession, category: str | None = None) -> list[dict]:
+async def list_prices(db: AsyncSession, category: str | None = None, supplier: str | None = None) -> list[dict]:
     stmt = select(Biller).order_by(Biller.name, Biller.price_kobo.nulls_first(), Biller.product_name)
     if category:
         stmt = stmt.where(Biller.category == BillerCategory(category))
+    if supplier in ("monnify", "vtu"):
+        stmt = stmt.where(Biller.provider == supplier)
     return [price_row(b) for b in (await db.execute(stmt)).scalars().all()]
 
 
@@ -82,9 +86,11 @@ async def update_price(db: AsyncSession, biller_id: uuid.UUID, fields: dict) -> 
     return price_row(b)
 
 
-async def bulk_update(db: AsyncSession, *, category: str | None, name_contains: str | None, fields: dict, clear_overrides: bool = False) -> int:
+async def bulk_update(db: AsyncSession, *, category: str | None, name_contains: str | None, fields: dict, clear_overrides: bool = False, supplier: str | None = None) -> int:
     validate_pricing_patch(fields)
     stmt = select(Biller)
+    if supplier in ("monnify", "vtu"):
+        stmt = stmt.where(Biller.provider == supplier)
     if category:
         stmt = stmt.where(Biller.category == BillerCategory(category))
     if name_contains:

@@ -63,6 +63,8 @@ class Biller(Base):
     # Monnify's own limits for variable-amount products (e.g. airtime from ₦100).
     min_amount_kobo:     Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     max_amount_kobo:     Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Which supplier sells this product: 'monnify' (every existing row) or 'vtu' (GYKDATASUB plans). See 071_vtu_supplier.sql.
+    provider:           Mapped[str] = mapped_column(String(10), nullable=False, default="monnify", server_default="monnify")
     last_synced_at:     Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     created_at:         Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -106,6 +108,11 @@ class BillPaymentRequest(Base):
     vend_amount_kobo: Mapped[int | None] = mapped_column(BigInteger, nullable=True)   # what Monnify was asked to vend
     commission_kobo:  Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
     markup_kobo:      Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")  # charged − vend
+
+    # Which supplier actually served this purchase, its own reference, and whether a backup supplier took over.
+    provider:           Mapped[str] = mapped_column(String(10), nullable=False, default="monnify", server_default="monnify")
+    provider_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    failed_over_from:   Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     created_at:   Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

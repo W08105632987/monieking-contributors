@@ -14,6 +14,8 @@ from app.models.identity_service import InitiatedBy
 from app.models.wallet import TxCategory, WalletTransaction
 from app.services.wallet_service import get_or_create_wallet, debit_wallet, credit_wallet
 from app.integrations.monnify_bills import get_bills_provider, MonnifyBillsError, vend_outcome
+from app.integrations.gyk import get_vtu_provider, VtuError, NETWORK_SLUGS
+from app.services import provider_router
 from app.utils.audit import log_action
 from app.services import bill_config, bill_pricing
 
@@ -255,7 +257,8 @@ async def _write_catalogue(db: AsyncSession, rows: dict, deactivate_missing: boo
     """Saves the fetched catalogue. One read of the existing rows, in-memory
     upsert, one commit — a short transaction instead of hundreds of round
     trips. Existing rows are never re-activated (a director's hide stays)."""
-    existing_rows = (await db.execute(select(Biller))).scalars().all()
+    # ONLY Monnify's own rows: this sync deactivates products Monnify stops listing, and must never switch off VTU plans.
+    existing_rows = (await db.execute(select(Biller).where(Biller.provider == "monnify"))).scalars().all()
     existing = {(b.monnify_biller_id, b.product_id): b for b in existing_rows}
     now = datetime.now(timezone.utc)
     synced = 0
@@ -426,6 +429,67 @@ def _read_units(result) -> str | None:
         return str(value)[:40]
 
 
+async def sync_vtu_plans(db: AsyncSession) -> dict:
+    """Pull GYKDATASUB's live data plans (all four networks, one call) into the billers table as provider='vtu'.
+
+      * A NEW plan starts at the director's default markup (bills config, 6%); after that the markup and any fixed customer price
+        belong to the director and a sync never touches them. Only the COST (price_kobo) follows the supplier.
+      * A plan the supplier stops listing is deactivated, but only when the list came back whole.
+      * Hidden plans stay hidden. Returns what changed, including plans whose cost rose above the customer price."""
+    from decimal import Decimal
+    from app.integrations.gyk import ID_TO_DISPLAY
+    vtu = get_vtu_provider()
+    if not vtu.configured:
+        raise ValueError("GYKDATASUB is not set up yet (GYK_API_KEY is missing).")
+    cfg = await bill_config.get_bills_config(db)
+    default_markup = Decimal(str(cfg.get("vtu_default_markup_percent", 6)))
+
+    errors: list[str] = []
+    fetched: dict[tuple[str, str], tuple[str, dict]] = {}
+    try:
+        for plan in await vtu.get_all_plans():
+            fetched[(f"vtu:{plan['network']}", plan["variation_code"])] = (ID_TO_DISPLAY[plan["network"]], plan)
+    except VtuError as e:
+        errors.append(e.raw)
+
+    existing = {(b.monnify_biller_id, b.product_id): b for b in (await db.execute(select(Biller).where(Biller.provider == "vtu"))).scalars().all()}
+    now = datetime.now(timezone.utc)
+    added = updated = deactivated = 0
+    cost_changes: list[dict] = []
+    below_cost: list[dict] = []
+    for key, (display, plan) in fetched.items():
+        cost = int(round(plan["amount_naira"] * 100))
+        row = existing.get(key)
+        if row is None:
+            db.add(Biller(monnify_biller_id=key[0], product_id=key[1], category=BillerCategory.DATA, name=display, product_name=plan["name"][:160],
+                          price_kobo=cost, requires_validation=False, is_active=True, provider="vtu",
+                          commission_percent=Decimal("0"), markup_percent=default_markup))
+            added += 1
+            continue
+        if row.price_kobo != cost:
+            cost_changes.append({"plan": row.product_name, "network": row.name, "from_kobo": row.price_kobo, "to_kobo": cost})
+        row.price_kobo, row.product_name, row.name, row.last_synced_at = cost, plan["name"][:160], display, now
+        updated += 1
+        if row.customer_price_kobo is not None and row.customer_price_kobo < cost:
+            below_cost.append({"plan": row.product_name, "network": row.name, "cost_kobo": cost, "customer_price_kobo": row.customer_price_kobo})
+    if not errors and fetched:
+        for key, row in existing.items():
+            if key not in fetched and row.is_active:
+                row.is_active = False
+                deactivated += 1
+    await db.commit()
+    if below_cost:
+        try:
+            from app.services.alert_service import raise_alert
+            await raise_alert(severity="warning", category="bills", dedupe_key="vtu:below_cost",
+                              title=f"{len(below_cost)} VTU plan(s) now cost more than the price customers pay (sales blocked until you raise them)",
+                              detail={"examples": below_cost[:5]})
+        except Exception:  # noqa: BLE001
+            pass
+    return {"added": added, "updated": updated, "deactivated": deactivated, "errors": errors, "total": len(fetched),
+            "cost_changes": cost_changes[:50], "below_cost": below_cost[:50], "default_markup_percent": float(default_markup)}
+
+
 async def validate_bill(
     db: AsyncSession, *, biller_id: uuid.UUID, customer_reference: str,
 ) -> dict:
@@ -468,11 +532,15 @@ async def _enforce_director_rules(db: AsyncSession, biller: Biller, customer_ref
     if cat == BillerCategory.DATA:
         if not cfg["data_enabled"]:
             raise ValueError("Data purchases are temporarily unavailable.")
-        vtu = bill_config.is_vtu_plan(biller.product_name, biller.name)
+        vtu = _prov(biller) == "vtu"        # VTU = plans sold through GYKDATASUB. Monnify plans (even ones with "VTU" in the name) are Standard.
         if vtu and not cfg["data_vtu_enabled"]:
             raise ValueError("VTU data is temporarily unavailable.")
+        if vtu and (not provider_router.vtu_ready() or await provider_router.is_down("vtu")):
+            raise ValueError("VTU data is temporarily unavailable. Please choose Standard plans.")
         if not vtu and not cfg["data_standard_enabled"]:
             raise ValueError("Standard data is temporarily unavailable.")
+        if not vtu and cfg["data_vtu_enabled"] and provider_router.vtu_ready() and await provider_router.is_down("monnify"):
+            raise ValueError("Standard data is temporarily unavailable. Please choose VTU plans.")
     if cat in (BillerCategory.ELECTRICITY, BillerCategory.CABLE_TV) and not cfg["bills_enabled"]:
         raise ValueError("Bill payments are temporarily unavailable.")
     if cat in (BillerCategory.AIRTIME, BillerCategory.DATA):
@@ -596,7 +664,10 @@ async def _apply_outcome(db: AsyncSession, request: BillPaymentRequest, outcome:
     Does NOT commit — the caller does."""
     reference = result.get("transactionReference") if isinstance(result, dict) else None
     if reference:
-        request.monnify_transaction_reference = str(reference)[:120]
+        if _prov(request) == "vtu":
+            request.provider_reference = str(reference)[:120]
+        else:
+            request.monnify_transaction_reference = str(reference)[:120]
     actor = request.officer_id or request.customer_id
 
     if outcome == "SUCCESS" and _needs_token(await db.get(Biller, request.biller_id)) and not _extract_token(result):
@@ -640,6 +711,82 @@ async def _apply_outcome(db: AsyncSession, request: BillPaymentRequest, outcome:
     else:
         request.failure_reason = PENDING_NOTE
         await db.flush()
+
+
+def _prov(obj) -> str:
+    """Which supplier a biller/request belongs to. Real rows always have it; tolerant of duck-typed objects (older tests, scripts)."""
+    return getattr(obj, "provider", None) or "monnify"
+
+
+def _definite_provider_failure(name: str, result: dict, error) -> bool:
+    """True only when the supplier DEFINITELY bought nothing AND the cause is on the supplier's side (not the customer's input).
+    This is the only situation in which another supplier may be tried."""
+    if error is not None:
+        if getattr(error, "ambiguous", False):
+            return False
+        if name == "vtu":
+            return error.kind == "provider"
+        return not provider_router.looks_like_customer_error(getattr(error, "raw", "") or getattr(error, "message", ""))
+    if vend_outcome(result) == "FAILED":
+        return not provider_router.looks_like_customer_error(str((result or {}).get("responseMessage") or (result or {}).get("message") or ""))
+    return False
+
+
+async def _vend_once(name: str, biller: Biller, request: BillPaymentRequest, sale, customer_reference: str, validation_reference: str | None):
+    """One attempt at ONE supplier -> (result dict, error or None). Never raises."""
+    try:
+        if name == "vtu":
+            vtu = get_vtu_provider()
+            phone = bill_config.normalize_phone(customer_reference) or customer_reference
+            key = str(request.id)                      # sent along as our reference (the supplier may ignore it: it has no idempotency)
+            if _prov(biller) == "vtu":
+                network = biller.monnify_biller_id.split(":", 1)[-1]
+                result = await vtu.buy_data(network=network, phone=phone, variation_code=biller.product_id, idempotency_key=key)
+            else:
+                network = provider_router.network_slug(biller)
+                if not network:
+                    return {}, VtuError("We could not complete this purchase right now.", code="no_network", raw="cannot map biller to a VTU network")
+                result = await vtu.buy_airtime(network=network, phone=phone, amount_naira=sale.vend_kobo / 100, idempotency_key=key)
+            if "_error" in result:
+                return {}, result["_error"]            # a 200 reply that said "error", already classified definite / ambiguous
+            return result, None
+        # Monnify: vend_reference = this request's own id, stable across any retry, so a repeated call is the same vend.
+        result = await get_bills_provider().vend_bill(
+            product_code=biller.product_id, customer_id=customer_reference, amount_kobo=sale.vend_kobo,
+            vend_reference=str(request.id), validation_reference=validation_reference)
+        return result, None
+    except (MonnifyBillsError, VtuError) as e:
+        return {}, e
+    except Exception as e:  # noqa: BLE001 -- anything unexpected is treated as ambiguous: hold the money, check later
+        logger.exception("[bills] unexpected error vending %s via %s", request.id, name)
+        return {}, MonnifyBillsError(f"unexpected: {e}", ambiguous=True)
+
+
+async def _vend_with_failover(request, biller, sale, customer_reference, validation_reference, attempts):
+    first = attempts[0]
+    result: dict = {}
+    error = None
+    for index, name in enumerate(attempts):
+        request.provider = name
+        result, error = await _vend_once(name, biller, request, sale, customer_reference, validation_reference)
+        if not _definite_provider_failure(name, result, error):
+            await provider_router.note_success(name)
+            break
+        tripped = await provider_router.note_failure(name)
+        detail = getattr(error, "raw", None) or str((result or {}).get("responseMessage") or "")
+        logger.warning("[bills] %s could not serve request %s (%s)%s", name, request.id, detail, "; marking it down" if tripped else "")
+        if index + 1 < len(attempts):
+            request.failed_over_from = first
+            try:
+                from app.services.alert_service import raise_alert_soon
+                raise_alert_soon(severity="warning", category="provider", dedupe_key=f"failover:{name}",
+                                 title=f"{name.upper()} could not serve a purchase, switching to {attempts[index + 1].upper()}",
+                                 detail={"supplier": name, "backup": attempts[index + 1], "reason": detail[:200]})
+            except Exception:  # noqa: BLE001
+                pass
+    if _prov(request) == first:
+        request.failed_over_from = None
+    return result, error
 
 
 async def pay_bill(
@@ -689,10 +836,22 @@ async def pay_bill(
         if high and sale.vend_kobo > high:
             raise ValueError(f"The maximum for this product is ₦{high / 100:,.0f}.")
 
-    provider = get_bills_provider()
-    # Server-side validation: authoritative, ignores any client-supplied
-    # reference, and only yields one when Monnify says the vend needs it.
-    vend_validation_reference, validated_name, validated_address = await _validate_for_vend(provider, biller, customer_reference)
+    # Never sell a supplier plan below what it costs us (the supplier may have raised its price since the last sync).
+    if _prov(biller) == "vtu" and sale.charge_kobo < sale.vend_kobo:
+        logger.error("[bills] VTU plan %s would sell below cost (charge %s < cost %s): refusing", biller.id, sale.charge_kobo, sale.vend_kobo)
+        raise ValueError("This plan is temporarily unavailable. Please choose another.")
+
+    try:
+        cfg = await bill_config.get_bills_config(db)
+    except Exception:  # noqa: BLE001 -- routing must never block a purchase: fall back to the defaults (Monnify first)
+        logger.exception("[bills] could not read the bills config for routing; using defaults")
+        cfg = dict(bill_config.DEFAULTS)
+    attempts = await provider_router.providers_for(biller, cfg)
+    # Server-side validation: authoritative, ignores any client-supplied reference, and only yields one when Monnify says the
+    # vend needs it. Only Monnify products have it (VTU plans and VTU-served airtime never do).
+    vend_validation_reference = validated_name = validated_address = None
+    if _prov(biller) == "monnify":
+        vend_validation_reference, validated_name, validated_address = await _validate_for_vend(get_bills_provider(), biller, customer_reference)
 
     # Balance pre-check — a cheap early exit; debit_wallet below is the real,
     # row-locked check.
@@ -713,6 +872,7 @@ async def pay_bill(
         validation_reference=vend_validation_reference,
         validated_account_name=validated_name,
         customer_address=validated_address,
+        provider=attempts[0],
         status=BillPaymentStatus.PENDING,
     )
     db.add(request)
@@ -731,22 +891,8 @@ async def pay_bill(
         raise ValueError(str(e.detail))
     await db.commit()   # debit + PENDING request are now durable
 
-    # ── 2. Vend ───────────────────────────────────────────────────
-    result: dict = {}
-    vend_error: MonnifyBillsError | None = None
-    try:
-        # vend_reference = this request's own id — stable across any retry,
-        # which lets Monnify recognise a repeated call as the same vend
-        # instead of vending twice.
-        result = await provider.vend_bill(
-            product_code=biller.product_id,
-            customer_id=customer_reference,
-            amount_kobo=sale.vend_kobo,                  # Monnify is asked for the face value, not our price
-            vend_reference=str(request.id),
-            validation_reference=vend_validation_reference,
-        )
-    except MonnifyBillsError as e:
-        vend_error = e
+    # ── 2. Vend (with a safe failover for airtime) ───────────────
+    result, vend_error = await _vend_with_failover(request, biller, sale, customer_reference, vend_validation_reference, attempts)
 
     # ── 3. Settle ─────────────────────────────────────────────────
     try:
@@ -755,7 +901,7 @@ async def pay_bill(
             # Keep the money held and let the resolver requery.
             await _apply_outcome(db, request, "PENDING", {})
         elif vend_error is not None:
-            # A definite rejection (could not connect, or Monnify said no).
+            # A definite rejection (could not connect, or the supplier said no).
             logger.warning("[bills] vend %s rejected: %s", request.id, vend_error.raw)
             await _apply_outcome(db, request, "FAILED", {"message": vend_error.message})
         else:
@@ -784,14 +930,33 @@ async def resolve_pending_bill(db: AsyncSession, request_id: uuid.UUID) -> BillP
         await db.commit()   # release the lock
         return request
 
-    provider = get_bills_provider()
     result = None
-    for reference in _vend_references(request):
-        try:
-            result = await provider.requery_bill(reference)
-            break
-        except MonnifyBillsError as e:
-            logger.info("[bills] requery of %s by %s failed: %s", request.id, reference, e.raw)
+    if _prov(request) == "vtu":
+        # The supplier cannot look a purchase up by our reference, so we match it in their wallet history (phone + time).
+        from app.core.config import settings
+        found = await get_vtu_provider().find_purchase(phone=request.customer_reference, since=request.created_at)
+        age_minutes = (datetime.now(timezone.utc) - request.created_at).total_seconds() / 60 if request.created_at else 0
+        if found and found.get("vendStatus") == "NOT_FOUND":
+            # History is readable and has nothing for this phone since we asked: only after a long wait is that treated as "never delivered".
+            result = {"vendStatus": "FAILED", "responseMessage": "not found in the supplier's history"} if age_minutes >= settings.GYK_UNMATCHED_FAIL_MINUTES else None
+        else:
+            result = found
+        if result is None and age_minutes >= 60:
+            try:
+                from app.services.alert_service import raise_alert_soon
+                raise_alert_soon(severity="warning", category="bills", dedupe_key=f"vtu:review:{request.id}",
+                                 title="A VTU purchase has been pending for over an hour and needs a human check",
+                                 detail={"request_id": str(request.id), "phone_last4": str(request.customer_reference)[-4:], "minutes": int(age_minutes)})
+            except Exception:  # noqa: BLE001
+                pass
+    else:
+        provider = get_bills_provider()
+        for reference in _vend_references(request):
+            try:
+                result = await provider.requery_bill(reference)
+                break
+            except MonnifyBillsError as e:
+                logger.info("[bills] requery of %s by %s failed: %s", request.id, reference, e.raw)
 
     if result is None:
         await db.commit()   # release the lock; still pending

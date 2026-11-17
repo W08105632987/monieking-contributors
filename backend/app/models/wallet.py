@@ -21,6 +21,7 @@ class TxCategory(str, enum.Enum):
     REVERSAL            = "reversal"
     SMS_FEE             = "sms_fee"
     MANUAL_DEBIT        = "manual_debit"
+    AIRTIME_CASH        = "airtime_cash"
 
 
 class Wallet(Base):

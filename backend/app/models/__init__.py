@@ -63,3 +63,4 @@ from app.verification.models import *  # noqa: F401,F403  (Techhub verification,
 from app.models.funding_fee import FundingFeeSettings, FundingRecord  # noqa: F401
 from app.models.accounting import CostRate, Expense, ProviderUsage, AccountingSettings  # noqa
 from app.models.system_alert import SystemAlert  # noqa: F401
+from app.models.airtime_cash import AirtimeCashRequest  # noqa: F401

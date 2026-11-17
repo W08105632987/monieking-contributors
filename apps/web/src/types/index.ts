@@ -10,6 +10,7 @@ export type TxCategory =
   | 'wallet_funding'
   | 'sms_fee'
   | 'manual_debit'
+  | 'airtime_cash'
   | 'contribution'
   | 'withdrawal'
   | 'charge'
@@ -573,6 +574,8 @@ export interface Biller {
   markup_percent?: number     // what a typed amount costs over its face value (0 = face value)
   min_amount_kobo?: number | null
   max_amount_kobo?: number | null
+  /** 'vtu' = sold through the VTU supplier (the VTU plans tab). Anything else is a Standard plan. */
+  provider?: string
 }
 
 export interface BillValidationResult {

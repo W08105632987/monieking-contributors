@@ -16,6 +16,9 @@ export interface PriceRow {
   customer_price_kobo: number | null
   markup_percent: number
   commission_percent: number
+  /** Which supplier we buy this from: 'monnify' (Standard) or 'vtu' (the VTU supplier). */
+  supplier?: 'monnify' | 'vtu'
+  cost_kobo?: number
   min_amount_kobo: number | null
   max_amount_kobo: number | null
   profit_kobo: number
@@ -50,7 +53,7 @@ export function useUpdatePrice() {
 export function useBulkPrice() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (body: { category?: PricingCategory; name_contains?: string; markup_percent?: number; commission_percent?: number; clear_overrides?: boolean }) =>
+    mutationFn: async (body: { category?: PricingCategory; name_contains?: string; supplier?: 'monnify' | 'vtu'; markup_percent?: number; commission_percent?: number; clear_overrides?: boolean }) =>
       (await api.post<{ updated: number }>('/bill-payments/admin/pricing/bulk', body)).data,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['bill-pricing'] }); qc.invalidateQueries({ queryKey: ['billers'] }) },
   })

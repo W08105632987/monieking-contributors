@@ -24,7 +24,7 @@ celery_app = Celery(
     "monieking",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry", "app.tasks.provider_poll", "app.tasks.food_conversion", "app.tasks.bill_resolver"],
+    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry", "app.tasks.provider_poll", "app.tasks.food_conversion", "app.tasks.bill_resolver", "app.tasks.vtu_sync"],
 )
 
 celery_app.conf.update(
@@ -71,6 +71,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.food_conversion.convert_overdue_food_cards",
         # 23:10 UTC = 00:10 in Lagos: just after the deadline day ends, and again every night (it only acts once the deadline has passed).
         "schedule": crontab(hour=23, minute=10),
+    },
+    "sync-vtu-plans": {
+        "task": "app.tasks.vtu_sync.sync_vtu_plans",
+        # 01:00 UTC = 02:00 in Lagos, every night: pulls the VTU supplier's current plans and costs (prices you set are never overwritten).
+        "schedule": crontab(hour=1, minute=0),
     },
     "settle-pending-bills": {
         "task": "app.tasks.bill_resolver.sweep_pending_bills",

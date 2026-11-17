@@ -2,15 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ensureKyc } from '@/lib/kyc'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { isPlayApp } from '@/lib/playApp'
 import toast from '@/lib/notify'
 import { ArrowLeft, Smartphone, CheckCircle2, AlertCircle, Loader2, Info, Check, Clock } from 'lucide-react'
 import { formatNaira, cn } from '@/lib/utils'
-import { getErrorMessage } from '@/lib/api'
+import { api, getErrorMessage } from '@/lib/api'
 import { useWallet } from '@/hooks/useWallet'
 import { useBillers, usePayBill, useBillsConfig, usePhoneCheck, DEFAULT_BILLS_CONFIG, useBillRequest } from '@/hooks/useBillPayments'
-import { useBillHealth, statForRows } from '@/hooks/useBillHealth'
-import { HealthBar } from '@/components/billers/HealthBar'
-import { MonnifyStatusBanner } from '@/components/billers/MonnifyStatusBanner'
 import { NETWORK_THEME, NEUTRAL_THEME } from '@/lib/networkTheme'
 import { FallbackError } from '@/components/ui/FallbackError'
 import { PaymentReceipt, type ReceiptField } from '@/components/receipts/PaymentReceipt'
@@ -72,7 +71,8 @@ export default function AirtimeDataPage() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [completedRequest, setCompletedRequest] = useState<BillPaymentRequest | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
-  const [dataKind, setDataKind] = useState<'vtu' | 'standard'>('standard')
+  // null = the person has not picked a tab yet, so the director's default opens (VTU unless changed).
+  const [dataKind, setDataKind] = useState<'vtu' | 'standard' | null>(null)
   const [bucket, setBucket] = useState<PlanBucket | null>(null)
 
   const { data: cfgData } = useBillsConfig()
@@ -130,10 +130,6 @@ export default function AirtimeDataPage() {
   const airtimeQ = useBillers('airtime')
   const dataQ = useBillers('data')
   const airtimeRows = airtimeQ.data ?? []
-  // Live success rate per network (from real purchases) and Monnify's own status, refreshed every minute.
-  const healthA = useBillHealth('airtime')
-  const healthD = useBillHealth('data')
-  const health = healthA.data ? { ...healthA.data, billers: { ...healthA.data.billers, ...(healthD.data?.billers ?? {}) } } : undefined
   const dataPlans = useMemo(() => {
     if (tab === 'airtime') return airtimeRows
     const seen = new Set<string>()
@@ -144,13 +140,18 @@ export default function AirtimeDataPage() {
   const plansFetching = airtimeQ.isFetching || dataQ.isFetching
   const refetchPlans = () => { airtimeQ.refetch(); dataQ.refetch() }
 
-  const isVtu = (p: { name: string; product_name: string }) => `${p.name} ${p.product_name}`.toUpperCase().includes('VTU')
+  // VTU = plans sold through the VTU supplier. (Monnify plans, even ones with "VTU" in their name, are Standard.)
+  const isVtu = (p: { provider?: string }) => p.provider === 'vtu'
+  const vtuUsable = cfg.data_vtu_available ?? cfg.data_vtu_enabled
+  const stdUsable = cfg.data_standard_available ?? cfg.data_standard_enabled
   const plansAll = network ? dataPlans.filter(p => matchesNetwork(p, network)) : dataPlans
-  const hasVtu = tab === 'data' && plansAll.some(isVtu) && cfg.data_vtu_enabled
-  const hasStd = tab === 'data' && plansAll.some(p => !isVtu(p)) && cfg.data_standard_enabled
-  const effKind = dataKind === 'vtu' ? (hasVtu ? 'vtu' : 'standard') : (hasStd ? 'standard' : 'vtu')
+  const hasVtu = tab === 'data' && plansAll.some(isVtu) && vtuUsable
+  const hasStd = tab === 'data' && plansAll.some(p => !isVtu(p)) && stdUsable
+  const preferred = dataKind ?? cfg.data_default_kind ?? 'vtu'
+  // Whichever the customer (or the director's default) prefers, if it is not usable right now the other one is shown instead.
+  const effKind = preferred === 'vtu' ? (hasVtu ? 'vtu' : 'standard') : (hasStd ? 'standard' : 'vtu')
   const plansForNetwork = tab === 'data'
-    ? plansAll.filter(p => (effKind === 'vtu' ? isVtu(p) : !isVtu(p)) && (effKind === 'vtu' ? cfg.data_vtu_enabled : cfg.data_standard_enabled))
+    ? plansAll.filter(p => (effKind === 'vtu' ? isVtu(p) : !isVtu(p)) && (effKind === 'vtu' ? vtuUsable : stdUsable))
     : plansAll
   const bucketGroups = tab === 'data' ? bucketDataPlans(plansForNetwork) : []
   const activeBucket = bucketGroups.find(g => g.bucket === bucket) ?? bucketGroups[0]
@@ -159,6 +160,11 @@ export default function AirtimeDataPage() {
   const airtimeBiller = pickAirtimeProduct(airtimeRows, network)
 
   const payMutation = usePayBill(customerId)
+  // Airtime to Cash is for the customer themselves, on the web only (never an officer buying for someone, never the Play app).
+  const { data: a2c } = useQuery({
+    queryKey: ['a2c-config'], enabled: !customerId && !isPlayApp(), retry: 0, staleTime: 5 * 60_000,
+    queryFn: async () => (await api.get<{ enabled: boolean }>('/airtime-cash/config')).data,
+  })
 
   const serviceOn = tab === 'airtime' ? cfg.airtime_enabled : cfg.data_enabled
   const minAirtime = Math.max(cfg.min_airtime_naira, Math.ceil((airtimeBiller?.min_amount_kobo ?? 0) / 100))
@@ -293,8 +299,13 @@ export default function AirtimeDataPage() {
           </p>
         )}
 
+        {a2c?.enabled && tab === 'airtime' && (
+          <button onClick={() => navigate('/customer/airtime-to-cash')} className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left dark:border-amber-500/40 dark:bg-amber-500/10">
+            <span className="flex-1"><span className="block text-sm font-extrabold text-green-950 dark:text-white">Airtime to Cash</span><span className="block text-[11px] text-green-700 dark:text-night-200">Have extra airtime? Sell it for money in your wallet.</span></span>
+            <span className="text-xs font-bold text-green-800 dark:text-night-100">Open</span>
+          </button>
+        )}
         {/* Network — always manually selectable, auto-detect just pre-picks one */}
-        <MonnifyStatusBanner status={healthA.data?.monnify} />
         <div className="mb-5">
           <div className="flex items-center justify-between mb-2">
             <label className="text-green-700 dark:text-night-200 text-xs font-semibold uppercase tracking-wide">Network</label>
@@ -319,7 +330,6 @@ export default function AirtimeDataPage() {
                   <span className={cn('text-[11px] font-semibold', network === n ? 'text-green-900 dark:text-white' : 'text-green-600 dark:text-night-400')}>
                     {on ? n : `${n} · off`}
                   </span>
-                  {on && <HealthBar className="w-full px-1" stat={statForRows((tab === 'airtime' ? airtimeRows : dataPlans).filter(r => matchesNetwork(r, n)), health)} />}
                 </motion.button>
               )
             })}
@@ -400,7 +410,7 @@ export default function AirtimeDataPage() {
           <div>
             {(hasVtu && hasStd) && (
               <div className="relative flex bg-white/80 dark:bg-night-700 rounded-xl p-1 mb-3 border border-green-100 dark:border-night-500">
-                {([['standard', 'Standard data'], ['vtu', 'VTU data']] as const).map(([k, label]) => (
+                {([['vtu', 'VTU plans'], ['standard', 'Standard plans']] as const).map(([k, label]) => (
                   <button key={k} onClick={() => { setDataKind(k); setSelectedPlanId(null) }}
                     className={cn('relative flex-1 py-2 rounded-lg text-xs font-bold', effKind === k ? '' : 'text-green-700 dark:text-night-300')}
                     style={effKind === k ? { color: theme.on } : undefined}>

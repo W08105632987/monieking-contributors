@@ -136,6 +136,7 @@ const ServiceHistoryPage        = lazy(() => import('@/pages/customer/ServiceHis
 const ServiceRequestFormPage    = lazy(() => import('@/pages/customer/ServiceRequestFormPage'))
 const ServicesPage              = lazy(() => import('@/pages/customer/ServicesPage'))
 const AirtimeDataPage           = lazy(() => import('@/pages/customer/AirtimeDataPage'))
+const AirtimeToCashPage         = lazy(() => import('@/pages/customer/AirtimeToCashPage'))
 const BillPaymentPage           = lazy(() => import('@/pages/customer/BillPaymentPage'))
 const EducationPaymentsPage     = lazy(() => import('@/pages/customer/EducationPaymentsPage'))
 const ServiceRequestDetailPage  = lazy(() => import('@/pages/services/ServiceRequestDetailPage'))
@@ -334,6 +335,7 @@ export default function App() {
             <Route path="/customer/services" element={<AuthGuard allowedRoles={['customer']}><ServicesPage /></AuthGuard>} />
             <Route path="/customer/services/:serviceId/request" element={<AuthGuard allowedRoles={['customer']}><PlayAppGate><ServiceRequestFormPage /></PlayAppGate></AuthGuard>} />
             <Route path="/customer/airtime-data" element={<AuthGuard allowedRoles={['customer']}><AirtimeDataPage /></AuthGuard>} />
+            <Route path="/customer/airtime-to-cash" element={<AuthGuard allowedRoles={['customer']}><AirtimeToCashPage /></AuthGuard>} />
             <Route path="/customer/bill-payments" element={<AuthGuard allowedRoles={['customer']}><BillPaymentPage /></AuthGuard>} />
             <Route path="/customer/education-payments" element={<AuthGuard allowedRoles={['customer']}><EducationPaymentsPage /></AuthGuard>} />
             <Route path="/customer/manual-services/history" element={<AuthGuard allowedRoles={['customer']}><ManualServiceHistoryPage /></AuthGuard>} />

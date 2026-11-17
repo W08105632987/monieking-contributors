@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, ChevronRight, Smartphone } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Smartphone, RefreshCw, ShieldAlert } from 'lucide-react'
 import toast from '@/lib/notify'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ask } from '@/lib/dialog'
+import { withPin } from '@/lib/pin'
+import { formatNaira } from '@/lib/utils'
 import { api, getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useBillsConfig, useUpdateBillsConfig, DEFAULT_BILLS_CONFIG, type BillsConfig } from '@/hooks/useBillPayments'
@@ -56,6 +59,110 @@ function GoLiveCheck() {
 
 const card = 'bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 px-4 divide-y divide-green-50 dark:divide-night-600'
 
+function Segmented<T extends string>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
+  return (
+    <div className="flex rounded-xl bg-green-50 dark:bg-night-800 p-1 gap-1">
+      {options.map(([k, l]) => (
+        <button key={k} type="button" onClick={() => onChange(k)}
+          className={cn('flex-1 rounded-lg py-2 text-xs font-bold', value === k ? 'bg-green-700 text-white' : 'text-green-800 dark:text-night-200')}>{l}</button>
+      ))}
+    </div>
+  )
+}
+
+interface VtuStatus { configured: boolean; balance_naira: number | null; plans: number; last_sync: string | null; down_now: boolean; monnify_down_now: boolean
+  success: { completed: number; failed: number; success_rate: number | null; window_minutes: number } | null }
+
+/** The VTU supplier (GYKDATASUB): is it connected, what is in its wallet, sync plans, and the default markup for new plans. */
+function VtuSupplierCard({ cfg, set }: { cfg: BillsConfig; set: <K extends keyof BillsConfig>(k: K, v: BillsConfig[K]) => void }) {
+  const qc = useQueryClient()
+  const { data } = useQuery({ queryKey: ['vtu-status'], refetchInterval: 60_000, queryFn: async () => (await api.get<VtuStatus>('/bill-payments/admin/vtu/status')).data })
+  const sync = useMutation({
+    mutationFn: async () => (await api.post<{ added: number; updated: number; deactivated: number; errors: string[]; below_cost: unknown[] }>('/bill-payments/admin/vtu/sync')).data,
+    onSuccess: (r) => {
+      r.errors.length ? toast.error(`Sync had problems: ${r.errors[0]}`) : toast.success(`Plans synced: ${r.added} new, ${r.updated} updated${r.deactivated ? `, ${r.deactivated} removed` : ''}`)
+      if (r.below_cost.length) toast.error(`${r.below_cost.length} plan(s) now cost more than customers pay. Raise their prices.`)
+      qc.invalidateQueries({ queryKey: ['vtu-status'] }); qc.invalidateQueries({ queryKey: ['bill-pricing'] }); qc.invalidateQueries({ queryKey: ['billers'] })
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  })
+  const apply = useMutation({
+    mutationFn: async (markup: number) => (await api.post<{ updated: number }>('/bill-payments/admin/vtu/apply-markup', { markup_percent: markup, clear_overrides: true })).data,
+    onSuccess: (r) => { toast.success(`Markup applied to ${r.updated} VTU plans`); qc.invalidateQueries({ queryKey: ['bill-pricing'] }); qc.invalidateQueries({ queryKey: ['billers'] }); qc.invalidateQueries({ queryKey: ['bills-config'] }) },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  })
+  const low = data?.balance_naira != null && data.balance_naira < 10000
+  return (
+    <div className="rounded-2xl border border-green-100 dark:border-night-500 bg-white dark:bg-night-700 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className={cn('h-2.5 w-2.5 rounded-full', !data ? 'bg-zinc-300' : !data.configured ? 'bg-zinc-400' : data.down_now ? 'bg-red-500' : 'bg-green-500')} />
+        <p className="flex-1 text-sm font-extrabold text-green-950 dark:text-white">VTU supplier (GYKDATASUB)</p>
+        <span className="text-[11px] font-bold text-green-700 dark:text-night-200">{!data ? '…' : !data.configured ? 'Not set up' : data.down_now ? 'Down right now' : 'Connected'}</span>
+      </div>
+      {data && !data.configured && <p className="text-[11px] text-amber-700 dark:text-amber-300">Add GYK_API_KEY on the server to switch this on. Until then no VTU plans are shown to customers.</p>}
+      {data?.configured && (
+        <div className="grid grid-cols-3 gap-2 text-center">
+          {[['Wallet', data.balance_naira != null ? formatNaira(Math.round(data.balance_naira * 100)) : 'unknown'], ['Plans', String(data.plans)], ['Success', data.success?.success_rate != null ? `${data.success.success_rate}%` : 'new']].map(([l, v]) => (
+            <div key={l} className="rounded-xl bg-green-50 dark:bg-night-600 py-2"><p className="text-[10px] font-bold uppercase text-green-600 dark:text-night-300">{l}</p><p className={cn('text-sm font-extrabold', l === 'Wallet' && low ? 'text-red-600' : 'text-green-950 dark:text-white')}>{v}</p></div>
+          ))}
+        </div>
+      )}
+      {low && <p className="flex items-center gap-1.5 text-[11px] font-semibold text-red-600"><ShieldAlert className="h-3.5 w-3.5" />Wallet is low. Fund it so VTU purchases keep working.</p>}
+      <button onClick={() => sync.mutate()} disabled={sync.isPending || !data?.configured}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-green-200 dark:border-night-500 py-2.5 text-xs font-bold text-green-900 dark:text-white disabled:opacity-50">
+        <RefreshCw className={cn('h-3.5 w-3.5', sync.isPending && 'animate-spin')} />{sync.isPending ? 'Syncing…' : 'Sync VTU plans now'}
+      </button>
+      {data?.last_sync && <p className="text-[10px] text-green-600 dark:text-night-300">Plans and costs also sync every night. Last: {new Date(data.last_sync).toLocaleString()}</p>}
+      <div>
+        <p className="mb-1 text-[11px] font-semibold text-green-700 dark:text-night-200">Markup on VTU plans (% over the supplier's price)</p>
+        <div className="flex gap-2">
+          <input type="number" inputMode="decimal" min={0} max={100} value={cfg.vtu_default_markup_percent ?? 6} onChange={(e) => set('vtu_default_markup_percent', Number(e.target.value))}
+            className="w-24 rounded-xl border border-green-100 dark:border-night-500 bg-white dark:bg-night-800 px-3 py-2 text-sm font-bold text-green-950 dark:text-white" />
+          <button disabled={apply.isPending || !data?.plans} onClick={async () => {
+            if (await ask(`Set every VTU plan to cost + ${cfg.vtu_default_markup_percent}%? This replaces any price you set by hand on a VTU plan. You can still change single plans afterwards in Prices & profit.`, { title: 'Apply to all VTU plans', confirmLabel: 'Apply to all' })) apply.mutate(cfg.vtu_default_markup_percent ?? 6)
+          }} className="flex-1 rounded-xl bg-green-700 py-2 text-xs font-bold text-white disabled:opacity-50">{apply.isPending ? 'Applying…' : 'Apply to all VTU plans'}</button>
+        </div>
+        <p className="mt-1 text-[10px] text-green-600 dark:text-night-300">New plans start at this markup automatically. Edit any single plan under Prices & profit.</p>
+      </div>
+    </div>
+  )
+}
+
+interface A2cRow { id: string; customer_name: string | null; network: string; phone: string; amount_kobo: number; payout_kobo: number; status: string; failure_reason: string | null; created_at: string }
+
+/** Airtime to Cash requests where the supplier's reply was unclear. NOTHING is paid until a director decides. */
+function A2cReviewList() {
+  const qc = useQueryClient()
+  const { data = [] } = useQuery({ queryKey: ['a2c-review'], refetchInterval: 60_000, queryFn: async () => (await api.get<A2cRow[]>('/airtime-cash/admin/list', { params: { status: 'pending_review' } })).data })
+  if (data.length === 0) return null
+  const decide = async (r: A2cRow, approve: boolean) => {
+    const ok = await ask(approve
+      ? `Only approve if the supplier's own records show ${r.network} airtime of ${formatNaira(r.amount_kobo)} was taken from ${r.phone}. Approving credits ${r.customer_name ?? 'the customer'} ${formatNaira(r.payout_kobo)}.`
+      : `Reject this request? ${r.customer_name ?? 'The customer'} will not be credited.`, { title: approve ? 'Pay this customer?' : 'Reject request', confirmLabel: approve ? 'Yes, pay them' : 'Reject', tone: 'danger' })
+    if (!ok) return
+    try {
+      await withPin((pin) => api.post(`/airtime-cash/admin/${r.id}/${approve ? 'approve' : 'reject'}`, { pin }), { title: approve ? 'Approve payout' : 'Reject request', message: 'Enter your PIN to confirm.' })
+      toast.success(approve ? 'Customer credited' : 'Rejected')
+      qc.invalidateQueries({ queryKey: ['a2c-review'] })
+    } catch (e) { toast.error(getErrorMessage(e)) }
+  }
+  return (
+    <div className="rounded-2xl border border-amber-300 dark:border-amber-500/60 bg-amber-50 dark:bg-amber-500/10 p-4 space-y-3">
+      <p className="text-sm font-extrabold text-amber-900 dark:text-amber-200">{data.length} Airtime to Cash request{data.length === 1 ? '' : 's'} need your decision</p>
+      {data.map((r) => (
+        <div key={r.id} className="rounded-xl bg-white dark:bg-night-700 p-3 text-xs space-y-1.5">
+          <p className="font-bold text-green-950 dark:text-white">{r.customer_name ?? 'Customer'} · {r.network} {formatNaira(r.amount_kobo)} from {r.phone}</p>
+          <p className="text-green-700 dark:text-night-200">Would be paid {formatNaira(r.payout_kobo)}. {r.failure_reason}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => decide(r, false)} className="rounded-lg border border-red-200 py-2 font-bold text-red-600">Reject</button>
+            <button onClick={() => decide(r, true)} className="rounded-lg bg-green-700 py-2 font-bold text-white">Pay customer</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function BillsControlPage() {
   const nav = useNavigate()
   const { data } = useBillsConfig()
@@ -96,10 +203,42 @@ export default function BillsControlPage() {
         <div className={card}>
           <Switch on={cfg.airtime_enabled} onChange={(v) => set('airtime_enabled', v)} label="Airtime" />
           <Switch on={cfg.data_enabled} onChange={(v) => set('data_enabled', v)} label="Data" />
-          <Switch on={cfg.data_standard_enabled} onChange={(v) => set('data_standard_enabled', v)} label="Standard data plans" hint="Regular data bundles" />
-          <Switch on={cfg.data_vtu_enabled} onChange={(v) => set('data_vtu_enabled', v)} label="VTU data plans" hint="Plans with VTU in their name" />
+          <Switch on={cfg.data_standard_enabled} onChange={(v) => set('data_standard_enabled', v)} label="Standard data plans" hint="Monnify data bundles (including plans with VTU in their name)" />
+          <Switch on={cfg.data_vtu_enabled} onChange={(v) => set('data_vtu_enabled', v)} label="VTU data plans" hint="The cheaper bundles from our VTU supplier" />
           <Switch on={cfg.bills_enabled} onChange={(v) => set('bills_enabled', v)} label="Electricity & cable TV" />
         </div>
+
+        <p className="text-[11px] font-bold uppercase tracking-wide text-green-700 dark:text-night-200">Airtime and data suppliers</p>
+        <VtuSupplierCard cfg={cfg} set={set} />
+        <div className={cn(card, 'py-3 space-y-3 divide-y-0')}>
+          <div>
+            <p className="mb-1.5 text-sm font-bold text-green-950 dark:text-white">Airtime provider</p>
+            <Segmented value={cfg.airtime_provider ?? 'monnify'} onChange={(v) => set('airtime_provider', v)} options={[['monnify', 'Monnify (default)'], ['vtu', 'VTU (GYKDATASUB)']]} />
+            <p className="mt-1 text-[10px] text-green-600 dark:text-night-300">Who serves airtime first. Switch any time, for example during a network outage.</p>
+          </div>
+          <Switch on={cfg.provider_auto_failover ?? true} onChange={(v) => set('provider_auto_failover', v)} label="Switch automatically when one is down" hint="Airtime moves to the other supplier if the first one cannot serve it. It never retries something that might have been delivered." />
+          <div>
+            <p className="mb-1.5 text-sm font-bold text-green-950 dark:text-white">Data tab that opens first</p>
+            <Segmented value={cfg.data_default_kind ?? 'vtu'} onChange={(v) => set('data_default_kind', v)} options={[['vtu', 'VTU plans'], ['standard', 'Standard plans']]} />
+            <p className="mt-1 text-[10px] text-green-600 dark:text-night-300">If a supplier is down, customers automatically see the other tab.</p>
+          </div>
+        </div>
+
+        <p className="text-[11px] font-bold uppercase tracking-wide text-green-700 dark:text-night-200">Airtime to Cash</p>
+        <A2cReviewList />
+        <div className={card}>
+          <Switch on={cfg.a2c_enabled ?? false} onChange={(v) => set('a2c_enabled', v)} label="Let customers sell airtime for wallet cash" hint="Off by default. Web only: never shown in the Play Store app. Needs a verified account. The customer's SIM PIN passes through to the supplier and is never stored." />
+        </div>
+        {cfg.a2c_enabled && (
+          <div className="grid grid-cols-2 gap-3">
+            {([['a2c_margin_percent', 'Our cut (%)'], ['a2c_min_account_age_days', 'Account age (days)'], ['a2c_min_naira', 'Minimum (₦)'], ['a2c_max_naira', 'Per request max (₦)'], ['a2c_daily_max_naira', 'Per day max (₦)']] as const).map(([k, l]) => (
+              <label key={k} className="bg-white dark:bg-night-700 rounded-2xl border border-green-100 dark:border-night-500 px-4 py-3">
+                <span className="block text-[11px] font-semibold text-green-600 dark:text-night-300">{l}</span>
+                <input type="number" inputMode="numeric" value={cfg[k] ?? 0} onChange={(e) => set(k, Number(e.target.value) || 0)} className="w-full bg-transparent outline-none font-bold text-green-950 dark:text-white" />
+              </label>
+            ))}
+          </div>
+        )}
 
         <p className="text-[11px] font-bold uppercase tracking-wide text-green-700 dark:text-night-200">Networks</p>
         <div className={card}>

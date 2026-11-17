@@ -146,6 +146,7 @@ function PriceList() {
   const [category, setCategory] = useState<PricingCategory>('airtime')
   const [query, setQuery] = useState('')
   const [provider, setProvider] = useState<string | null>(null)
+  const [supplier, setSupplier] = useState<'all' | 'monnify' | 'vtu'>('all')
   const [editing, setEditing] = useState<PriceRow | null>(null)
   const [bulkMarkup, setBulkMarkup] = useState('')
   const [bulkCommission, setBulkCommission] = useState('')
@@ -155,11 +156,12 @@ function PriceList() {
   const providers = useMemo(() => [...new Set(data.map(r => r.provider))].sort(), [data])
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return data.filter(r => (!provider || r.provider === provider) && (!q || `${r.provider} ${r.product_name}`.toLowerCase().includes(q)))
-  }, [data, provider, query])
+    return data.filter(r => (supplier === 'all' || (r.supplier ?? 'monnify') === supplier) && (!provider || r.provider === provider) && (!q || `${r.provider} ${r.product_name}`.toLowerCase().includes(q)))
+  }, [data, provider, query, supplier])
+  const hasVtuRows = useMemo(() => data.some(r => r.supplier === 'vtu'), [data])
 
   function applyBulk() {
-    const body: Parameters<typeof bulk.mutate>[0] = { category, name_contains: provider ?? undefined }
+    const body: Parameters<typeof bulk.mutate>[0] = { category, name_contains: provider ?? undefined, supplier: supplier === 'all' ? undefined : supplier }
     if (bulkMarkup.trim() !== '') body.markup_percent = Number(bulkMarkup)
     if (bulkCommission.trim() !== '') body.commission_percent = Number(bulkCommission)
     if (body.markup_percent === undefined && body.commission_percent === undefined) { toast.error('Enter a markup % or a commission %.'); return }
@@ -181,6 +183,16 @@ function PriceList() {
         <Search className="w-4 h-4 text-green-500" />
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search products" className="flex-1 bg-transparent outline-none text-sm font-semibold text-green-950 dark:text-white" />
       </div>
+      {hasVtuRows && (
+        <div className="flex gap-1.5">
+          {([['all', 'All suppliers'], ['monnify', 'Standard (Monnify)'], ['vtu', 'VTU']] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setSupplier(k)}
+              className={cn('px-3 py-1 rounded-full text-[11px] font-bold border', supplier === k ? 'bg-amber-100 dark:bg-night-500 border-amber-500 text-green-950 dark:text-white' : 'bg-white dark:bg-night-700 border-green-100 dark:border-night-500 text-green-700 dark:text-night-200')}>
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
       {providers.length > 1 && (
         <div className="flex gap-1.5 overflow-x-auto">
           {[null, ...providers].map(p => (
@@ -212,9 +224,9 @@ function PriceList() {
             <button key={r.id} onClick={() => setEditing(r)} className={cn('w-full text-left px-4 py-3 flex items-start gap-3', !r.is_active && 'opacity-50')}>
               <span className="flex-1 min-w-0">
                 <span className="block text-[13px] font-bold text-green-950 dark:text-white break-words">{r.product_name}</span>
-                <span className="block text-[11px] text-green-600 dark:text-night-300">{r.provider}{!r.is_active ? ' · hidden' : ''}</span>
+                <span className="block text-[11px] text-green-600 dark:text-night-300">{r.provider}{r.supplier === 'vtu' ? ' · VTU' : ''}{!r.is_active ? ' · hidden' : ''}</span>
                 <span className="block text-[11px] text-green-600 dark:text-night-300 mt-0.5">
-                  Monnify {r.monnify_price_kobo != null ? money(r.monnify_price_kobo) : 'open amount'} · commission {pct(r.commission_percent)} · markup {pct(r.markup_percent)}
+                  {r.supplier === 'vtu' ? 'Supplier cost' : 'Monnify'} {r.monnify_price_kobo != null ? money(r.monnify_price_kobo) : 'open amount'}{r.supplier === 'vtu' ? '' : ` · commission ${pct(r.commission_percent)}`} · markup {pct(r.markup_percent)}
                 </span>
               </span>
               <span className="text-right shrink-0">

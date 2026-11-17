@@ -87,6 +87,19 @@ export interface BillsConfig {
   bills_enabled: boolean
   data_vtu_enabled: boolean
   data_standard_enabled: boolean
+  /** What is actually usable right now: switched on AND the supplier is set up, has plans, and is not down. */
+  data_vtu_available?: boolean
+  data_standard_available?: boolean
+  data_default_kind?: 'vtu' | 'standard'
+  airtime_provider?: 'monnify' | 'vtu'
+  provider_auto_failover?: boolean
+  vtu_default_markup_percent?: number
+  a2c_enabled?: boolean
+  a2c_margin_percent?: number
+  a2c_min_naira?: number
+  a2c_max_naira?: number
+  a2c_daily_max_naira?: number
+  a2c_min_account_age_days?: number
   networks: Record<string, boolean>
   min_airtime_naira: number
   max_airtime_naira: number
@@ -95,7 +108,9 @@ export interface BillsConfig {
 
 export const DEFAULT_BILLS_CONFIG: BillsConfig = {
   airtime_enabled: true, data_enabled: true, bills_enabled: true,
-  data_vtu_enabled: true, data_standard_enabled: true,
+  data_vtu_enabled: true, data_standard_enabled: true, data_vtu_available: false, data_standard_available: true, data_default_kind: 'vtu',
+  airtime_provider: 'monnify', provider_auto_failover: true, vtu_default_markup_percent: 6,
+  a2c_enabled: false, a2c_margin_percent: 10, a2c_min_naira: 100, a2c_max_naira: 5000, a2c_daily_max_naira: 10000, a2c_min_account_age_days: 7,
   networks: { MTN: true, Airtel: true, Glo: true, '9mobile': true },
   min_airtime_naira: 50, max_airtime_naira: 50000, notice: '',
 }

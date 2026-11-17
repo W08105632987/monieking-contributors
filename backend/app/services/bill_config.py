@@ -21,6 +21,18 @@ DEFAULTS: dict = {
     "bills_enabled": True,          # electricity + cable TV
     "data_vtu_enabled": True,
     "data_standard_enabled": True,
+    # VTU (GYKDATASUB). airtime_provider = who serves airtime FIRST; the other is the automatic backup.
+    "airtime_provider": "monnify",          # "monnify" (default) | "vtu"
+    "provider_auto_failover": True,         # switch suppliers automatically when the first one is down
+    "data_default_kind": "vtu",             # which data tab opens first: "vtu" | "standard"
+    "vtu_default_markup_percent": 6,        # what a NEW VTU plan is priced at over its cost; each plan can be changed after
+    # Airtime to Cash (customers sell airtime for wallet money). OFF until the director switches it on.
+    "a2c_enabled": False,
+    "a2c_margin_percent": 10,               # our cut of what the supplier credits us for the airtime
+    "a2c_min_naira": 100,
+    "a2c_max_naira": 5000,                  # per request
+    "a2c_daily_max_naira": 10000,           # per customer per day
+    "a2c_min_account_age_days": 7,
     "networks": {n: True for n in NETWORKS},
     "min_airtime_naira": 50,
     "max_airtime_naira": 50000,
@@ -88,6 +100,16 @@ async def save_bills_config(db: AsyncSession, patch: dict, actor_id: uuid.UUID) 
         cfg["networks"].update({k: bool(v) for k, v in nets.items() if k in NETWORKS})
     if cfg["min_airtime_naira"] > cfg["max_airtime_naira"]:
         raise ValueError("Minimum airtime cannot be above the maximum.")
+    if cfg["airtime_provider"] not in ("monnify", "vtu"):
+        raise ValueError("Airtime provider must be Monnify or VTU.")
+    if cfg["data_default_kind"] not in ("vtu", "standard"):
+        raise ValueError("The default data tab must be VTU or Standard.")
+    if not (0 <= float(cfg["vtu_default_markup_percent"]) <= 100):
+        raise ValueError("The VTU markup must be between 0% and 100%.")
+    if not (0 <= float(cfg["a2c_margin_percent"]) <= 60):
+        raise ValueError("The Airtime to Cash margin must be between 0% and 60%.")
+    if cfg["a2c_min_naira"] > cfg["a2c_max_naira"] or cfg["a2c_max_naira"] > cfg["a2c_daily_max_naira"]:
+        raise ValueError("Airtime to Cash limits must satisfy: minimum <= per-request maximum <= daily maximum.")
     await set_config_value(db, key=CONFIG_KEY, value=json.dumps(cfg), updated_by=actor_id)
     return cfg
 
