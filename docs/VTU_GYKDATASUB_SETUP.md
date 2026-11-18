@@ -19,6 +19,8 @@ I could read their published Developer Hub and the code of their own app, but I 
 * They have **no idempotency key, no webhook, and no "look up this purchase" endpoint**. If a reply is lost we cannot ask "did it happen?" with one call.
   So: an unclear result is **held (pending)**, matched against their wallet history (phone + time), and sent to a human if still unclear after an hour.
   Another supplier is tried **only** when the first definitely did nothing. An unclear outcome is never retried elsewhere, so nobody is charged twice.
+* Their website (`gykdatasub.com`) is NOT the API host. The API runs on a platform host (`gykdatasub15072026.kalidevelopers.com.ng`) operated by the white-label developer, which is one more company in the chain. Ask GYKDATASUB support to confirm that host is the supported address for API customers and that they will warn you before it changes.
+* Their API reports a rejected key as an HTTP 200 reply saying "Invalid user". The app treats that as a refusal, never as "nothing found".
 * Their **documentation and their own mobile app disagree** (`/api/topup/` + `network` vs `/api/airtime/` + `network_id`; `plan`+`mobile_number` vs `plan_id`+`phone`). The data call sends both spellings and the paths are settings.
   `scripts/diagnose_gyk.py` proves what really works with one ₦100 purchase. **Do not skip it.**
 * It behaves like a **reseller wallet app with an API added**, not a purpose-built partner API. Expect more manual care than with Monnify. Check their support responsiveness before relying on it.
@@ -29,15 +31,16 @@ I could read their published Developer Hub and the code of their own app, but I 
 2. Run migrations **071** then **072** in Supabase.
 3. On Railway set the variables below on the API service, the Celery worker **and** Celery beat.
    ```
-   GYK_API_KEY=...        GYK_BASE_URL=https://gykdatasub.com
-   GYK_AIRTIME_PATH=/api/topup/   GYK_DATA_PATH=/api/data/
+   GYK_API_KEY=...
+   GYK_BASE_URL=https://gykdatasub15072026.kalidevelopers.com.ng     <- NOT gykdatasub.com (that is only their website)
    GYK_MIN_WALLET_NAIRA=10000     GYK_UNMATCHED_FAIL_MINUTES=90
    ```
+   The endpoint paths (`GYK_USER_PATH`, `GYK_PLANS_PATH`, `GYK_HISTORY_PATH`, `GYK_AIRTIME_PATH`, `GYK_DATA_PATH`, `GYK_A2C_PATH`) are also settings. Step 5 below finds the right ones.
    If GYKDATASUB lets you restrict an API key by IP, you will need a fixed outbound IP; otherwise leave it unrestricted.
 4. Fund your GYKDATASUB wallet with a small amount (for example ₦2,000).
-5. On the server run `python -m scripts.diagnose_gyk`. All four checks must pass (key accepted, plan list, fees, wallet history readable).
+5. On the server run `python -m scripts.diagnose_gyk`. It tries each candidate path (purchase paths are probed with an impossible request, so nothing is bought), shows the real plan-row columns, and ends with the exact `GYK_*` lines to set on Railway. Set them on all three services, restart, and run it again until every check passes. If the plan rows carry several price columns, set `GYK_PRICE_FIELD` to the one for your account level.
 6. Run one real test to **your own** number: `python -m scripts.diagnose_gyk --buy-airtime 0801XXXXXXX --amount 100 --yes`. **Check that the airtime really arrived.**
-   If it fails with a path or field error, set `GYK_AIRTIME_PATH=/api/airtime/` (and if needed `GYK_TRANSACTION_PIN`) and repeat. Send the output to the developer.
+   If it fails with a path or field error, use the path step 5 printed (and `GYK_TRANSACTION_PIN` if the reply asks for a PIN) and repeat. Send the output to the developer.
 7. In **Airtime, Data & Bills** press **Sync VTU plans now**. Open *Prices & profit > Data > VTU* and sanity-check costs, prices and profits against GYKDATASUB's own price list.
 8. Buy two or three small VTU data plans yourself (different networks). Confirm delivery.
 9. Only then leave **VTU data plans** switched on for customers. (The tab is hidden automatically until the supplier is set up and has plans.)

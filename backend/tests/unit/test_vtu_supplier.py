@@ -39,7 +39,7 @@ def run(coro):
 # ── Plans ────────────────────────────────────────────────────────────────
 def test_plan_list_is_parsed_and_unknown_networks_and_bad_prices_are_skipped():
     def handler(req):
-        assert req.method == "POST" and req.url.path == "/api/dataplan/" and json.loads(req.content) == {"action": "allplans"}
+        assert req.method == "POST" and req.url.path == settings.GYK_PLANS_PATH and json.loads(req.content) == {"action": "allplans"}
         assert req.headers["authorization"] == "Bearer test-key"
         return httpx.Response(200, json={"status": "success", "data": [
             {"plan_id": 11, "network": 1, "plan_name": "1.5GB SME", "validity": "30 days", "price": "320"},
@@ -59,7 +59,7 @@ def test_data_purchase_sends_both_spellings_and_reads_success():
         seen.update(json.loads(req.content)); seen["path"] = req.url.path
         return httpx.Response(200, json={"status": "success", "message": "done", "reference": "R1", "wallet_balance": 900})
     r = run(client(handler).buy_data(network="1", phone="08012345678", variation_code="11", idempotency_key="abc"))
-    assert seen["path"] == "/api/data/" and seen["plan"] == 11 and seen["plan_id"] == 11 and seen["mobile_number"] == seen["phone"] == "08012345678" and seen["network"] == 1
+    assert seen["path"] == settings.GYK_DATA_PATH and seen["plan"] == 11 and seen["plan_id"] == 11 and seen["mobile_number"] == seen["phone"] == "08012345678" and seen["network"] == 1
     assert r["vendStatus"] == "SUCCESS" and r["transactionReference"] == "R1" and "_error" not in r
 
 
@@ -256,3 +256,35 @@ def test_when_both_suppliers_fail_definitely_the_last_error_is_returned_for_a_cl
         "monnify": ({}, gyk.VtuError("x", kind="provider", raw="service unavailable")),
         "vtu": ({}, gyk.VtuError("y", kind="provider", raw="insufficient balance"))}, ["monnify", "vtu"])
     assert calls == ["monnify", "vtu"] and err.raw == "insufficient balance" and req.provider == "vtu"
+
+
+# ── What the live server actually does (found by running scripts/diagnose_gyk.py) ──
+def test_a_refused_history_call_is_never_mistaken_for_nothing_found():
+    """Their API answers a rejected key with HTTP 200 + {"status":"error","message":"Invalid user"}. That must NOT read as 'no purchase
+    found', or a delivered purchase could be refunded after the grace period."""
+    refused = client(lambda req: httpx.Response(200, json={"status": "error", "message": "Invalid user"}))
+    assert run(refused.find_purchase(phone="08012345678", since=datetime.now(timezone.utc) - timedelta(minutes=5))) is None
+
+
+def test_invalid_user_on_a_purchase_is_a_definite_provider_side_failure_not_a_held_one():
+    r = run(client(lambda req: httpx.Response(200, json={"status": "error", "message": "Invalid user_key"})).buy_airtime(
+        network="1", phone="0801", amount_naira=100, idempotency_key="k"))
+    err = r["_error"]
+    assert err.kind == "provider" and err.ambiguous is False          # our key is wrong: nothing was bought, safe to fail over / refund
+
+
+def test_plan_rows_with_other_field_names_still_parse_and_the_price_column_can_be_chosen(monkeypatch):
+    rows = [{"planid": 9, "network_id": "1", "plan": "1GB", "plan_validity": "30 days", "amount": 300, "smart_price": 280}]
+    h = lambda req: httpx.Response(200, json={"status": "success", "total_rows": 1, "data": rows})
+    assert run(client(h).get_all_plans())[0]["amount_naira"] == 300.0
+    monkeypatch.setattr(settings, "GYK_PRICE_FIELD", "smart_price")
+    p = run(client(h).get_all_plans())[0]
+    assert p["amount_naira"] == 280.0 and p["variation_code"] == "9" and p["name"] == "1GB 30 days"
+
+
+def test_wallet_balance_is_found_wherever_the_reply_nests_it():
+    for body in ({"status": "success", "wallet_balance": 1250.5},
+                 {"status": "success", "data": {"wallet_balance": "1250.50", "level": "SMART"}},
+                 {"status": "success", "user": {"profile": {"wallet_balance": 1250.5}}}):
+        assert run(client(lambda req, b=body: httpx.Response(200, json=b)).wallet_balance()) == 1250.5
+    assert run(client(lambda req: httpx.Response(200, json={"status": "error", "message": "Invalid user"})).wallet_balance()) is None

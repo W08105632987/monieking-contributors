@@ -128,9 +128,18 @@ class Settings(BaseSettings):
                                          # if our servers die, the pings stop and THEY email you. The only way to hear "Railway is down".
     # GYKDATASUB (https://gykdatasub.com): VTU supplier for cheap data, backup airtime, and Airtime-to-Cash.
     GYK_API_KEY: str = ""                                  # Developer Hub > API Authorization Token. NEVER paste it into chats or screenshots.
-    GYK_BASE_URL: str = "https://gykdatasub.com"
-    GYK_AIRTIME_PATH: str = "/api/topup/"                  # their docs say /api/topup/, their own app uses /api/airtime/: scripts/diagnose_gyk.py tells you which works
-    GYK_DATA_PATH: str = "/api/data/"
+    # The API does NOT live on gykdatasub.com (that is only their website). Their own app talks to this host, which carries their white-label platform.
+    GYK_BASE_URL: str = "https://gykdatasub15072026.kalidevelopers.com.ng"
+    # Every endpoint path is a setting because the documentation, their app and the live server disagree. scripts/diagnose_gyk.py probes the candidates
+    # and prints the exact values to use. /api/v1/user/ and /api/v1/dataplan/ are CONFIRMED to work with an API key; the others are best guesses until probed.
+    GYK_USER_PATH: str = "/api/v1/user/"
+    GYK_PLANS_PATH: str = "/api/v1/dataplan/"
+    GYK_HISTORY_PATH: str = "/api/v1/wallet_history/"
+    GYK_A2C_PATH: str = "/api/v1/a2c/"
+    GYK_FEES_PATH: str = "/api/details/fees/"                  # public; confirmed working
+    GYK_AIRTIME_PATH: str = "/api/v1/topup/"
+    GYK_DATA_PATH: str = "/api/v1/data/"
+    GYK_PRICE_FIELD: str = ""                              # the plan-row field holding the price for OUR account level, if rows carry several (see diagnose output)
     GYK_TRANSACTION_PIN: str = ""                          # only if purchases through the API also require your account PIN
     GYK_MIN_WALLET_NAIRA: int = 10000                      # warn when the GYKDATASUB wallet falls below this
     GYK_UNMATCHED_FAIL_MINUTES: int = 90                   # a purchase we cannot find in their history after this long is treated as not delivered (refunded)

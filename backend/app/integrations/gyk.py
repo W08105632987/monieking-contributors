@@ -3,7 +3,8 @@ GYKDATASUB client (https://gykdatasub.com): the VTU supplier for cheap data bund
 
 WHAT WE KNOW (from their published Developer Hub documentation) AND WHAT WE DO NOT
   Known:
-    * Auth     Authorization: Bearer <API key>, Content-Type: application/json. Base URL https://gykdatasub.com
+    * Auth     Authorization: Bearer <API key>, Content-Type: application/json. Base URL https://gykdatasub15072026.kalidevelopers.com.ng
+               (NOT gykdatasub.com: that is only the website). Paths are settings (GYK_*_PATH); /api/v1/user/ and /api/v1/dataplan/ are confirmed.
     * Airtime  POST /api/topup/  {network, amount, phone}             network: 1 MTN, 2 Glo, 3 9mobile, 4 Airtel
     * Data     POST /api/data/   {network, plan, mobile_number}       (plan = a plan id from the plan list)
     * Plans    POST /api/dataplan/ {"action": "allplans"}  -> data: [ plan rows ]
@@ -43,7 +44,7 @@ ID_TO_DISPLAY = {v: k for k, v in NETWORK_SLUGS.items()}
 CUSTOMER_FACING = "We could not complete this purchase right now."
 
 # Wording that tells us the request was refused BEFORE anything was bought.
-_NOT_PROCESSED = re.compile(r"insufficient|low balance|not enough|invalid (api|token|key)|unauthori[sz]ed|authentication|forbidden|disabled|suspended|inactive|maintenance|unavailable|temporar|service.*(down|off|not available)|ip .*(allowed|whitelist)|not activated|vendor.*(fail|error|down)|network error", re.I)
+_NOT_PROCESSED = re.compile(r"invalid user|user_key|insufficient|low balance|not enough|invalid (api|token|key)|unauthori[sz]ed|authentication|forbidden|disabled|suspended|inactive|maintenance|unavailable|temporar|service.*(down|off|not available)|ip .*(allowed|whitelist)|not activated|vendor.*(fail|error|down)|network error", re.I)
 _CUSTOMER = re.compile(r"invalid (phone|number|mobile|network|plan|amount)|not a valid|wrong (number|network)|minimum|maximum|plan not found|does not (match|belong)|incorrect (number|phone)", re.I)
 
 
@@ -64,6 +65,32 @@ class VtuNotFound(VtuError):
 
 def _digits(phone: str) -> str:
     return re.sub(r"\D", "", phone or "")[-10:]
+
+
+def _first(row: dict, *names):
+    for n in names:
+        if row.get(n) is not None and row.get(n) != "":
+            return row[n]
+    return None
+
+
+def _find(body, key: str, depth: int = 0):
+    """The value stored under `key` anywhere in a (nested) reply: their replies put the same field at different depths."""
+    if depth > 4:
+        return None
+    if isinstance(body, dict):
+        if body.get(key) is not None:
+            return body[key]
+        for v in body.values():
+            found = _find(v, key, depth + 1)
+            if found is not None:
+                return found
+    elif isinstance(body, list):
+        for v in body:
+            found = _find(v, key, depth + 1)
+            if found is not None:
+                return found
+    return None
 
 
 def _is_success(body: dict) -> bool:
@@ -136,23 +163,26 @@ class GykProvider:
 
     # ── Catalogue ──────────────────────────────────────────────────────────
     async def get_all_plans(self) -> list[dict]:
-        body = await self._post("/api/dataplan/", {"action": "allplans"})
+        body = await self._post(settings.GYK_PLANS_PATH, {"action": "allplans"})
         if not _is_success(body):
             raise VtuError(CUSTOMER_FACING, kind="provider", raw=f"plan list refused: {str(body.get('message'))[:160]}")
         plans = []
-        for p in body.get("data") or []:
+        rows = body.get("data")
+        rows = rows if isinstance(rows, list) else (rows or {}).get("plans") or (rows or {}).get("data") or []
+        for p in rows:
             if not isinstance(p, dict):
                 continue
-            plan_id = p.get("plan_id") if p.get("plan_id") is not None else p.get("id")
+            plan_id = _first(p, "plan_id", "id", "planid", "dataplan_id")
+            price_raw = p.get(settings.GYK_PRICE_FIELD) if settings.GYK_PRICE_FIELD else _first(p, "price", "amount", "plan_amount", "api_price", "selling_price")
             try:
-                price = float(p.get("price") if p.get("price") is not None else p.get("amount"))
+                price = float(price_raw)
             except (TypeError, ValueError):
                 continue
-            network = str(p.get("network") or "")
+            network = str(_first(p, "network", "network_id", "netid") or "")
             if plan_id is None or price <= 0 or network not in ID_TO_DISPLAY:
                 continue
-            name = str(p.get("plan_name") or p.get("name") or plan_id).strip()
-            validity = str(p.get("validity") or "").strip()
+            name = str(_first(p, "plan_name", "name", "plan") or plan_id).strip()
+            validity = str(_first(p, "validity", "plan_validity", "duration") or "").strip()
             plans.append({"variation_code": str(plan_id), "network": network, "name": f"{name} {validity}".strip(),
                           "amount_naira": price, "fixed_price": True})
         return plans
@@ -194,11 +224,13 @@ class GykProvider:
         """-> a normalized outcome if EXACTLY ONE history row matches; {"vendStatus": "NOT_FOUND"} if the history is readable and has none;
         None if we cannot tell (history unreadable, or several look-alike rows)."""
         try:
-            body = await self._post("/api/wallet_history/", {
+            body = await self._post(settings.GYK_HISTORY_PATH, {
                 "action": "transactions", "page": 1, "limit": 30,
                 "from_date": (since - timedelta(days=1)).date().isoformat(), "to_date": (datetime.now(timezone.utc) + timedelta(days=1)).date().isoformat()})
         except VtuError:
             return None
+        if not _is_success(body):
+            return None       # e.g. HTTP 200 + {"status":"error","message":"Invalid user"}: the call was REFUSED, which says nothing about our purchase
         want = _digits(phone)
         hits = []
         for row in body.get("data") or []:
@@ -228,11 +260,13 @@ class GykProvider:
 
     async def wallet_balance(self) -> float | None:
         try:
-            body = await self._post("/api/details/user/", {})
+            body = await self._post(settings.GYK_USER_PATH, {})
         except VtuError:
             return None
+        if not _is_success(body):
+            return None
         try:
-            return float((body.get("data") or {}).get("wallet_balance"))
+            return float(_find(body, "wallet_balance"))
         except (TypeError, ValueError):
             return None
 
@@ -242,18 +276,18 @@ class GykProvider:
 
     # ── Airtime to Cash ─────────────────────────────────────────────────────
     async def get_fees(self) -> dict:
-        body = await self._request("GET", "/api/details/fees/", None, auth=False)
+        body = await self._request("GET", settings.GYK_FEES_PATH, None, auth=False)
         return body.get("data") if isinstance(body.get("data"), dict) else {}
 
     async def a2c_otp(self, *, network: str, phone: str) -> str:
-        body = await self._post("/api/a2c/", {"action": "otp", "network": int(network), "phone": phone})
+        body = await self._post(settings.GYK_A2C_PATH, {"action": "otp", "network": int(network), "phone": phone})
         ident = (body.get("data") or {}).get("identifier") if isinstance(body.get("data"), dict) else None
         if not _is_success(body) or not ident:
             raise VtuError("We could not send the verification code. Check the number and try again.", kind="customer", raw=f"otp refused: {str(body.get('message'))[:160]}")
         return str(ident)
 
     async def a2c_verify(self, *, identifier: str, otp: str) -> str:
-        body = await self._post("/api/a2c/", {"action": "verify", "identifier": identifier, "otp": otp})
+        body = await self._post(settings.GYK_A2C_PATH, {"action": "verify", "identifier": identifier, "otp": otp})
         session = (body.get("data") or {}).get("sessionId") if isinstance(body.get("data"), dict) else None
         if not _is_success(body) or not session:
             raise VtuError("That code is not correct.", kind="customer", raw=f"verify refused: {str(body.get('message'))[:160]}")
@@ -261,7 +295,7 @@ class GykProvider:
 
     async def a2c_submit(self, *, network: str, phone: str, amount_naira: float, simpin: str, session_id: str, amount_to_receive: float) -> dict:
         """The SIM PIN is forwarded and forgotten: it is never logged, stored, or put in an error message."""
-        body = await self._post("/api/a2c/", self._with_pin({
+        body = await self._post(settings.GYK_A2C_PATH, self._with_pin({
             "action": "submit", "network": int(network), "phone": phone, "amount": amount_naira, "simpin": simpin,
             "sessionId": session_id, "amount_to_receive": amount_to_receive}), purchase=True)
         info, details = body.get("info"), body.get("details")
