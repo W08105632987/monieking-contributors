@@ -81,8 +81,8 @@ class BillPaymentRequest(Base):
     officer_id:  Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     biller_id:   Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("billers.id"), nullable=False)
 
-    # Masked before persistence — see bill_payment_service._mask, same
-    # convention as identity_services.
+    # Phone / meter / smartcard number, stored in full (needed to reconcile VTU purchases
+    # against the supplier's history). Only NIN and BVN are masked, in identity_services.
     customer_reference: Mapped[str] = mapped_column(String(80), nullable=False)
     amount_kobo:         Mapped[int] = mapped_column(BigInteger, nullable=False)
 

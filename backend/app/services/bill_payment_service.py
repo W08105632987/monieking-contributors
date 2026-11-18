@@ -58,17 +58,6 @@ def _vend_references(request: BillPaymentRequest) -> list[str]:
     return [r for r in (str(request.id), request.monnify_transaction_reference) if r]
 
 
-def _mask(value: str) -> str:
-    """Same masking convention as identity_services._mask — kept as its own
-    copy rather than a shared import because the two modules' sensitive-field
-    lists diverge (bills has no NIN/BVN, identity_services has no meter
-    numbers) and coupling them would make either one harder to change safely."""
-    v = str(value)
-    if len(v) <= 4:
-        return "•" * len(v)
-    return v[:2] + "•" * (len(v) - 4) + v[-2:]
-
-
 def _debit_reference(request: BillPaymentRequest) -> str:
     """Deterministic, so the debit for a request can always be found again
     (wallet_transactions.reference is unique)."""
@@ -864,7 +853,10 @@ async def pay_bill(
         initiated_by=initiated_by,
         officer_id=officer_id,
         biller_id=biller_id,
-        customer_reference=_mask(customer_reference),
+        # Stored in full on purpose: the VTU reconciler matches this phone number against the supplier's history,
+        # and customers and directors need to see the real phone / meter / smartcard number on receipts.
+        # Only NIN and BVN are masked in this system (see identity_services).
+        customer_reference=str(customer_reference).strip(),
         amount_kobo=resolved_amount_kobo,
         vend_amount_kobo=sale.vend_kobo,
         commission_kobo=sale.commission_kobo,

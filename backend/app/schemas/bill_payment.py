@@ -69,7 +69,7 @@ class BillPaymentRequestItem(BaseModel):
     customer_id: uuid.UUID
     initiated_by: str
     officer_id: uuid.UUID | None = None
-    customer_reference: str            # already masked by the time it reaches here
+    customer_reference: str            # the real phone / meter / smartcard number (not masked)
     amount_kobo: int
     validated_account_name: str | None = None
     status: str

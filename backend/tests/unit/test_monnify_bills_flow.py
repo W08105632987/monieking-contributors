@@ -363,6 +363,15 @@ def test_success_completes_and_debits_once(monkeypatch):
     assert env.db.commits >= 2           # debit checkpoint, then settlement
 
 
+def test_phone_and_meter_numbers_are_stored_unmasked(monkeypatch):
+    # The VTU reconciler matches this value against the supplier's history, so it must be the real number.
+    env = Env(monkeypatch)
+    assert env.pay(customer_reference="08031234567").customer_reference == "08031234567"
+    env2 = Env(monkeypatch)
+    assert env2.pay(customer_reference="  45012345678 ").customer_reference == "45012345678"
+    assert "•" not in env.pay(customer_reference="08031234567").customer_reference
+
+
 def test_the_debit_is_committed_before_monnify_is_called(monkeypatch):
     env = Env(monkeypatch)
     order = []
@@ -488,7 +497,7 @@ def _pending_request(db, tx_ref=None):
     from app.models.bill_payment import BillPaymentRequest
     r = BillPaymentRequest(
         id=uuid.uuid4(), customer_id=uuid.uuid4(), initiated_by="customer", biller_id=uuid.uuid4(),
-        customer_reference="08••••••67", amount_kobo=500_00, status=BillPaymentStatus.PENDING,
+        customer_reference="08031234567", amount_kobo=500_00, status=BillPaymentStatus.PENDING,
     )
     r.monnify_transaction_reference = tx_ref
     db.locked_request = r
