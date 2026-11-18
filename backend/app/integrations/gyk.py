@@ -178,7 +178,8 @@ class GykProvider:
                 price = float(price_raw)
             except (TypeError, ValueError):
                 continue
-            network = str(_first(p, "network", "network_id", "netid") or "")
+            net_val = _first(p, "network_id", "netid") or NETWORK_SLUGS.get(str(p.get("network") or "").strip()) or p.get("network")
+            network = str(net_val or "")
             if plan_id is None or price <= 0 or network not in ID_TO_DISPLAY:
                 continue
             name = str(_first(p, "plan_name", "name", "plan") or plan_id).strip()
