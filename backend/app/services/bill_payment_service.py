@@ -903,6 +903,23 @@ async def pay_bill(
         logger.exception("[bills] could not settle request %s — left PENDING for resolve_pending_bill()", request.id)
         await db.rollback()
         await db.refresh(request)
+
+    # ── 4. Fast-settle for suppliers that acknowledge as "processing" (VTU) ────────
+    # When the supplier queues the vend synchronously (returning "processing"), it typically
+    # confirms within 2–4 seconds. Giving it a brief window allows the customer's PIN
+    # modal ("Processing your payment…") to resolve directly to COMPLETED or FAILED,
+    # preventing the jarring flash of an intermediate "Pending" badge on the receipt.
+    if request.status == BillPaymentStatus.PENDING and _prov(request) == "vtu":
+        for wait in (2.5, 2.0):
+            await asyncio.sleep(wait)
+            try:
+                resolved = await resolve_pending_bill(db, request.id)
+                if resolved is not None and resolved.status != BillPaymentStatus.PENDING:
+                    request = resolved
+                    break
+            except Exception:
+                pass
+
     return request
 
 
