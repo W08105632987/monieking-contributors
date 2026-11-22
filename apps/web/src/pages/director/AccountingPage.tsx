@@ -8,9 +8,10 @@ import toast from '@/lib/notify'
 import { api, getErrorMessage } from '@/lib/api'
 import { formatNaira } from '@/lib/utils'
 import { Period, SOURCE_TEXT, parseAmount, presetPeriod, ymd } from '@/lib/accounting'
+import CompanyFunds from './CompanyFunds'
 
 interface Totals { revenue_kobo: number; provider_cost_kobo: number; gross_profit_kobo: number; expenses_kobo: number; other_income_kobo?: number; net_profit_kobo: number }
-interface Service { key: string; label: string; group: string; count: number; volume_kobo: number; revenue_kobo: number; cost_kobo: number; margin_kobo: number; cost_source: string; unpriced_events: number; note?: string | null; markup_kobo?: number; commission_kobo?: number }
+interface Service { key: string; label: string; group: string; count: number; volume_kobo: number; revenue_kobo: number; cost_kobo: number; margin_kobo: number; cost_source: string; unpriced_events: number; note?: string | null; markup_kobo?: number; commission_kobo?: number; tiers?: { tier: string; label: string; count: number; revenue_kobo: number; provider_cost_kobo: number; margin_kobo: number; unpriced: number; has_own_cost: boolean }[] }
 interface Report {
   start: string; end: string; totals: Totals; services: Service[]
   expenses: { total_kobo: number; by_category: { category: string; total_kobo: number; count: number }[] }
@@ -19,7 +20,7 @@ interface Report {
   series?: (Totals & { label: string })[]
 }
 interface RateRow { id: string; mode: 'flat' | 'percent'; value: number; cap_kobo: number | null; effective_from: string; note: string | null }
-interface Rate { key: string; label: string; group: string; provider: string; mode: 'flat' | 'percent'; hint: string; current: RateRow | null; history: RateRow[] }
+interface Rate { key: string; label: string; group: string; provider: string; mode: 'flat' | 'percent'; hint: string; current: RateRow | null; history: RateRow[]; price_min_kobo?: number | null; price_max_kobo?: number | null; tiers?: Rate[] }
 interface Income { id: string; earned_on: string; source: string; description: string; amount_kobo: number }
 interface Expense { id: string; spent_on: string; category: string; description: string; amount_kobo: number }
 interface Holdings { wallet_balances_kobo: number; pending_payouts_kobo: number; avg_daily_outgoings_kobo: number; buffer_days: number; buffer_kobo: number; should_hold_kobo: number; in_progress_jobs_kobo?: number; in_progress_jobs?: number; owed_commissions_kobo?: number }
@@ -115,7 +116,7 @@ export default function AccountingPage() {
         {tab === 'Expenses' && <Expenses period={period} onChange={refresh} />}
         {tab === 'Other income' && <OtherIncome period={period} onChange={refresh} />}
         {tab === 'Money trail' && <MoneyTrail period={period} />}
-        {tab === 'Cash' && <Cash />}
+        {tab === 'Cash' && <div className="space-y-4"><CompanyFunds period={period} /><Cash /></div>}
       </div>
     </div>
   )
@@ -298,6 +299,13 @@ function Services({ rep, loading }: { rep?: Report; loading: boolean }) {
                 {SOURCE_TEXT[s.cost_source] ?? s.cost_source}{s.unpriced_events > 0 && ` (${s.unpriced_events} without a price)`}
               </p>
               {s.margin_kobo < 0 && <p className="text-[10px] font-bold text-red-600">We lose money on this service in this period.</p>}
+              {!!s.tiers?.length && (
+                <div className="mt-1 space-y-0.5 border-l-2 border-green-200 pl-2 dark:border-night-400">
+                  {s.tiers.filter((t) => t.count > 0).map((t) => (
+                    <p key={t.tier} className="text-[10px] text-green-700 dark:text-night-200">{t.label}: {t.count} done · revenue {money(t.revenue_kobo)} · cost {money(t.provider_cost_kobo)} · <span className={t.margin_kobo < 0 ? 'font-bold text-red-600' : ''}>margin {money(t.margin_kobo)}</span>{t.unpriced > 0 && ' · no price'}</p>
+                  ))}
+                </div>
+              )}
               {s.note && <p className="text-[10px] italic text-green-500 dark:text-night-400">{s.note}</p>}
             </div>
           ))}
@@ -323,6 +331,39 @@ function Prices({ onChange }: { onChange: () => void }) {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
   if (!data) return <p className="py-10 text-center text-sm text-green-600">Loading…</p>
+  const customerPrice = (r: Rate) => (r.price_min_kobo == null ? '' : r.price_min_kobo === r.price_max_kobo ? `Customers pay ${money(r.price_min_kobo)}` : `Customers pay ${money(r.price_min_kobo)} to ${money(r.price_max_kobo ?? r.price_min_kobo)}`)
+  const rateLine = (r: Rate, tier: boolean) => (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className={`truncate font-semibold text-green-950 dark:text-white ${tier ? 'text-xs' : 'text-sm'}`}>{!tier && r.tiers?.length ? `${r.label} (default cost)` : r.label}</p>
+          {customerPrice(r) && <p className="text-[11px] text-green-600 dark:text-night-300">{customerPrice(r)}</p>}
+          <p className={`text-xs ${r.current ? 'text-green-600 dark:text-night-300' : tier ? 'text-green-500 dark:text-night-400' : 'font-bold text-amber-600'}`}>
+            {r.current ? `We are charged ${r.current.mode === 'percent' ? `${r.current.value}% of the amount${r.current.cap_kobo ? `, max ${money(r.current.cap_kobo)}` : ''}` : `₦${r.current.value.toLocaleString('en-NG')} each`}` : tier ? 'No cost of its own: uses the default cost' : 'No price entered'}
+          </p>
+        </div>
+        <button onClick={() => (editing === r.key ? setEditing(null) : open(r))} className="shrink-0 rounded-lg bg-green-100 px-3 py-1.5 text-xs font-bold text-green-800 dark:bg-night-600 dark:text-white">{editing === r.key ? 'Close' : r.current ? 'Change' : 'Set price'}</button>
+      </div>
+      {editing === r.key && (
+        <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="mt-2 space-y-2 rounded-xl bg-green-50 p-3 dark:bg-night-600">
+          <p className="text-[11px] text-green-700 dark:text-night-200">{r.hint}</p>
+          <div className="flex gap-1">
+            {(['flat', 'percent'] as const).map((m) => <button key={m} onClick={() => setMode(m)} className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-bold ${mode === m ? 'bg-green-600 text-white' : 'bg-white text-green-800 dark:bg-night-700 dark:text-white'}`}>{m === 'flat' ? 'Fixed ₦ each' : '% of amount'}</button>)}
+          </div>
+          <input className={input} inputMode="decimal" placeholder={mode === 'flat' ? 'Price in ₦ (e.g. 30 or 3.5)' : 'Percent (e.g. 1.5)'} value={val} onChange={(e) => setVal(e.target.value)} />
+          {mode === 'percent' && <input className={input} inputMode="decimal" placeholder="Maximum per transaction in ₦ (optional)" value={cap} onChange={(e) => setCap(e.target.value)} />}
+          {r.current && <label className="block text-[11px] text-green-700 dark:text-night-200">Starts on (leave empty for today)<input type="date" className={`${input} mt-1`} value={from} onChange={(e) => setFrom(e.target.value)} /></label>}
+          <input className={input} placeholder="Note (optional)" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
+          <button className={btn} disabled={parseAmount(val) === null || save.isPending} onClick={() => save.mutate(r)}>Save price</button>
+          {r.history.length > 1 && (
+            <div className="pt-1 text-[10px] text-green-600 dark:text-night-300">
+              History: {r.history.map((h) => `${h.mode === 'percent' ? `${h.value}%` : `₦${h.value}`} from ${h.effective_from.slice(0, 10)}`).join(' · ')}
+            </div>
+          )}
+        </motion.div>
+      )}
+    </>
+  )
   const groups = [...new Set(data.map((r) => r.group))]
   return (
     <div className="space-y-4">
@@ -334,32 +375,12 @@ function Prices({ onChange }: { onChange: () => void }) {
           <p className="mb-2 text-sm font-extrabold text-green-950 dark:text-white">{g}</p>
           {data.filter((r) => r.group === g).map((r) => (
             <div key={r.key} className="border-t border-green-100 py-2 first:border-0 dark:border-night-500">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-green-950 dark:text-white">{r.label}</p>
-                  <p className={`text-xs ${r.current ? 'text-green-600 dark:text-night-300' : 'font-bold text-amber-600'}`}>
-                    {r.current ? (r.current.mode === 'percent' ? `${r.current.value}% of the amount${r.current.cap_kobo ? `, max ${money(r.current.cap_kobo)}` : ''}` : `₦${r.current.value.toLocaleString('en-NG')} each`) : 'No price entered'}
-                  </p>
+              {rateLine(r, false)}
+              {!!r.tiers?.length && (
+                <div className="mt-2 space-y-1 border-l-2 border-green-200 pl-3 dark:border-night-400">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-green-600 dark:text-night-300">Tiers of {r.label}: what we are charged for each</p>
+                  {r.tiers.map((t) => <div key={t.key} className="py-1">{rateLine(t, true)}</div>)}
                 </div>
-                <button onClick={() => (editing === r.key ? setEditing(null) : open(r))} className="shrink-0 rounded-lg bg-green-100 px-3 py-1.5 text-xs font-bold text-green-800 dark:bg-night-600 dark:text-white">{editing === r.key ? 'Close' : r.current ? 'Change' : 'Set price'}</button>
-              </div>
-              {editing === r.key && (
-                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="mt-2 space-y-2 rounded-xl bg-green-50 p-3 dark:bg-night-600">
-                  <p className="text-[11px] text-green-700 dark:text-night-200">{r.hint}</p>
-                  <div className="flex gap-1">
-                    {(['flat', 'percent'] as const).map((m) => <button key={m} onClick={() => setMode(m)} className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-bold ${mode === m ? 'bg-green-600 text-white' : 'bg-white text-green-800 dark:bg-night-700 dark:text-white'}`}>{m === 'flat' ? 'Fixed ₦ each' : '% of amount'}</button>)}
-                  </div>
-                  <input className={input} inputMode="decimal" placeholder={mode === 'flat' ? 'Price in ₦ (e.g. 30 or 3.5)' : 'Percent (e.g. 1.5)'} value={val} onChange={(e) => setVal(e.target.value)} />
-                  {mode === 'percent' && <input className={input} inputMode="decimal" placeholder="Maximum per transaction in ₦ (optional)" value={cap} onChange={(e) => setCap(e.target.value)} />}
-                  {r.current && <label className="block text-[11px] text-green-700 dark:text-night-200">Starts on (leave empty for today)<input type="date" className={`${input} mt-1`} value={from} onChange={(e) => setFrom(e.target.value)} /></label>}
-                  <input className={input} placeholder="Note (optional)" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
-                  <button className={btn} disabled={parseAmount(val) === null || save.isPending} onClick={() => save.mutate(r)}>Save price</button>
-                  {r.history.length > 1 && (
-                    <div className="pt-1 text-[10px] text-green-600 dark:text-night-300">
-                      History: {r.history.map((h) => `${h.mode === 'percent' ? `${h.value}%` : `₦${h.value}`} from ${h.effective_from.slice(0, 10)}`).join(' · ')}
-                    </div>
-                  )}
-                </motion.div>
               )}
             </div>
           ))}

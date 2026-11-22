@@ -64,6 +64,27 @@ def eval_wallet(available_naira: float, minimum_naira: float) -> tuple[str, str 
     return "healthy", None
 
 
+def eval_wallet_levels(available_naira: float, warning_naira: float, critical_naira: float) -> tuple[str, str | None]:
+    """Same wording as eval_wallet, with the director's own warning and critical levels."""
+    if available_naira < critical_naira:
+        return "down", f"Monnify wallet is almost empty (₦{available_naira:,.0f}, critical level ₦{critical_naira:,.0f}). Bill purchases are about to fail. Fund it now."
+    if available_naira < warning_naira:
+        return "degraded", f"Monnify wallet is running low (₦{available_naira:,.0f}, warning level ₦{warning_naira:,.0f}). Top it up soon."
+    return "healthy", None
+
+
+async def _monnify_wallet_level(available_naira: float) -> tuple[str, str | None]:
+    """Levels come from the Monnify center settings; if they cannot be read, fall back to the environment minimum."""
+    try:
+        from app.core.database import AsyncSessionLocal
+        from app.services.monnify_center_service import thresholds
+        async with AsyncSessionLocal() as db:
+            th = await thresholds(db)
+        return eval_wallet_levels(available_naira, th["warning_naira"], th["critical_naira"])
+    except Exception:  # noqa: BLE001
+        return eval_wallet(available_naira, float(settings.MONNIFY_MIN_WALLET_NAIRA))
+
+
 async def check_monnify_api() -> dict:
     """The Monnify check, plus: tell the provider router, so airtime fails over to the VTU supplier and data tabs rearrange."""
     from app.services import provider_router
@@ -99,7 +120,7 @@ async def _check_monnify_api_inner() -> dict:
     wallet = await fetch_wallet_balance()
     if wallet:
         metrics["wallet_available_naira"] = wallet["available"]
-        status, msg = eval_wallet(wallet["available"], float(settings.MONNIFY_MIN_WALLET_NAIRA))
+        status, msg = await _monnify_wallet_level(wallet["available"])
         if status != "healthy":
             return _r("monnify_api", status, msg, metrics, hard=(status == "down"))
     return _r("monnify_api", "healthy", None, metrics)

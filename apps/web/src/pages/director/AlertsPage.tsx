@@ -8,7 +8,7 @@ import { cn, formatDateTime } from '@/lib/utils'
 
 interface Alert { id: string; severity: 'info' | 'warning' | 'critical'; category: string; title: string; detail: Record<string, unknown>; occurrences: number
   status: 'open' | 'acknowledged' | 'resolved'; created_at: string; last_seen_at: string; emailed_at: string | null; email_ok: boolean | null; resolved_at: string | null }
-interface Channels { email_transport: string; from: string; reply_to: string | null; recipients: string[]; recipient_count: number; phones: number; sms_configured: boolean
+interface Channels { email_enabled: boolean; email_transport: string; from: string; reply_to: string | null; recipients: string[]; recipient_count: number; phones: number; sms_configured: boolean
   email_last_ok: string | null; email_last_fail: string | null; email_last_fail_reason: string | null; sms_last_ok: string | null; sms_last_fail: string | null
   heartbeat_configured: boolean; sentry_configured: boolean; problems: string[]; ready: boolean }
 
@@ -34,6 +34,12 @@ export default function DirectorAlertsPage() {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
+  const emailSwitch = useMutation({
+    mutationFn: async (enabled: boolean) => (await api.put<{ email_enabled: boolean }>('/system-alerts/email-switch', { enabled })).data,
+    onSuccess: (r) => { toast.success(r.email_enabled ? 'Alert emails are ON' : 'Alert emails are OFF. Alerts still show here.'); refresh() },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  })
+
   const row = (label: string, ok: boolean, value: string) => (
     <div className="flex items-start gap-2 py-1.5 text-xs">
       {ok ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600" /> : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />}
@@ -53,10 +59,23 @@ export default function DirectorAlertsPage() {
           <p className="mb-1 flex items-center gap-2 text-sm font-extrabold text-green-900 dark:text-white"><Bell className="h-4 w-4" />How alerts reach you</p>
           {ch && (
             <>
-              {row('Email', ch.email_transport !== 'none', `${ch.email_transport === 'none' ? 'not configured' : ch.email_transport} · from ${ch.from}`)}
-              {row('Recipients', ch.recipient_count > 0, ch.recipient_count ? ch.recipients.join(', ') : 'none: set ALERT_EMAIL_TO')}
-              {row('Last email', !ch.email_last_fail || (!!ch.email_last_ok && ch.email_last_ok > ch.email_last_fail), ch.email_last_ok ? `worked ${formatDateTime(ch.email_last_ok)}` : 'never sent yet')}
-              {ch.email_last_fail_reason && ch.email_last_fail && (!ch.email_last_ok || ch.email_last_fail > ch.email_last_ok) && row('Failure', false, ch.email_last_fail_reason)}
+              {/* Director's switch: stops alert EMAILS only. Alerts still appear on this page and critical ones are still texted. */}
+              <div className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-green-50 p-3 dark:bg-night-600">
+                <div className="min-w-0">
+                  <p className="text-xs font-extrabold text-green-900 dark:text-white">Email alerts: {ch.email_enabled ? 'ON' : 'OFF'}</p>
+                  <p className="text-[11px] text-green-600 dark:text-night-300">{ch.email_enabled ? 'Alerts are emailed to the recipients below.' : 'No alert emails are sent. Alerts still show on this page, and critical ones are still texted.'}</p>
+                </div>
+                <button role="switch" aria-checked={ch.email_enabled} aria-label="Email alerts" disabled={emailSwitch.isPending} onClick={() => emailSwitch.mutate(!ch.email_enabled)}
+                  className={cn('relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50', ch.email_enabled ? 'bg-green-600' : 'bg-gray-300 dark:bg-night-400')}>
+                  <span className={cn('absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all', ch.email_enabled ? 'left-[22px]' : 'left-0.5')} />
+                </button>
+              </div>
+              {ch.email_enabled && <>
+                {row('Email', ch.email_transport !== 'none', `${ch.email_transport === 'none' ? 'not configured' : ch.email_transport} · from ${ch.from}`)}
+                {row('Recipients', ch.recipient_count > 0, ch.recipient_count ? ch.recipients.join(', ') : 'none: set ALERT_EMAIL_TO')}
+                {row('Last email', !ch.email_last_fail || (!!ch.email_last_ok && ch.email_last_ok > ch.email_last_fail), ch.email_last_ok ? `worked ${formatDateTime(ch.email_last_ok)}` : 'never sent yet')}
+                {ch.email_last_fail_reason && ch.email_last_fail && (!ch.email_last_ok || ch.email_last_fail > ch.email_last_ok) && row('Failure', false, ch.email_last_fail_reason)}
+              </>}
               {row('SMS', ch.sms_configured && ch.phones > 0, ch.sms_configured ? `${ch.phones} phone(s) for critical alerts` : 'not configured')}
               {row('Watchdog', ch.heartbeat_configured, ch.heartbeat_configured ? 'external heartbeat on' : 'none: nothing can tell you if the whole server is down')}
               {ch.problems.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5 text-[11px] text-amber-800 dark:text-amber-200">{ch.problems.map(p => <li key={p}>{p}</li>)}</ul>}
@@ -84,7 +103,7 @@ export default function DirectorAlertsPage() {
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-bold leading-snug text-green-950 dark:text-white">{a.title}</span>
                 <span className="mt-0.5 block text-[11px] text-green-500 dark:text-night-300">
-                  {a.category} · first {formatDateTime(a.created_at)}{a.occurrences > 1 ? ` · seen ${a.occurrences}×` : ''}{a.email_ok === false ? ' · email FAILED' : a.emailed_at ? ' · emailed' : ''}
+                  {a.category} · first {formatDateTime(a.created_at)}{a.occurrences > 1 ? ` · seen ${a.occurrences}×` : ''}{a.email_ok === false ? ' · email FAILED' : a.email_ok ? ' · emailed' : ''}
                 </span>
               </span>
               <ChevronDown className={cn('mt-1 h-4 w-4 shrink-0 text-green-400 transition-transform', open === a.id && 'rotate-180')} />

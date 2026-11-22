@@ -79,6 +79,21 @@ async def resolve(alert_id: uuid.UUID, director: DirectorOnly, db: AsyncSession 
     return _row(a)
 
 
+class EmailSwitchBody(BaseModel):
+    enabled: bool
+
+
+@router.put("/email-switch")
+async def set_email_switch(body: EmailSwitchBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Turn alert EMAILS on or off. Alerts still appear in the portal either way, and critical SMS is not affected."""
+    from app.services.settings_service import set_config_value
+    await set_config_value(db, key=alert_service.EMAIL_SWITCH_KEY, value="true" if body.enabled else "false", updated_by=director.id)
+    await log_action(db, actor_id=director.id, action="alert.email_switch", entity_type="system_config", entity_id=alert_service.EMAIL_SWITCH_KEY,
+                     new_value={"enabled": body.enabled})
+    await db.commit()
+    return {"email_enabled": body.enabled}
+
+
 class TestBody(BaseModel):
     include_sms: bool = False
 
@@ -89,7 +104,8 @@ async def send_test(body: TestBody, director: DirectorOnly):
     before = await alert_service.alerting_status()
     await alert_service.raise_alert(
         severity="critical" if body.include_sms else "warning", category="messaging", title="TEST alert: if you can read this, alerts reach you",
-        detail={"sent_by": director.full_name, "note": "This is only a test. Nothing is wrong."}, notify="always", sms=body.include_sms)
+        detail={"sent_by": director.full_name, "note": "This is only a test. Nothing is wrong."}, notify="always", sms=body.include_sms,
+        force_email=True)       # a test must really send, even while alert emails are switched off
     after = await alert_service.alerting_status()
     delivered = after["email_last_ok"] and after["email_last_ok"] != before["email_last_ok"]
     return {"email_sent": bool(delivered), "recipients": after["recipients"], "problems": after["problems"],

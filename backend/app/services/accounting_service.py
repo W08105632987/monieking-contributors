@@ -5,6 +5,7 @@
 Nothing about a provider's price is hard-coded."""
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -12,9 +13,45 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.accounting import AccountingSettings, CostRate
+from app.models.service_template import ServiceTemplate, ServiceTemplateVersion
+from app.services import manual_pricing as mp
+from app.services import service_template_engine as eng
 from app.verification import constants as VC
 
 WAT = timezone(timedelta(hours=1))   # Nigeria time: a "day" runs midnight to midnight here
+
+# ── one price-book row per real thing ──────────────────────────────────────
+# The same service used to appear several times under different codes ("BVN retrieval - by CRM", "BVN retrieval - by phone
+# number" and "BVN Retrieval"). manual_pricing.CATEGORY_ALIASES already says which codes are one service; the price book and the
+# report now follow it. When an old code was really a TIER of the main service, it maps to that tier.
+TIER_ALIASES = {"bvn_retrieval_phone": "phone_number", "bvn_retrieval_crm": "crm_investigation", "bvn_self_service_delinking": "self_service_delinking"}
+RATE_KEY_ALIASES: dict[str, str] = {
+    f"identity.{old}": f"identity.{new}" + (f".{TIER_ALIASES[old]}" if old in TIER_ALIASES else "")
+    for old, new in mp.CATEGORY_ALIASES.items()
+}
+# Retired identity services: no longer offered, and nothing in them is a provider cost in this book (airtime and bills earn
+# a markup and commission, they are not priced here). Never listed.
+RETIRED_IDENTITY_CODES = frozenset({"airtime_data", "bill_payments"})
+RETIRED_IDENTITY_CATEGORIES = frozenset({"airtime", "bills"})
+
+
+def _listed_identity(code: str) -> bool:
+    """False for a retired identity service or a duplicate name of another service: it has no row of its own unless it has activity."""
+    return code not in RETIRED_IDENTITY_CODES and mp.resolve_category(code) == code
+
+
+def _humanize(code: str) -> str:
+    t = (code or "").replace("_", " ").strip()
+    return t[:1].upper() + t[1:]
+
+
+def _as_json(v):
+    if isinstance(v, (str, bytes)):
+        try:
+            return json.loads(v)
+        except ValueError:
+            return None
+    return v
 
 
 def day_bounds(start: date, end: date) -> tuple[datetime, datetime]:
@@ -47,22 +84,113 @@ STATIC_RATES: list[dict] = [
 ]
 
 
+def _tiers_from_template(schema, rules) -> tuple[list[dict], int | None, int | None]:
+    """The child tiers of a service (the options of its 'service_type' selector) with the customer price of each, read from the
+    same price rules the customer is charged by. Returns (tiers, cheapest, dearest) over the whole service."""
+    schema, rules = _as_json(schema) or {}, _as_json(rules) or []
+    matrix = eng.price_matrix(schema, rules) if schema else []
+    every = [int(m["price_kobo"]) for m in matrix] or [int(r["price_kobo"]) for r in rules if isinstance(r, dict) and r.get("price_kobo")]
+    sel = next((s for s in schema.get("selectors", []) if s.get("key") == "service_type" and s.get("options")), None)
+    if not sel or len(sel["options"]) < 2:
+        return [], (min(every) if every else None), (max(every) if every else None)
+    by_type: dict[str, list[int]] = {}
+    for m in matrix:
+        by_type.setdefault(str(m["selections"].get("service_type")), []).append(int(m["price_kobo"]))
+    tiers = []
+    for o in sel["options"]:
+        v = _safe(str(o["value"]))
+        ps = by_type.get(str(o["value"]), [])
+        tiers.append({"tier": v, "label": o.get("label") or _humanize(v), "price_min_kobo": min(ps) if ps else None, "price_max_kobo": max(ps) if ps else None})
+    return tiers, (min(every) if every else None), (max(every) if every else None)
+
+
+def _fallback_tiers(canon: str) -> tuple[list[dict], int | None, int | None]:
+    """A service with no director-built template: tiers from the built-in price table."""
+    table = {k: v for k, v in (mp.PRICE_MAP.get(canon) or {}).items() if k != "default"}
+    if len(table) < 2:
+        d = (mp.PRICE_MAP.get(canon) or {}).get("default")
+        return [], d, d
+    tiers = [{"tier": _safe(k), "label": _humanize(k), "price_min_kobo": v, "price_max_kobo": v} for k, v in table.items()]
+    return tiers, min(table.values()), max(table.values())
+
+
+async def _service_catalog(db: AsyncSession) -> dict[str, dict]:
+    """Every worker/provider-handled service ONCE, keyed by its canonical code: {title, kind, tiers, price_min_kobo, price_max_kobo}.
+    Duplicate names (see RATE_KEY_ALIASES) collapse into the main service, so a cost is typed in one place only."""
+    out: dict[str, dict] = {}
+    rows = (await db.execute(
+        select(ServiceTemplate.service_code, ServiceTemplate.title, ServiceTemplate.kind, ServiceTemplateVersion.schema, ServiceTemplateVersion.price_rules)
+        .join(ServiceTemplateVersion, ServiceTemplateVersion.id == ServiceTemplate.current_version_id, isouter=True)
+        .where(ServiceTemplate.archived_at.is_(None)).order_by(ServiceTemplate.title))).all()
+    for code, title, kind, schema, rules in rows:
+        canon = mp.resolve_category(code)
+        if canon in out and code != canon:
+            continue                                   # the main service's own template wins over a duplicate-named one
+        tiers, lo, hi = _tiers_from_template(schema, rules)
+        if not tiers and not lo:
+            tiers, lo, hi = _fallback_tiers(canon)
+        out[canon] = {"title": title, "kind": kind, "tiers": tiers, "price_min_kobo": lo, "price_max_kobo": hi}
+    return out
+
+
+def _service_item(canon: str, info: dict, group: str) -> dict:
+    key = f"identity.{canon}"
+    item = {"key": key, "label": info["title"], "provider": "Provider for this service", "group": group, "mode": "flat",
+            "hint": ("What the provider charges us each time a customer's request is completed. Type 0 if it costs nothing."
+                     + (" This is the default: it is used for every tier that has no cost of its own below." if info["tiers"] else "")),
+            "price_min_kobo": info.get("price_min_kobo"), "price_max_kobo": info.get("price_max_kobo"), "tiers": []}
+    for t in info["tiers"]:
+        item["tiers"].append({"key": f"{key}.{t['tier']}", "tier": t["tier"], "label": t["label"], "mode": "flat", "group": group,
+                              "provider": "Provider for this service", "price_min_kobo": t["price_min_kobo"], "price_max_kobo": t["price_max_kobo"],
+                              "hint": f"What the provider charges us each time a '{t['label']}' request is completed. Leave it empty to use the service's default cost."})
+    return item
+
+
+def flat_keys(items: list[dict]) -> set[str]:
+    """Every rate key in the catalogue, tiers included."""
+    keys: set[str] = set()
+    for i in items:
+        keys.add(i["key"])
+        keys |= {t["key"] for t in i.get("tiers", [])}
+    return keys
+
+
 async def catalog(db: AsyncSession) -> list[dict]:
+    """The price book: ONE row per real cost. Worker/provider-handled services list their child tiers, each with its own cost."""
     items = _techhub_keys() + STATIC_RATES
-    rows = (await db.execute(text("SELECT code, name FROM identity_services ORDER BY name"))).all()
-    for code, name in rows:
-        items.append({"key": f"identity.{code}", "label": name, "provider": "Provider for this service", "group": "Identity services", "mode": "flat",
-                      "hint": "What the provider charges us each time a customer uses this service."})
-    seen = {i["key"] for i in items}
-    # Worker/provider-handled services (NIN modification, BVN modification, CAC ...) are priced under the SAME key as the
-    # identity service of that name, so a cost typed once is used by the report. Services with no identity twin get a key too.
-    for code, title in (await db.execute(text("SELECT service_code, title FROM service_templates WHERE archived_at IS NULL ORDER BY title"))).all():
-        k = f"identity.{code}"
-        if k not in seen:
-            items.append({"key": k, "label": title, "provider": "Provider for this service", "group": "Identity services", "mode": "flat",
-                          "hint": "What the provider charges us each time a customer's request is completed. Type 0 if it costs nothing."})
-            seen.add(k)
-    return items
+    services = await _service_catalog(db)
+    idrows = (await db.execute(text(
+        "SELECT s.code, s.name, s.provider, s.is_active, s.category::text, "
+        "EXISTS (SELECT 1 FROM identity_service_requests r WHERE r.service_id = s.id) FROM identity_services s ORDER BY s.name"))).all()
+    youverify: list[tuple[str, str, str]] = []
+    pending: dict[str, tuple[str, str]] = {}           # canonical code -> (name, provider), for services with no template
+    for code, name, provider, active, category, used in idrows:
+        canon = mp.resolve_category(code)
+        if code in RETIRED_IDENTITY_CODES or category in RETIRED_IDENTITY_CATEGORIES:
+            continue                                   # retired: never a provider cost here
+        if canon in services:
+            continue                                   # has a template: listed below with its tiers (a duplicate name folds into it)
+        if not (active or used):
+            continue                                   # switched off and never used: nothing to price
+        if provider == "youverify" and canon == code:
+            youverify.append((code, name, "Youverify"))
+        elif canon not in pending or code == canon:    # the main service's own row names it; a duplicate name only stands in for it
+            pending[canon] = (name, provider)
+    for canon, (name, provider) in pending.items():
+        tiers, lo, hi = _fallback_tiers(canon)
+        services[canon] = {"title": name, "kind": "manual" if provider == "manual" else "api", "tiers": tiers, "price_min_kobo": lo, "price_max_kobo": hi}
+    for canon, info in sorted(services.items(), key=lambda kv: kv[1]["title"].lower()):
+        items.append(_service_item(canon, info, "Provider services" if info["kind"] == "api" else "Worker-handled services"))
+    for code, name, prov in youverify:
+        items.append({"key": f"identity.{code}", "label": name, "provider": prov, "group": "Youverify checks", "mode": "flat", "tiers": [],
+                      "hint": "What Youverify charges us each time a customer uses this check."})
+    seen: set[str] = set()
+    unique = []
+    for i in items:                                    # a key can only ever appear once
+        if i["key"] not in seen:
+            seen.add(i["key"])
+            unique.append(i)
+    return unique
 
 
 async def _all_rates(db: AsyncSession) -> dict[str, list[CostRate]]:
@@ -70,6 +198,11 @@ async def _all_rates(db: AsyncSession) -> dict[str, list[CostRate]]:
     out: dict[str, list[CostRate]] = {}
     for r in rows:
         out.setdefault(r.rate_key, []).append(r)
+    # A price typed under an old duplicate name is the same price as the one under its canonical key, until a price is typed
+    # under the canonical key itself (from then on that one wins).
+    for old, new in RATE_KEY_ALIASES.items():
+        if old in out and new not in out:
+            out[new] = out[old]
     return out
 
 
@@ -221,7 +354,7 @@ async def service_rows(db: AsyncSession, start: datetime, end: datetime, rates: 
         n, rev = await _one(db, f"SELECT COUNT(*), COALESCE(SUM(r.amount_charged_kobo),0) FROM {frm} WHERE {where} AND r.completed_at >= :s AND r.completed_at < :e", **P)
         key = f"identity.{code}"
         c, _, un = await _priced(db, rates, key, start, end, frm, "r.completed_at", where)
-        if n or rates.get(key):
+        if n or (rates.get(key) and _listed_identity(code)):
             rows.append(_row(f"identity_{code}", name, "Identity services", rev, c, n, 0, "rate", un, [key]))
 
     # Techhub verification checks, per method and tier used.
@@ -254,11 +387,7 @@ async def service_rows(db: AsyncSession, start: datetime, end: datetime, rates: 
             rows.append(_row(f"techhub_slip_{tier}", f"Techhub slip - {tier}", "Techhub", rev, c, n, 0, "rate", un, [key]))
 
     # Worker/provider-handled services (NIN modification, BVN modification ...): one row per service so each can be priced.
-    titles = await _titles(db)
-    for cat, n, rev, comm, company_n in (await db.execute(text("SELECT service_category, COUNT(*), COALESCE(SUM(price_kobo),0), COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0), COALESCE(SUM(CASE WHEN worker_type = 'company' THEN 1 ELSE 0 END),0) FROM manual_service_requests WHERE status = 'successful' AND completed_at >= :s AND completed_at < :e GROUP BY 1 ORDER BY 1"), P)).all():
-        sc = _safe(cat)
-        c, _, un = await _priced(db, rates, f"identity.{sc}", start, end, "manual_service_requests", "completed_at", f"status = 'successful' AND service_category = '{sc}'", "price_kobo")
-        rows.append(_manual_row(sc, titles.get(cat, cat.replace("_", " ").title()), rev, comm, c, n, un, company_n))
+    rows.extend((await _manual_rows(db, [(start, end)], rates))[0])
 
     # Affiliated officers earn a share of the withdrawal charge: that is money the company pays out.
     (oc, on_) = await _one(db, "SELECT COALESCE(SUM(amount_kobo),0), COUNT(*) FROM officer_commissions WHERE created_at >= :s AND created_at < :e", **P)
@@ -322,6 +451,67 @@ async def _priced_multi(db, rates, key, windows, frm, ts, where="TRUE", amount="
     return [tuple(x) for x in res]
 
 
+_MANUAL_AGG = ("COUNT(*), COALESCE(SUM(price_kobo),0), "
+               "COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0), "
+               "COALESCE(SUM(CASE WHEN worker_type = 'company' THEN 1 ELSE 0 END),0)")
+
+
+async def _manual_rows(db: AsyncSession, windows: list[Window], rates: dict) -> list[list[dict]]:
+    """Worker/provider-handled services (NIN modification, BVN modification, CAC ...): one row per service, with a line for each
+    child tier (the job's service_type). The provider's charge for a job is the cost typed for ITS tier; a tier with no cost of
+    its own uses the service's default cost, and with neither the job is flagged unpriced (never guessed). Names that are the same
+    service (see RATE_KEY_ALIASES) are counted together. Used by both service_rows() and service_rows_multi(), so the page and
+    the chart can never disagree."""
+    W = len(windows)
+    out: list[list[dict]] = [[] for _ in range(W)]
+    titles = await _titles(db)
+    known = await _service_catalog(db)
+    grouped = await _grouped(db, windows, "completed_at", _MANUAL_AGG, "manual_service_requests", "status = 'successful'",
+                             keys="service_category, COALESCE(service_type, '')")
+    data: dict[str, dict[str, list[list[int]]]] = {}          # service -> tier -> per window [jobs, revenue, commission, company jobs]
+    sources: dict[tuple[str, str], set[tuple[str, str]]] = {}  # (service, tier) -> stored (category, service_type) pairs, for the WHERE
+    for i, (cat, stype, n, rev, comm, company) in grouped:
+        raw, st = _safe(cat), _safe(stype)
+        canon = mp.resolve_category(raw)
+        tier = st or TIER_ALIASES.get(raw, "")
+        cell = data.setdefault(canon, {}).setdefault(tier, [[0, 0, 0, 0] for _ in range(W)])[i]
+        for j, v in enumerate((n, rev, comm, company)):
+            cell[j] += int(v)
+        sources.setdefault((canon, tier), set()).add((raw, st))
+
+    def title_of(canon: str) -> str:
+        return (known.get(canon) or {}).get("title") or titles.get(canon) or _humanize(canon)
+
+    for canon in sorted(data, key=lambda c: title_of(c).lower()):
+        service_key = f"identity.{canon}"
+        labels = {t["tier"]: t["label"] for t in (known.get(canon) or {}).get("tiers", [])}
+        lines = []                                              # (tier, rate key, cells, per-window (cost, jobs, unpriced))
+        for tier in sorted(data[canon]):
+            cells = data[canon][tier]
+            own = f"{service_key}.{tier}" if tier else None
+            key = own if (own and rates.get(own)) else service_key
+            if rates.get(key):
+                conds = " OR ".join(f"(service_category = '{r}' AND COALESCE(service_type, '') = '{s}')" for r, s in sorted(sources[(canon, tier)]))
+                pr = await _priced_multi(db, rates, key, windows, "manual_service_requests", "completed_at", f"status = 'successful' AND ({conds})", "price_kobo")
+            else:
+                pr = [(0, cells[i][0], cells[i][0]) for i in range(W)]    # no cost typed anywhere: cost shown as 0, every job flagged
+            lines.append((tier, key, cells, pr))
+        for i in range(W):
+            live = [ln for ln in lines if ln[2][i][0]]
+            if not live:
+                continue
+            n = sum(ln[2][i][0] for ln in live)
+            row = _manual_row(canon, title_of(canon), sum(ln[2][i][1] for ln in live), sum(ln[2][i][2] for ln in live),
+                              sum(ln[3][i][0] for ln in live), n, sum(ln[3][i][2] for ln in live), sum(ln[2][i][3] for ln in live))
+            row["rate_keys"] = [service_key] + [ln[1] for ln in live if ln[1] != service_key]
+            row["tiers"] = [{"tier": t or "default", "label": labels.get(t) or (_humanize(t) if t else "No tier recorded"), "count": c[i][0], "revenue_kobo": c[i][1],
+                             "commission_kobo": c[i][2], "provider_cost_kobo": p[i][0], "margin_kobo": c[i][1] - c[i][2] - p[i][0],
+                             "unpriced_events": p[i][2], "rate_key": k, "has_own_cost": k != service_key}
+                            for t, k, c, p in live]
+            out[i].append(row)
+    return out
+
+
 async def service_rows_multi(db: AsyncSession, windows: list[Window], rates: dict | None = None) -> list[list[dict]]:
     """service_rows() for each (start, end) window, in a fixed number of queries per service. Windows must be disjoint."""
     rates = rates if rates is not None else await _all_rates(db)
@@ -378,7 +568,7 @@ async def service_rows_multi(db: AsyncSession, windows: list[Window], rates: dic
         pr = await _priced_multi(db, rates, key, windows, frm, "r.completed_at", where)
         for i in range(W):
             n, rev = agg[i]
-            if n or rates.get(key):
+            if n or (rates.get(key) and _listed_identity(code)):
                 out[i].append(_row(f"identity_{code}", name, "Identity services", rev, pr[i][0], n, 0, "rate", pr[i][2], [key]))
 
     # Techhub checks: one combo per (method, tier) that has a found lookup in that window.
@@ -417,18 +607,8 @@ async def service_rows_multi(db: AsyncSession, windows: list[Window], rates: dic
                 if agg[i][0]:
                     out[i].append(_row(f"techhub_slip_{tier}", f"Techhub slip - {tier}", "Techhub", agg[i][1], pr[i][0], agg[i][0], 0, "rate", pr[i][2], [key]))
 
-    titles = await _titles(db)
-    mcats: dict[str, set[int]] = {}
-    for i, vals in await _grouped(db, windows, "completed_at", "COUNT(*)", "manual_service_requests", "status = 'successful'", keys="service_category"):
-        mcats.setdefault(vals[0], set()).add(i)
-    for cat in sorted(mcats):
-        sc = _safe(cat)
-        where = f"status = 'successful' AND service_category = '{sc}'"
-        agg = await _one_multi(db, windows, "completed_at", "COALESCE(SUM(price_kobo),0), COALESCE(SUM(CASE WHEN commission_status = 'reversed' THEN 0 ELSE worker_commission_kobo END),0), COUNT(*), COALESCE(SUM(CASE WHEN worker_type = 'company' THEN 1 ELSE 0 END),0)", "manual_service_requests", where, width=4)
-        pr = await _priced_multi(db, rates, f"identity.{sc}", windows, "manual_service_requests", "completed_at", where, "price_kobo")
-        for i in sorted(mcats[cat]):
-            rev, comm, n, company_n = agg[i]
-            out[i].append(_manual_row(sc, titles.get(cat, cat.replace("_", " ").title()), rev, comm, pr[i][0], n, pr[i][2], company_n))
+    for i, mrows in enumerate(await _manual_rows(db, windows, rates)):
+        out[i].extend(mrows)
 
     oc = await _one_multi(db, windows, "created_at", "COALESCE(SUM(amount_kobo),0), COUNT(*)", "officer_commissions", width=2)
     for i in range(W):
@@ -528,8 +708,8 @@ async def report(db: AsyncSession, start: date, end: date, series: bool = True, 
     return out
 
 
-async def holdings(db: AsyncSession) -> dict:
-    """How much the company should be holding right now, and why."""
+async def obligations(db: AsyncSession) -> dict:
+    """Money the company holds that is not its own: customer wallets, payouts waiting, commissions owed, money held for open jobs."""
     (wallets,) = await _one(db, "SELECT COALESCE(SUM(balance_kobo),0) FROM wallets")
     (pending,) = await _one(db, "SELECT COALESCE(SUM(net_payable_kobo),0) FROM withdrawals WHERE status IN ('pending','claimed')")
     (jobs_kobo, jobs_n) = await _one(db, "SELECT COALESCE(SUM(price_kobo),0), COUNT(*) FROM manual_service_requests WHERE status IN ('pending','processing','awaiting_provider')")
@@ -538,6 +718,14 @@ async def holdings(db: AsyncSession) -> dict:
     (off_earned,) = await _one(db, "SELECT COALESCE(SUM(amount_kobo),0) FROM officer_commissions")
     (off_paid,) = await _one(db, "SELECT COALESCE(SUM(amount_kobo),0) FROM officer_payouts WHERE status = 'paid'")
     owed = int(worker_bal) + int(worker_pending) + max(0, int(off_earned) - int(off_paid))
+    return {"wallets": int(wallets), "pending_payouts": int(pending), "jobs": int(jobs_kobo), "jobs_count": int(jobs_n), "owed": owed,
+            "total": int(wallets) + int(pending) + int(jobs_kobo) + owed}
+
+
+async def holdings(db: AsyncSession) -> dict:
+    """How much the company should be holding right now, and why."""
+    ob = await obligations(db)
+    wallets, pending, jobs_kobo, jobs_n, owed = ob["wallets"], ob["pending_payouts"], ob["jobs"], ob["jobs_count"], ob["owed"]
     st = await db.get(AccountingSettings, 1)
     days = st.buffer_days if st else 14
     today = datetime.now(WAT).date()

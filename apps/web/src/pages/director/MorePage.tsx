@@ -7,6 +7,7 @@ import {
 const actions = [
   { label: 'Director Journal', icon: BookOpen, href: '/director/journal', color: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' },
   { label: 'Accounting Center', icon: Calculator, href: '/director/accounting', color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
+  { label: 'Monnify center', icon: Coins, href: '/director/monnify', color: 'bg-green-100 dark:bg-night-600 text-green-700 dark:text-night-100' },
   { label: 'System alerts', icon: BellRing, href: '/director/alerts', color: 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300' },
   { label: 'Officer payouts', icon: BadgeDollarSign, href: '/director/officer-payouts', color: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' },
   { label: 'Wallet funding fee', icon: Coins, href: '/director/funding-fees', color: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' },

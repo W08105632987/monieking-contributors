@@ -36,6 +36,28 @@ COLOR = {"info": "#2563eb", "warning": "#d97706", "critical": "#dc2626", "resolv
 RENOTIFY_AFTER = {"critical": timedelta(minutes=30), "warning": timedelta(hours=3), "info": None}
 
 
+EMAIL_SWITCH_KEY = "alerts.email_enabled"
+
+
+async def email_alerts_enabled(db=None) -> bool:
+    """The director's switch on the Alerts page: do alerts go out by EMAIL?  Off unless a director turned it on.
+
+    Read straight from system_config (no cache) so a flip on the Alerts page applies to the API, the Celery worker and beat at once.
+    Only email is switched: the incident is still recorded and shown in the portal, and critical SMS is unchanged. If the setting
+    cannot be read the answer is "off" (a missed email is better than a flood), and the incident is still recorded."""
+    try:
+        from app.models.settings import SystemConfig
+        if db is None:
+            async with AsyncSessionLocal() as s:
+                row = (await s.execute(select(SystemConfig.value).where(SystemConfig.key == EMAIL_SWITCH_KEY))).first()
+        else:
+            row = (await db.execute(select(SystemConfig.value).where(SystemConfig.key == EMAIL_SWITCH_KEY))).first()
+        return bool(row) and str(row[0]).strip().lower() in ("true", "1", "yes", "on")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[alerts] could not read %s, treating email alerts as off: %r", EMAIL_SWITCH_KEY, e)
+        return False
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -105,19 +127,23 @@ def render_html(kind: str, severity: str, title: str, detail: dict | None, occur
 </table></td></tr></table></body></html>"""
 
 
-async def _deliver(db, alert: SystemAlert, kind: str, *, sms: bool) -> None:
+async def _deliver(db, alert: SystemAlert, kind: str, *, sms: bool, force_email: bool = False) -> None:
     subject_tag = {"new": "", "repeat": "[still happening] ", "resolved": "[recovered] "}[kind]
     emoji = EMOJI["resolved"] if kind == "resolved" else EMOJI[alert.severity]
     subject = f"{emoji} MonieKing {subject_tag}{alert.title}"[:200]
-    recipients = await alert_recipients(db)
-    ok = False
-    if recipients:
-        ok = await send_email(
-            to=recipients, subject=subject, automated=True,
-            body=render_text(kind, alert.severity, alert.title, alert.detail, alert.occurrences),
-            html=render_html(kind, alert.severity, alert.title, alert.detail, alert.occurrences))
-    else:
-        logger.error("[alerts] NO RECIPIENTS: set ALERT_EMAIL_TO. Alert not emailed: %s", alert.title)
+    ok: bool | None = None                  # None = no email was attempted (the director switched alert emails off)
+    if force_email or await email_alerts_enabled(db):
+        recipients = await alert_recipients(db)
+        ok = False
+        if recipients:
+            ok = await send_email(
+                to=recipients, subject=subject, automated=True,
+                body=render_text(kind, alert.severity, alert.title, alert.detail, alert.occurrences),
+                html=render_html(kind, alert.severity, alert.title, alert.detail, alert.occurrences))
+        else:
+            logger.error("[alerts] NO RECIPIENTS: set ALERT_EMAIL_TO. Alert not emailed: %s", alert.title)
+    # emailed_at is also the "operators were told at this time" mark that the re-notify gap and the recovery message rely on,
+    # so it is set even when email is switched off; email_ok stays empty then.
     alert.emailed_at, alert.email_ok = _now(), ok
     if sms and (alert.severity == "critical" or kind == "resolved"):
         for phone in configured_phones():
@@ -129,13 +155,14 @@ async def _deliver(db, alert: SystemAlert, kind: str, *, sms: bool) -> None:
 
 
 async def raise_alert(*, severity: str, category: str, title: str, detail: dict | None = None,
-                      dedupe_key: str | None = None, sms: bool | None = None, notify: str = "auto") -> None:
+                      dedupe_key: str | None = None, sms: bool | None = None, notify: str = "auto", force_email: bool = False) -> None:
     """Record an incident and tell the operators.
 
     dedupe_key  same key = same incident. None means "every call is its own incident" (use for one-off events).
     notify      "auto": email on first sight, then again only after RENOTIFY_AFTER while it stays unresolved.
                 "always": email every call (the caller has already decided this deserves it).
     sms         force SMS on/off; default is SMS for critical only.
+    force_email send the email even if a director switched alert emails off (only the "Send test email" button does this).
     """
     try:
         severity = severity if severity in SEVERITIES else "warning"
@@ -167,7 +194,7 @@ async def raise_alert(*, severity: str, category: str, title: str, detail: dict 
                 gap = RENOTIFY_AFTER.get(alert.severity)
                 send = bool(gap and (alert.emailed_at is None or _now() - _aware(alert.emailed_at) >= gap) and alert.status == "open")
             if send:
-                await _deliver(db, alert, "new" if kind == "new" else "repeat", sms=(sms if sms is not None else True))
+                await _deliver(db, alert, "new" if kind == "new" else "repeat", sms=(sms if sms is not None else True), force_email=force_email)
             await db.commit()
     except Exception as e:  # noqa: BLE001
         logger.error("[alerts] could not raise alert '%s': %r", title, e)
@@ -219,13 +246,15 @@ async def alerting_status() -> dict:
         pass
     async with AsyncSessionLocal() as db:
         recipients = await alert_recipients(db)
+        email_on = await email_alerts_enabled(db)
     transport = "resend+smtp" if (settings.RESEND_API_KEY and settings.SMTP_HOST) else "resend" if settings.RESEND_API_KEY else "smtp" if settings.SMTP_HOST else "none"
     problems: list[str] = []
-    if transport == "none":
+    # With alert emails switched off, missing email setup is not a problem: alerts still show in the portal (and critical ones by SMS).
+    if email_on and transport == "none":
         problems.append("No email transport is configured (set RESEND_API_KEY, or SMTP_HOST with its login). Alerts CANNOT be emailed.")
-    if not recipients:
+    if email_on and not recipients:
         problems.append("No alert recipients. Set ALERT_EMAIL_TO, or give a director a verified email.")
-    if last_fail and (not last_ok or last_fail.split("|")[0] > last_ok.split("|")[0]):
+    if email_on and last_fail and (not last_ok or last_fail.split("|")[0] > last_ok.split("|")[0]):
         problems.append(f"The last email attempt FAILED: {last_fail.split('|', 2)[-1]}")
     if not configured_phones():
         problems.append("No phone numbers for critical SMS alerts (ALERT_PHONE_TO).")
@@ -233,10 +262,10 @@ async def alerting_status() -> dict:
         problems.append("SMS is not configured (TERMII_API_KEY), so critical alerts will not be texted.")
     if not settings.ALERT_HEARTBEAT_URL:
         problems.append("No external watchdog (ALERT_HEARTBEAT_URL). If the whole server goes down nothing can tell you.")
-    if not settings.SMTP_REPLY_TO:
+    if email_on and not settings.SMTP_REPLY_TO:
         problems.append("No reply-to mailbox (SMTP_REPLY_TO): replies to alert emails go nowhere.")
     return {
-        "email_transport": transport, "from": settings.SMTP_FROM_EMAIL, "reply_to": settings.SMTP_REPLY_TO or None,
+        "email_enabled": email_on, "email_transport": transport, "from": settings.SMTP_FROM_EMAIL, "reply_to": settings.SMTP_REPLY_TO or None,
         "recipients": [_mask(e) for e in recipients], "recipient_count": len(recipients),
         "phones": len(configured_phones()), "sms_configured": bool(settings.TERMII_API_KEY),
         "email_last_ok": last_ok.split("|")[0] if last_ok else None,

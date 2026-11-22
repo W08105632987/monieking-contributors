@@ -23,7 +23,10 @@ def env(monkeypatch):
             await conn.run_sync(lambda c: SystemAlert.__table__.create(c))
     asyncio.run(setup())
 
-    sent = {"emails": [], "sms": []}
+    sent = {"emails": [], "sms": [], "email_switch": True}
+
+    async def fake_switch(db=None):
+        return sent["email_switch"]
 
     async def fake_email(**kw):
         sent["emails"].append(kw)
@@ -40,6 +43,7 @@ def env(monkeypatch):
     monkeypatch.setattr(A, "send_email", fake_email)
     monkeypatch.setattr(A, "send_sms", fake_sms)
     monkeypatch.setattr(A, "alert_recipients", fake_recipients)
+    monkeypatch.setattr(A, "email_alerts_enabled", fake_switch)
     monkeypatch.setattr(A, "configured_phones", lambda: ["2348000000000"])
     return maker, sent
 
@@ -118,6 +122,41 @@ def test_events_without_a_key_are_each_their_own_alert(env):
     for i in range(3):
         asyncio.run(A.raise_alert(severity="warning", category="fraud", title=f"Manual credit {i}"))
     assert len(rows(maker)) == 3 and len(sent["emails"]) == 3
+
+
+def test_with_alert_emails_switched_off_nothing_is_emailed_but_the_alert_is_still_recorded(env):
+    maker, sent = env
+    sent["email_switch"] = False
+    asyncio.run(A.raise_alert(severity="warning", category="provider", title="Monnify slow", dedupe_key="s1"))
+    r = rows(maker)
+    assert sent["emails"] == []
+    assert len(r) == 1 and r[0].status == "open" and r[0].email_ok is None       # recorded, not emailed, not "failed"
+
+
+def test_switched_off_critical_alerts_are_still_texted_and_repeats_do_not_re_text(env):
+    maker, sent = env
+    sent["email_switch"] = False
+    for _ in range(5):
+        asyncio.run(A.raise_alert(severity="critical", category="infra", title="DB down", dedupe_key="s2"))
+    assert sent["emails"] == [] and len(sent["sms"]) == 1                      # one text, not one per monitor run
+    asyncio.run(A.resolve_alert("s2", note="back"))
+    assert sent["emails"] == [] and rows(maker)[0].status == "resolved"
+
+
+def test_the_test_button_still_sends_while_emails_are_switched_off(env):
+    maker, sent = env
+    sent["email_switch"] = False
+    asyncio.run(A.raise_alert(severity="warning", category="messaging", title="TEST alert", notify="always", force_email=True))
+    assert len(sent["emails"]) == 1
+
+
+def test_turning_the_switch_back_on_resumes_emails(env):
+    maker, sent = env
+    sent["email_switch"] = False
+    asyncio.run(A.raise_alert(severity="warning", category="health", title="a", dedupe_key="s3"))
+    sent["email_switch"] = True
+    asyncio.run(A.raise_alert(severity="warning", category="health", title="b", dedupe_key="s4"))
+    assert len(sent["emails"]) == 1 and "b" in sent["emails"][0]["subject"]
 
 
 def test_a_broken_database_never_raises_out_of_an_alert(monkeypatch):

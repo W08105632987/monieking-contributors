@@ -24,7 +24,7 @@ celery_app = Celery(
     "monieking",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry", "app.tasks.provider_poll", "app.tasks.food_conversion", "app.tasks.bill_resolver", "app.tasks.vtu_sync"],
+    include=["app.tasks.pricing", "app.tasks.health_monitor", "app.tasks.verification_purge", "app.tasks.job_expiry", "app.tasks.provider_poll", "app.tasks.food_conversion", "app.tasks.bill_resolver", "app.tasks.vtu_sync", "app.tasks.funds_watch"],
 )
 
 celery_app.conf.update(
@@ -81,6 +81,16 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.bill_resolver.sweep_pending_bills",
         # Every 2 minutes: finishes bills the app is no longer watching and picks up delayed electricity tokens.
         "schedule": crontab(minute="*/2"),
+    },
+    "auto-close-company-day": {
+        "task": "app.tasks.funds_watch.auto_close_day",
+        # Every 5 minutes: closes today's books once the time a director set has passed (does nothing while the switch is off).
+        "schedule": crontab(minute="*/5"),
+    },
+    "watch-monnify-settlement": {
+        "task": "app.tasks.funds_watch.watch_settlement",
+        # Every 30 minutes: alerts when Monnify payments are still unsettled after their expected settlement day.
+        "schedule": crontab(minute="*/30"),
     },
     "poll-provider-tickets": {
         "task": "app.tasks.provider_poll.poll_provider_tickets",

@@ -106,9 +106,11 @@ async def alert_directors(subject: str, body: str) -> None:
         from app.core.config import settings as env
         from app.integrations.email_sender import send_email
         from app.integrations.termii import send_sms
+        from app.services.alert_service import email_alerts_enabled
         emails = [e.strip() for e in env.ALERT_EMAIL_TO.split(",") if e.strip()]
         phones = [p.strip() for p in env.ALERT_PHONE_TO.split(",") if p.strip()]
-        if emails:
+        # Same director switch as every other alert email (Alerts page); SMS below is unchanged.
+        if emails and await email_alerts_enabled():
             await send_email(to=emails, subject=subject, body=body)
         for p in phones:
             try:

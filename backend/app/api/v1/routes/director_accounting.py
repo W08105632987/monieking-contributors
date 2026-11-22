@@ -80,11 +80,16 @@ async def list_rates(director: DirectorOnly, db: AsyncSession = Depends(get_db))
     items = await svc.catalog(db)
     rates = await svc._all_rates(db)
     now = datetime.now(timezone.utc)
-    out = []
-    for it in items:
+    def with_price(it: dict) -> dict:
         hist = rates.get(it["key"], [])
         cur = [r for r in hist if r.effective_from <= now]
-        out.append({**it, "current": _rate_out(cur[-1]) if cur else None, "history": [_rate_out(r) for r in reversed(hist)]})
+        return {**it, "current": _rate_out(cur[-1]) if cur else None, "history": [_rate_out(r) for r in reversed(hist)]}
+
+    out = []
+    for it in items:
+        row = with_price(it)
+        row["tiers"] = [with_price(t) for t in it.get("tiers", [])]     # each child tier has its own cost
+        out.append(row)
     return {"rates": out}
 
 
@@ -99,7 +104,7 @@ class RateBody(BaseModel):
 
 @router.post("/rates")
 async def set_rate(body: RateBody, director: DirectorOnly, db: AsyncSession = Depends(get_db)):
-    keys = {i["key"] for i in await svc.catalog(db)}
+    keys = svc.flat_keys(await svc.catalog(db))          # services AND their child tiers
     if body.rate_key not in keys:
         raise HTTPException(status_code=404, detail="That cost is not in the price book.")
     if body.mode not in ("flat", "percent"):

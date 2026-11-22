@@ -211,6 +211,8 @@ from app.api.v1.routes.sms_admin import router as sms_admin_router
 from app.api.v1.routes.director_customers import router as director_customers_router
 from app.api.v1.routes.director_funding_fees import router as director_funding_fees_router
 from app.api.v1.routes.director_accounting import router as director_accounting_router
+from app.api.v1.routes.director_funds import router as director_funds_router
+from app.api.v1.routes.director_monnify import router as director_monnify_router
 from app.api.v1.routes.director_journal import router as director_journal_router
 from app.api.v1.routes.community import router as community_router
 from app.api.v1.routes.zone_customers import router as zone_customers_router
@@ -277,6 +279,8 @@ app.include_router(sms_admin_router, prefix=PREFIX)
 app.include_router(director_customers_router, prefix=PREFIX)
 app.include_router(director_funding_fees_router, prefix=PREFIX)
 app.include_router(director_accounting_router, prefix=PREFIX)
+app.include_router(director_funds_router, prefix=PREFIX)
+app.include_router(director_monnify_router, prefix=PREFIX)
 app.include_router(director_journal_router, prefix=PREFIX)
 app.include_router(community_router, prefix=PREFIX)
 app.include_router(zone_customers_router, prefix=PREFIX)
