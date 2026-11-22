@@ -108,7 +108,20 @@ def normalize(body: dict) -> dict:
     """Their reply -> the dict shape the bills service already understands (vendStatus / transactionReference / responseMessage)."""
     body = body if isinstance(body, dict) else {}
     data = body.get("data") if isinstance(body.get("data"), dict) else {}
-    ref = body.get("reference") or body.get("transaction_id") or data.get("reference") or data.get("transaction_id")
+    ref = (
+        body.get("reference")
+        or body.get("transaction_id")
+        or body.get("transid")
+        or body.get("id")
+        or body.get("order_id")
+        or body.get("ident")
+        or data.get("reference")
+        or data.get("transaction_id")
+        or data.get("transid")
+        or data.get("id")
+        or data.get("order_id")
+        or data.get("ident")
+    )
     mapped = "SUCCESS" if _is_success(body) else "PROCESSING" if _is_pending(body) else "FAILED"
     return {"vendStatus": mapped, "transactionReference": ref, "responseMessage": body.get("message"),
             "walletBalance": body.get("wallet_balance") or data.get("wallet_balance")}
@@ -201,6 +214,14 @@ class GykProvider:
     @staticmethod
     def _outcome(body: dict) -> dict:
         result = normalize(body)
+        if result["vendStatus"] == "SUCCESS" and not result.get("transactionReference"):
+            # A real successful purchase ALWAYS returns a reference/transaction_id.
+            # A "success" with no reference means the endpoint didn't actually process
+            # anything (e.g. wrong API path returning a generic 200 OK).
+            logger.warning("[gyk] purchase returned 'success' but no reference — treating as FAILED: %s", body)
+            result["vendStatus"] = "FAILED"
+            result["_error"] = classify_failure(200, "No transaction reference in response — purchase was not processed", purchase=False)
+            return result
         if result["vendStatus"] == "FAILED":
             # A 200 reply that says "error" is classified exactly like an error status, so failover/refund sees the right thing.
             result["_error"] = classify_failure(200, str(body.get("message") or ""), purchase=True)

@@ -70,13 +70,28 @@ function Segmented<T extends string>({ value, options, onChange }: { value: T; o
   )
 }
 
-interface VtuStatus { configured: boolean; balance_naira: number | null; plans: number; last_sync: string | null; down_now: boolean; monnify_down_now: boolean
-  success: { completed: number; failed: number; success_rate: number | null; window_minutes: number } | null }
+interface VtuStatus {
+  configured: boolean
+  balance_naira: number | null
+  plans: number
+  last_sync: string | null
+  down_now: boolean
+  monnify_down_now: boolean
+  monnify_down_ttl_seconds?: number | null
+  monnify_down_since?: number | null
+  monnify_down_duration_seconds?: number | null
+  vtu_down_ttl_seconds?: number | null
+  vtu_down_since?: number | null
+  vtu_down_duration_seconds?: number | null
+  airtime_provider?: string
+  airtime_active_provider?: string
+  auto_failover?: boolean
+  success: { completed: number; failed: number; success_rate: number | null; window_minutes: number } | null
+}
 
 /** The VTU supplier (GYKDATASUB): is it connected, what is in its wallet, sync plans, and the default markup for new plans. */
-function VtuSupplierCard({ cfg, set }: { cfg: BillsConfig; set: <K extends keyof BillsConfig>(k: K, v: BillsConfig[K]) => void }) {
+function VtuSupplierCard({ cfg, set, data }: { cfg: BillsConfig; set: <K extends keyof BillsConfig>(k: K, v: BillsConfig[K]) => void; data?: VtuStatus }) {
   const qc = useQueryClient()
-  const { data } = useQuery({ queryKey: ['vtu-status'], refetchInterval: 60_000, queryFn: async () => (await api.get<VtuStatus>('/bill-payments/admin/vtu/status')).data })
   const sync = useMutation({
     mutationFn: async () => (await api.post<{ added: number; updated: number; deactivated: number; errors: string[]; below_cost: unknown[] }>('/bill-payments/admin/vtu/sync')).data,
     onSuccess: (r) => {
@@ -130,6 +145,93 @@ function VtuSupplierCard({ cfg, set }: { cfg: BillsConfig; set: <K extends keyof
 
 interface A2cRow { id: string; customer_name: string | null; network: string; phone: string; amount_kobo: number; payout_kobo: number; status: string; failure_reason: string | null; created_at: string }
 
+interface PhantomAirtimeRow {
+  id: string
+  created_at: string | null
+  biller_name: string
+  phone_masked: string
+  amount_naira: number
+  status: string
+  provider: string
+  failed_over_from: string | null
+  provider_reference: string | null
+  failure_reason: string | null
+  already_refunded: boolean
+  needs_refund: boolean
+}
+
+function PhantomAirtimeReviewList() {
+  const qc = useQueryClient()
+  const { data = [] } = useQuery({
+    queryKey: ['phantom-airtime'],
+    refetchInterval: 30_000,
+    queryFn: async () => (await api.get<PhantomAirtimeRow[]>('/bill-payments/admin/vtu/phantom-airtime')).data,
+  })
+
+  const needsRefund = data.filter((r) => r.needs_refund)
+  const refundAll = useMutation({
+    mutationFn: async () => (await api.post<{ refunded_count: number; total_amount_naira: number; refunded_ids: string[] }>('/bill-payments/admin/vtu/refund-phantom-airtime')).data,
+    onSuccess: (res) => {
+      toast.success(`Refunded ${res.refunded_count} airtime purchase(s) (₦${res.total_amount_naira.toFixed(2)})`)
+      qc.invalidateQueries({ queryKey: ['phantom-airtime'] })
+      qc.invalidateQueries({ queryKey: ['vtu-status'] })
+    },
+    onError: (e) => toast.error(getErrorMessage(e)),
+  })
+
+  if (needsRefund.length === 0) return null
+
+  const totalNaira = needsRefund.reduce((s, r) => s + r.amount_naira, 0)
+
+  const handleRefund = async () => {
+    const ok = await ask(
+      `Refund ${needsRefund.length} customer(s) a total of ₦${totalNaira.toFixed(2)}? These airtime purchases were debited during VTU provider downtime but were never delivered by the supplier.`,
+      { title: 'Refund undelivered airtime?', confirmLabel: 'Yes, refund now', tone: 'danger' }
+    )
+    if (!ok) return
+    refundAll.mutate()
+  }
+
+  return (
+    <div className="rounded-2xl border border-amber-300 dark:border-amber-500/60 bg-amber-50 dark:bg-amber-500/10 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-extrabold text-amber-900 dark:text-amber-200">
+            {needsRefund.length} Undelivered Airtime Purchase{needsRefund.length === 1 ? '' : 's'}
+          </p>
+          <p className="text-[11px] text-amber-700 dark:text-amber-300">
+            Debited via VTU failover without provider confirmation.
+          </p>
+        </div>
+        <button
+          onClick={handleRefund}
+          disabled={refundAll.isPending}
+          className="rounded-xl bg-amber-600 hover:bg-amber-700 py-2 px-3 text-xs font-bold text-white shadow-sm disabled:opacity-50"
+        >
+          {refundAll.isPending ? 'Refunding…' : `Refund All (₦${totalNaira.toFixed(0)})`}
+        </button>
+      </div>
+      <div className="space-y-2">
+        {needsRefund.map((r) => (
+          <div key={r.id} className="rounded-xl bg-white dark:bg-night-700 p-2.5 text-xs flex items-center justify-between">
+            <div>
+              <p className="font-bold text-green-950 dark:text-white">
+                {r.biller_name} · ₦{r.amount_naira.toFixed(2)}
+              </p>
+              <p className="text-[11px] text-green-700 dark:text-night-300">
+                To: {r.phone_masked} {r.created_at ? `· ${new Date(r.created_at).toLocaleTimeString()}` : ''}
+              </p>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+              Needs refund
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** Airtime to Cash requests where the supplier's reply was unclear. NOTHING is paid until a director decides. */
 function A2cReviewList() {
   const qc = useQueryClient()
@@ -170,6 +272,12 @@ export default function BillsControlPage() {
   const [cfg, setCfg] = useState<BillsConfig>(DEFAULT_BILLS_CONFIG)
   useEffect(() => { if (data) setCfg(data) }, [data])
 
+  const { data: vtuStatus } = useQuery({
+    queryKey: ['vtu-status'],
+    refetchInterval: 15_000,
+    queryFn: async () => (await api.get<VtuStatus>('/bill-payments/admin/vtu/status')).data,
+  })
+
   const set = <K extends keyof BillsConfig>(k: K, v: BillsConfig[K]) => setCfg((c) => ({ ...c, [k]: v }))
   const dirty = !!data && JSON.stringify(data) !== JSON.stringify(cfg)
 
@@ -208,13 +316,59 @@ export default function BillsControlPage() {
           <Switch on={cfg.bills_enabled} onChange={(v) => set('bills_enabled', v)} label="Electricity & cable TV" />
         </div>
 
+        <PhantomAirtimeReviewList />
+
         <p className="text-[11px] font-bold uppercase tracking-wide text-green-700 dark:text-night-200">Airtime and data suppliers</p>
-        <VtuSupplierCard cfg={cfg} set={set} />
+        <VtuSupplierCard cfg={cfg} set={set} data={vtuStatus} />
         <div className={cn(card, 'py-3 space-y-3 divide-y-0')}>
           <div>
-            <p className="mb-1.5 text-sm font-bold text-green-950 dark:text-white">Airtime provider</p>
-            <Segmented value={cfg.airtime_provider ?? 'monnify'} onChange={(v) => set('airtime_provider', v)} options={[['monnify', 'Monnify (default)'], ['vtu', 'VTU (GYKDATASUB)']]} />
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-sm font-bold text-green-950 dark:text-white">Airtime provider</p>
+              {vtuStatus && (
+                <span className={cn(
+                  'text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1.5',
+                  vtuStatus.airtime_active_provider === 'monnify'
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                    : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                )}>
+                  <span className={cn(
+                    'h-1.5 w-1.5 rounded-full',
+                    vtuStatus.airtime_active_provider === 'monnify' ? 'bg-green-500' : 'bg-blue-500 animate-pulse'
+                  )} />
+                  Active: {vtuStatus.airtime_active_provider === 'monnify' ? 'Monnify' : 'VTU (GYKDATASUB)'}
+                </span>
+              )}
+            </div>
+            <Segmented value={cfg.airtime_provider ?? 'monnify'} onChange={(v) => set('airtime_provider', v)} options={[['monnify', 'Monnify (preferred)'], ['vtu', 'VTU (GYKDATASUB)']]} />
             <p className="mt-1 text-[10px] text-green-600 dark:text-night-300">Who serves airtime first. Switch any time, for example during a network outage.</p>
+            {vtuStatus?.monnify_down_now && (
+              <div className="mt-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-2.5 text-xs text-amber-900 dark:text-amber-200 space-y-0.5">
+                <p className="font-bold flex items-center gap-1.5">
+                  <ShieldAlert className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                  Monnify is currently down
+                </p>
+                <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                  {vtuStatus.monnify_down_duration_seconds != null
+                    ? `Down for ${Math.floor(vtuStatus.monnify_down_duration_seconds / 60)}m ${vtuStatus.monnify_down_duration_seconds % 60}s. `
+                    : ''}
+                  Failover to VTU is active. Monnify will be retried in {vtuStatus.monnify_down_ttl_seconds ?? 0}s.
+                </p>
+              </div>
+            )}
+            {vtuStatus?.down_now && (
+              <div className="mt-2 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 p-2.5 text-xs text-red-900 dark:text-red-200 space-y-0.5">
+                <p className="font-bold flex items-center gap-1.5">
+                  <ShieldAlert className="h-3.5 w-3.5 text-red-600 shrink-0" />
+                  VTU (GYKDATASUB) is currently down
+                </p>
+                <p className="text-[11px] text-red-800 dark:text-red-300">
+                  {vtuStatus.vtu_down_duration_seconds != null
+                    ? `Down for ${Math.floor(vtuStatus.vtu_down_duration_seconds / 60)}m ${vtuStatus.vtu_down_duration_seconds % 60}s. `
+                    : ''}
+                  Retry in {vtuStatus.vtu_down_ttl_seconds ?? 0}s.
+                </p>
+              </div>
+            )}
           </div>
           <Switch on={cfg.provider_auto_failover ?? true} onChange={(v) => set('provider_auto_failover', v)} label="Switch automatically when one is down" hint="Airtime moves to the other supplier if the first one cannot serve it. It never retries something that might have been delivered." />
           <div>

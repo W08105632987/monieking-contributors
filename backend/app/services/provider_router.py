@@ -49,16 +49,39 @@ async def is_down(name: str) -> bool:
         return False
 
 
+async def down_ttl(name: str) -> int | None:
+    """Seconds until the 'down' flag expires, or None if the supplier is not marked down."""
+    try:
+        ttl = await (await _redis()).ttl(f"prov:down:{name}")
+        return max(0, ttl) if ttl and ttl > 0 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def down_since(name: str) -> float | None:
+    """Timestamp (epoch seconds) when the supplier was first marked down in the current window."""
+    try:
+        if not await is_down(name):
+            return None
+        val = await (await _redis()).get(f"prov:down_since:{name}")
+        return float(val) if val else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 async def mark_down(name: str, seconds: int = DOWN_TTL_SECONDS) -> None:
     try:
-        await (await _redis()).set(f"prov:down:{name}", "1", ex=seconds)
+        r = await _redis()
+        await r.set(f"prov:down:{name}", "1", ex=seconds)
+        # Record when the supplier went down (only on first trip, not on re-marks)
+        await r.set(f"prov:down_since:{name}", __import__("time").time(), nx=True, ex=seconds + 3600)
     except Exception:  # noqa: BLE001
         pass
 
 
 async def clear_down(name: str) -> None:
     try:
-        await (await _redis()).delete(f"prov:down:{name}", f"prov:fail:{name}")
+        await (await _redis()).delete(f"prov:down:{name}", f"prov:fail:{name}", f"prov:down_since:{name}")
     except Exception:  # noqa: BLE001
         pass
 
@@ -81,7 +104,7 @@ async def note_failure(name: str) -> bool:
 
 async def note_success(name: str) -> None:
     try:
-        await (await _redis()).delete(f"prov:fail:{name}")
+        await (await _redis()).delete(f"prov:fail:{name}", f"prov:down:{name}", f"prov:down_since:{name}")
     except Exception:  # noqa: BLE001
         pass
 
@@ -95,6 +118,21 @@ def network_slug(biller: Biller) -> str | None:
 
 def vtu_ready() -> bool:
     return get_vtu_provider().configured
+
+
+async def active_airtime_provider(cfg: dict) -> str:
+    """Which supplier is currently serving airtime purchases right now."""
+    primary = cfg.get("airtime_provider", "monnify")
+    primary = primary if primary in PROVIDERS else "monnify"
+    if not cfg.get("provider_auto_failover", True):
+        return primary
+    if await is_down(primary):
+        sec = other(primary)
+        if sec == "vtu" and not vtu_ready():
+            return primary
+        if not await is_down(sec):
+            return sec
+    return primary
 
 
 async def providers_for(biller: Biller, cfg: dict) -> list[str]:

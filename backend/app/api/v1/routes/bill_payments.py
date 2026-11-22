@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -176,11 +176,25 @@ async def admin_vtu_status(user: DirectorOnly, db: AsyncSession = Depends(get_db
                    "success_rate": round(completed * 100 / (completed + failed)) if (completed + failed) else None}
     except Exception:  # noqa: BLE001
         success = None
+    import time
+    monnify_down = await provider_router.is_down("monnify")
+    vtu_down = await provider_router.is_down("vtu")
+    monnify_since = await provider_router.down_since("monnify")
+    vtu_since = await provider_router.down_since("vtu")
+    now = time.time()
     return {
         "configured": vtu.configured, "balance_naira": balance, "plans": int(plans[0] or 0),
         "last_sync": plans[1].isoformat() if plans[1] else None,
-        "down_now": await provider_router.is_down("vtu"), "monnify_down_now": await provider_router.is_down("monnify"),
-        "success": success, "airtime_provider": cfg["airtime_provider"], "auto_failover": cfg["provider_auto_failover"],
+        "down_now": vtu_down, "monnify_down_now": monnify_down,
+        "monnify_down_ttl_seconds": await provider_router.down_ttl("monnify"),
+        "monnify_down_since": monnify_since,
+        "monnify_down_duration_seconds": round(now - monnify_since) if monnify_since else None,
+        "vtu_down_ttl_seconds": await provider_router.down_ttl("vtu"),
+        "vtu_down_since": vtu_since,
+        "vtu_down_duration_seconds": round(now - vtu_since) if vtu_since else None,
+        "success": success, "airtime_provider": cfg["airtime_provider"],
+        "airtime_active_provider": await provider_router.active_airtime_provider(cfg),
+        "auto_failover": cfg["provider_auto_failover"],
     }
 
 
@@ -206,6 +220,92 @@ async def admin_vtu_apply_markup(body: VtuMarkupBody, user: DirectorOnly, db: As
                                            fields={"markup_percent": body.markup_percent})
     await db.commit()
     return {"updated": changed, "default_markup_percent": cfg["vtu_default_markup_percent"]}
+
+
+@router.get("/admin/vtu/phantom-airtime")
+async def admin_get_phantom_airtime(user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Find airtime transactions routed to VTU without a supplier reference or never actually delivered."""
+    from app.services.bill_payment_service import _reversal_reference
+    from app.models.wallet import WalletTransaction
+    stmt = (
+        select(BillPaymentRequest, Biller.name)
+        .join(Biller, BillPaymentRequest.biller_id == Biller.id)
+        .where(
+            and_(
+                Biller.category == BillerCategory.AIRTIME,
+                (BillPaymentRequest.provider == "vtu") | (BillPaymentRequest.failed_over_from.isnot(None)),
+            )
+        )
+        .order_by(BillPaymentRequest.created_at.desc())
+        .limit(50)
+    )
+    rows = (await db.execute(stmt)).all()
+    results = []
+    for req, biller_name in rows:
+        rev_ref = _reversal_reference(req)
+        already_refunded = (await db.execute(
+            select(WalletTransaction.id).where(WalletTransaction.reference == rev_ref)
+        )).first() is not None
+
+        is_phantom = not req.provider_reference and req.status in (BillPaymentStatus.COMPLETED, BillPaymentStatus.PENDING)
+
+        raw_phone = req.customer_reference or ""
+        masked_phone = (raw_phone[:4] + "***" + raw_phone[-3:]) if len(raw_phone) > 7 else "***"
+
+        results.append({
+            "id": str(req.id),
+            "created_at": req.created_at.isoformat() if req.created_at else None,
+            "biller_name": biller_name,
+            "phone_masked": masked_phone,
+            "amount_naira": req.amount_kobo / 100,
+            "status": req.status.value,
+            "provider": req.provider,
+            "failed_over_from": req.failed_over_from,
+            "provider_reference": req.provider_reference,
+            "failure_reason": req.failure_reason,
+            "already_refunded": already_refunded,
+            "needs_refund": is_phantom and not already_refunded,
+        })
+    return results
+
+
+@router.post("/admin/vtu/refund-phantom-airtime")
+async def admin_refund_phantom_airtime(user: DirectorOnly, db: AsyncSession = Depends(get_db)):
+    """Refund customer wallets for phantom VTU airtime purchases (empty supplier reference) that never delivered."""
+    from app.services.bill_payment_service import _refund
+    stmt = (
+        select(BillPaymentRequest)
+        .join(Biller, BillPaymentRequest.biller_id == Biller.id)
+        .where(
+            and_(
+                Biller.category == BillerCategory.AIRTIME,
+                (BillPaymentRequest.provider == "vtu") | (BillPaymentRequest.failed_over_from.isnot(None)),
+                BillPaymentRequest.status.in_([BillPaymentStatus.COMPLETED, BillPaymentStatus.PENDING]),
+                (BillPaymentRequest.provider_reference.is_(None)) | (BillPaymentRequest.provider_reference == ""),
+            )
+        )
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    refunded_count = 0
+    total_refunded_kobo = 0
+    refunded_ids = []
+
+    for req in rows:
+        reason = "Airtime was not delivered by VTU supplier (wrong API route) — wallet refunded"
+        did_refund = await _refund(db, req, reason)
+        if did_refund:
+            refunded_count += 1
+            total_refunded_kobo += req.amount_kobo
+            refunded_ids.append(str(req.id))
+        req.status = BillPaymentStatus.FAILED
+        req.failure_reason = reason
+
+    await db.commit()
+    return {
+        "refunded_count": refunded_count,
+        "total_amount_naira": total_refunded_kobo / 100,
+        "refunded_ids": refunded_ids,
+    }
 
 
 # ── Director: prices, commission and profit ───────────────────────────────

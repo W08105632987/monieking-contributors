@@ -137,7 +137,7 @@ class Settings(BaseSettings):
     GYK_HISTORY_PATH: str = "/api/v1/wallet_history/"
     GYK_A2C_PATH: str = "/api/v1/a2c/"
     GYK_FEES_PATH: str = "/api/details/fees/"                  # public; confirmed working
-    GYK_AIRTIME_PATH: str = "/api/v1/topup/"
+    GYK_AIRTIME_PATH: str = "/api/topup/"
     GYK_DATA_PATH: str = "/api/v1/data/"
     GYK_PRICE_FIELD: str = ""                              # the plan-row field holding the price for OUR account level, if rows carry several (see diagnose output)
     GYK_TRANSACTION_PIN: str = ""                          # only if purchases through the API also require your account PIN
