@@ -247,7 +247,12 @@ async def admin_get_phantom_airtime(user: DirectorOnly, db: AsyncSession = Depen
             select(WalletTransaction.id).where(WalletTransaction.reference == rev_ref)
         )).first() is not None
 
-        is_phantom = not req.provider_reference and req.status in (BillPaymentStatus.COMPLETED, BillPaymentStatus.PENDING)
+        ref_is_bogus = (
+            not req.provider_reference
+            or str(req.provider_reference).startswith("DATA_")
+            or req.provider_reference == "diagnose"
+        )
+        is_phantom = ref_is_bogus and req.status in (BillPaymentStatus.COMPLETED, BillPaymentStatus.PENDING)
 
         raw_phone = req.customer_reference or ""
         masked_phone = (raw_phone[:4] + "***" + raw_phone[-3:]) if len(raw_phone) > 7 else "***"
@@ -281,7 +286,12 @@ async def admin_refund_phantom_airtime(user: DirectorOnly, db: AsyncSession = De
                 Biller.category == BillerCategory.AIRTIME,
                 (BillPaymentRequest.provider == "vtu") | (BillPaymentRequest.failed_over_from.isnot(None)),
                 BillPaymentRequest.status.in_([BillPaymentStatus.COMPLETED, BillPaymentStatus.PENDING]),
-                (BillPaymentRequest.provider_reference.is_(None)) | (BillPaymentRequest.provider_reference == ""),
+                (
+                    BillPaymentRequest.provider_reference.is_(None)
+                    | (BillPaymentRequest.provider_reference == "")
+                    | (BillPaymentRequest.provider_reference.like("DATA_%"))
+                    | (BillPaymentRequest.provider_reference == "diagnose")
+                ),
             )
         )
     )
