@@ -133,13 +133,10 @@ async def validate_phone(body: ValidatePhoneRequest, user: CustomerOrOfficer, db
                 await get_bills_provider().validate_customer(product_code=biller.product_id, customer_id=phone)
                 verified = True
             except MonnifyBillsError as e:
+                # Monnify MSISDN validation is best-effort. If the biller/customer validation is not supported
+                # by Monnify (e.g. 'Biller not found' or outage), never block the customer.
                 logger.info("[bills] phone check skipped for %s: %s", net, e.raw)
-                if e.retriable:
-                    # Provider outage: never block the customer or show technical text.
-                    message = "Number check skipped"
-                else:
-                    return {"valid": False, "phone": phone, "network": net, "verified": False,
-                            "message": public_message(e.raw, "That number could not be verified. Please check it and try again.")}
+                message = "Number check skipped"
     return {"valid": True, "phone": phone, "network": net, "verified": verified, "message": message}
 
 
