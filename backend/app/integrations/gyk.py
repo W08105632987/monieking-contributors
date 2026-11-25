@@ -242,7 +242,7 @@ class GykProvider:
         return self._outcome(body)
 
     # ── Reconciliation: find a purchase we are unsure about in the wallet history ─
-    async def find_purchase(self, *, phone: str, since: datetime) -> dict | None:
+    async def find_purchase(self, *, phone: str, since: datetime, exclude_references: set[str] | None = None) -> dict | None:
         """-> a normalized outcome if EXACTLY ONE history row matches; {"vendStatus": "NOT_FOUND"} if the history is readable and has none;
         None if we cannot tell (history unreadable, or several look-alike rows)."""
         try:
@@ -258,15 +258,20 @@ class GykProvider:
         for row in body.get("data") or []:
             if not isinstance(row, dict) or _digits(str(row.get("mobile_number") or row.get("phone") or "")) != want:
                 continue
+            ref = row.get("reference") or row.get("transaction_id")
+            if exclude_references and ref and str(ref) in exclude_references:
+                continue
             when = self._parse_time(row.get("date_time") or row.get("created_at") or "")
             if when is None or when < since - timedelta(seconds=120):
                 continue
-            hits.append(row)
+            diff = abs((when - since).total_seconds()) if when else 999999.0
+            hits.append((row, diff))
         if not hits:
             return {"vendStatus": "NOT_FOUND"}        # history was readable and has nothing for this phone since `since`
-        if len(hits) != 1:
-            return None                               # several look-alikes (two real purchases in a row): cannot tell
-        row = hits[0]
+        hits.sort(key=lambda x: x[1])
+        if len(hits) > 1 and hits[0][1] > 60:
+            return None                               # multiple unclaimed rows and none close in time: cannot tell
+        row = hits[0][0]
         status = str(row.get("status") or "").lower()
         mapped = "SUCCESS" if status in ("success", "successful", "completed") else "PROCESSING" if status in ("pending", "processing") else "FAILED"
         return {"vendStatus": mapped, "transactionReference": row.get("reference") or row.get("transaction_id"), "responseMessage": row.get("description")}

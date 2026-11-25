@@ -943,7 +943,20 @@ async def resolve_pending_bill(db: AsyncSession, request_id: uuid.UUID) -> BillP
     if _prov(request) == "vtu":
         # The supplier cannot look a purchase up by our reference, so we match it in their wallet history (phone + time).
         from app.core.config import settings
-        found = await get_vtu_provider().find_purchase(phone=request.customer_reference, since=request.created_at)
+        # Exclude references already claimed by other completed requests for this phone
+        claimed_refs = set((await db.execute(
+            select(BillPaymentRequest.provider_reference)
+            .where(
+                BillPaymentRequest.customer_reference == request.customer_reference,
+                BillPaymentRequest.provider == "vtu",
+                BillPaymentRequest.status == BillPaymentStatus.COMPLETED,
+                BillPaymentRequest.provider_reference.isnot(None),
+                BillPaymentRequest.id != request.id,
+            )
+        )).scalars().all())
+        found = await get_vtu_provider().find_purchase(
+            phone=request.customer_reference, since=request.created_at, exclude_references=claimed_refs
+        )
         age_minutes = (datetime.now(timezone.utc) - request.created_at).total_seconds() / 60 if request.created_at else 0
         if found and found.get("vendStatus") == "NOT_FOUND":
             # History is readable and has nothing for this phone since we asked: only after a long wait is that treated as "never delivered".
